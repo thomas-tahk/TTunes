@@ -32,8 +32,30 @@ and file specific tracks on request. Reactive, not a recommendation engine.
 4. **No recommendation engine.** AI is reactive — it answers your requests. It
    does not push proactive suggestions.
 
-5. **Versions/covers are first-class.** Distinguishing the studio cut vs. live
-   vs. cover is a core requirement, served by your own control over tagging.
+5. **Catalog model — track-centric with user-confirmed grouping.**
+   - The atomic unit is a **Track (recording)**; **artist is first-class** on it,
+     not a sub-detail of an abstract composition. A track has: title, artist(s),
+     a **version-type** (`studio` / `live` / `remaster` / `acoustic` / `cover` …),
+     plus audio + art.
+   - **No abstract "composition/Work" entity.** Grouping is an optional,
+     **user-confirmed relationship**: tracks can cluster into a "versions" group
+     with one marked **primary**. Nothing auto-merges by title or composition.
+   - **AI suggests, user decides.** On add, if a track is a *strong* match for an
+     existing one, the AI offers a yes/no "group under X, or stand alone?".
+     - Prompt fires **only on a strong match** (near-exact title + corroboration:
+       same artist, or AI-verified same composition). Far-fetched/loose matches
+       **file as standalone silently** — no prompt. Default when unsure = stand
+       alone. Never interrupt on a hunch.
+   - **Transformative covers stand alone** by design — their own artist makes them
+     distinct; they're their own entry, not folded under the original.
+   - **Same-title-unrelated songs never collide** — grouping requires the user's
+     yes, and artist disambiguates.
+   - **Shuffle draws one entry per group (the primary) + every ungrouped track.**
+     So studio+live of the same song collapse to one slot (no version spam), while
+     a standalone cover appears in its own right.
+   - Browsing is **artist-first**; "show other versions of this" is a secondary
+     peek into a group.
+   - Common case (only one version owned): grouping machinery is invisible.
 
 6. **Playback model — "build for one, designed for a few":**
    - **Phase 1:** a *personal continuous player*. Nothing plays while you're
@@ -59,12 +81,11 @@ and file specific tracks on request. Reactive, not a recommendation engine.
 
 ## Open questions (not yet decided)
 
+- **Add/acquire flow** — how owned audio gets into TTunes + cloud storage, and
+  where the AI librarian fits (sourcing help vs. tagging). (NEXT)
 - **Sub-playlists** — user is unsure if needed. (TBD)
-- **AI request flow** — exact UX of "find me X" → identify → file. (TBD)
-- **Acquisition/upload flow** — how owned audio gets into cloud storage. (TBD)
 - **Cloud storage provider** — R2 vs S3 vs Supabase Storage, etc. (TBD)
-- **Tech stack** — frontend, backend, DB for catalog/metadata + station state. (TBD)
-- **Metadata model** — how tracks, versions/covers, and tags are structured. (TBD)
+- **Tech stack** — frontend, backend, DB for catalog + station state. (TBD)
 
 ## Next step
 
