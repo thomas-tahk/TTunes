@@ -98,11 +98,34 @@ and file specific tracks on request. Reactive, not a recommendation engine.
 
 9. **Nice-to-have, not mandatory:** album art / artist images.
 
+10. **Performance is a hard requirement.** Instant playback, no buffer spinners
+    between tracks (prefetch the next track before the current ends), UI never
+    blocks. This constrains storage (must be CDN-backed, fast range requests) and
+    the player (prefetch-ahead). "Wait around to load/buffer" = failure.
+
+11. **Audio quality — "good enough, consistent"; zero audio-engineering.** No EQ,
+    DSP, sound-adjustment knobs, or mastering — all out of scope.
+    - Honest bound: quality is *sourcing-limited* (garbage in, garbage out). The
+      app plays files faithfully and does NOT enhance; a low-bitrate rip stays
+      low-bitrate. Consistency is a sourcing discipline, not an app feature.
+    - The app *does* provide **passive quality visibility**: a small bitrate/
+      format badge + quiet marker on noticeably-low files, so the user can choose
+      to re-acquire. Ignorable, no nagging.
+
+12. **Sub-playlists — unified "current shuffle pool" model.** The station always
+    plays *a pool*; the user can point it at any of:
+    - **Whole library** (default).
+    - **Smart/filtered channel** — narrow by tags on the fly or save the filter
+      (e.g. "jazz", "all live", "90s"). Zero maintenance; rides on AI tagging.
+    - **Curated playlist** — hand-built named list. Manual upkeep.
+    Any pool shuffles via the same primary-per-group + standalones rule. No new
+    machinery — just swap which pool is active.
+
 ## Open questions (not yet decided)
 
-- **Sub-playlists** — user is unsure if needed. (NEXT)
-- **Cloud storage provider** — R2 vs S3 vs Supabase Storage, etc. (TBD)
-- **Tech stack** — frontend, backend, DB for catalog + station state. (TBD)
+- **Cloud storage provider** — R2 vs S3 vs Supabase Storage, etc. (NEXT — technical)
+- **Tech stack** — frontend, backend, DB for catalog + station state. (NEXT — technical)
+- **AI request UX** — surface/affordance for "find me X" (mostly settled in #3). (minor)
 
 ## Next step
 
