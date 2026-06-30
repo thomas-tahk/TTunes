@@ -23,11 +23,26 @@ and file specific tracks on request. Reactive, not a recommendation engine.
    - Tradeoff accepted: you acquire tracks over time and pay to host them
      (~$15–25 / TB / month at scale).
 
-3. **AI = librarian, not smuggler (type B).** The AI finds *what exists*
-   (e.g. "is there a jazzy cover of Creep, and who did it?"), identifies it, and
-   files/tags it correctly. You supply the actual audio. The AI does **not**
-   autonomously fetch arbitrary audio bytes, and TTunes does **not** pull live
-   from YouTube/web.
+3. **AI = librarian + acquisition helper (personal use).** The AI finds *what
+   exists*, identifies it, and files/tags it correctly. Multiple ways music gets
+   in:
+   - **Drag-drop** files you already have.
+   - **Bulk dumps** — a folder of hundreds at once (first-class path; expected to
+     dominate early seeding). AI batch-tags; only stops to ask on strong grouping
+     matches.
+   - **AI buy-link pointers** — AI confirms a track exists and points you to a
+     legit source (Bandcamp/iTunes/etc.) to acquire it.
+   - **YouTube/web extraction (acquisition source, personal use only).** AI
+     extracts the audio **once**, stores it in *your* cloud library; playback is
+     always from your storage, never live-pulled. NOT for redistribution.
+   - If the AI **can't find** something: say so, offer a best-guess next step,
+     don't overthink it.
+   - **Ruled out:** live-pull/streaming from YouTube at playback time (fragile,
+     link-rot, platform dependency).
+   - Legal note: YouTube extraction of commercial copyrighted music is
+     infringement/ToS violation; acceptable risk profile assumes **private,
+     single-listener, no redistribution**. Best kept to free/CC/public-domain/
+     self-owned content. Risk compounds if broadcast is ever enabled.
 
 4. **No recommendation engine.** AI is reactive — it answers your requests. It
    does not push proactive suggestions.
@@ -65,25 +80,27 @@ and file specific tracks on request. Reactive, not a recommendation engine.
      station state** (a queue + a position/timeline), not ad-hoc client-side
      playback. Solo, you're the only reader and have full control
      (pause/skip/request/rewind).
-   - **Later (broadcast-for-friends):** let a few friends/family tune in as
-     **read-only** listeners who sync to your station timeline. Achieved with a
-     synced-timeline trick (server publishes "what's playing + offset" as JSON;
-     each browser streams the file directly from cloud storage and seeks to the
-     offset) — **not** Icecast-style audio-streaming infrastructure.
-   - Legal note: streaming your owned files to others is redistribution/public
-     performance, legally distinct from personal listening. Low practical risk
-     at family scale; flip-on decision deferred.
+   - **Broadcast-for-friends = deferred / out of scope.** TTunes is a pure
+     personal, single-listener player for now. The server-side station-state is
+     kept *only* because it cleanly powers the personal "instant resume / 24/7
+     feel" — not to serve other listeners. (If broadcast is ever revived, the
+     state model is already shaped for a synced-timeline approach rather than
+     Icecast-style streaming.)
 
-7. **Out of scope (confirmed):** music videos, psychedelic/audio
-   visualizations.
+7. **Everything the AI does is editable — the user is always the editor.**
+   Every auto-tag, version-type, grouping, primary pick, and metadata field is
+   correctable any time (not just at add-time): re-tag, split/merge groups,
+   promote a different primary, fix a bad fingerprint guess. AI proposes; user
+   overrides.
 
-8. **Nice-to-have, not mandatory:** album art / artist images.
+8. **Out of scope (confirmed):** music videos, psychedelic/audio
+   visualizations; broadcast/multi-listener (deferred, see #6).
+
+9. **Nice-to-have, not mandatory:** album art / artist images.
 
 ## Open questions (not yet decided)
 
-- **Add/acquire flow** — how owned audio gets into TTunes + cloud storage, and
-  where the AI librarian fits (sourcing help vs. tagging). (NEXT)
-- **Sub-playlists** — user is unsure if needed. (TBD)
+- **Sub-playlists** — user is unsure if needed. (NEXT)
 - **Cloud storage provider** — R2 vs S3 vs Supabase Storage, etc. (TBD)
 - **Tech stack** — frontend, backend, DB for catalog + station state. (TBD)
 
