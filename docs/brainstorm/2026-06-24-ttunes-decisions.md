@@ -127,11 +127,18 @@ and file specific tracks on request. Reactive, not a recommendation engine.
     - **No soft-ban** ("never play again") and **no trash/recycle bin** — gone
       means gone, not recoverable.
     - Guardrail: a single confirm dialog on Delete (destructive + the file was
-      costly to acquire). Not a trash feature — just one speed bump. [pending
-      final user yes/no]
+      costly to acquire). Not a trash feature — just one speed bump. **Confirmed.**
 
-14. **Requesting a specific track interrupts and plays now** — no play-now-vs-
-    play-next choice; the request switches immediately, mid-track.
+14. **Requests + queue model.** The station always shuffles an **active pool**;
+    a small **manual queue** ("up next") sits on top of it:
+    - **Play now** — interrupt current, play this track immediately.
+    - **Play next / add to queue** — line up a track in the manual queue (plays
+      before shuffle resumes). **Capped at ~6 individual tracks** (soft, tunable)
+      so the queue stays a lightweight "next few," distinct from playlists.
+    - **More than a handful?** Point the station at a **playlist/pool** instead of
+      spamming singles.
+    - When the manual queue empties, the station **falls back to shuffling the
+      active pool** — never goes silent.
 
 15. **Tech stack (personal, cheap-cloud, portability-first).**
     - **App:** one TypeScript service — React front-end + Node back-end — shipped
