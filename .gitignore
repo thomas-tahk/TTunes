@@ -1,0 +1,9 @@
+node_modules/
+dist/
+# Local MVP data (temporary local adapters — swaps to R2 + Postgres later)
+data/
+uploads/
+*.log
+.env
+.env.local
+.DS_Store
