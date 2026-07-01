@@ -121,6 +121,18 @@ and file specific tracks on request. Reactive, not a recommendation engine.
     Any pool shuffles via the same primary-per-group + standalones rule. No new
     machinery — just swap which pool is active.
 
+13. **Remove vs. Delete — distinct terms, distinct actions.**
+    - **Remove** = take a track out of a playlist/pool; keep it in the library.
+    - **Delete** = purge from the entire library AND cloud storage (stop paying).
+    - **No soft-ban** ("never play again") and **no trash/recycle bin** — gone
+      means gone, not recoverable.
+    - Guardrail: a single confirm dialog on Delete (destructive + the file was
+      costly to acquire). Not a trash feature — just one speed bump. [pending
+      final user yes/no]
+
+14. **Requesting a specific track interrupts and plays now** — no play-now-vs-
+    play-next choice; the request switches immediately, mid-track.
+
 ## Open questions (not yet decided)
 
 - **Cloud storage provider** — R2 vs S3 vs Supabase Storage, etc. (NEXT — technical)
