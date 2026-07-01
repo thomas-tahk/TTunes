@@ -133,13 +133,42 @@ and file specific tracks on request. Reactive, not a recommendation engine.
 14. **Requesting a specific track interrupts and plays now** — no play-now-vs-
     play-next choice; the request switches immediately, mid-track.
 
-## Open questions (not yet decided)
+15. **Tech stack (personal, cheap-cloud, portability-first).**
+    - **App:** one TypeScript service — React front-end + Node back-end — shipped
+      as a **single portable container**. Serves UI, signs storage URLs, manages
+      station-state, talks to AI + music APIs, runs background jobs in-process.
+    - **Audio storage/delivery:** **Cloudflare R2** (S3-compatible, zero egress
+      fees, CDN + range requests → satisfies the perf NFR and TB-scale cost).
+      Accessed via a thin S3-compatible abstraction.
+    - **Catalog DB:** managed **Postgres** (Neon/Supabase free tier), standard
+      features only. Holds metadata + R2 pointers; audio bytes never in the DB.
+    - **AI librarian:** **Claude API** (reasoning/tagging/grouping), **MusicBrainz
+      / AcoustID** (fingerprint + identify), **yt-dlp** (YouTube extraction).
+    - **Hosting:** cheap always-on container host (Railway / Fly / Render). Only
+      needs to be up when the user uses it (personal player, no true broadcast).
 
-- **Cloud storage provider** — R2 vs S3 vs Supabase Storage, etc. (NEXT — technical)
-- **Tech stack** — frontend, backend, DB for catalog + station state. (NEXT — technical)
-- **AI request UX** — surface/affordance for "find me X" (mostly settled in #3). (minor)
+16. **Cost model + portability (a core value, not an afterthought).**
+    - This avoids *content subscriptions* (rent-forever, own-nothing). You **own
+      the files and app**; stop paying any host and your library is still yours.
+    - "Available anywhere 24/7" has an irreducible small cost. Realistically
+      **~free early** (R2 10GB free, DB free tier; only the always-on host is
+      ~$0–5/mo), scaling gently with library size. ~1000 songs ≈ 10GB; ~100k
+      songs ≈ 1TB.
+    - **Cloud is a temporary host.** Design so migrating to **self-hosting**
+      (home server / Pi / NAS) later is trivial: S3-compatible storage behind an
+      abstraction, plain Postgres, portable container, no vendor-proprietary
+      lock-in. Same artifact runs cloud now, home later.
 
-## Next step
+## Open questions (remaining — detail-level, for the formal spec)
 
-Resolve open questions (likely starting with the metadata/catalog model and the
-upload flow), then produce a formal design doc and implementation plan.
+- **AI request UX** — exact surface/affordance for "find me X" (direction set in
+  #3; pin down during design).
+- **Delete confirm** — final user yes/no on the single confirm dialog (#13).
+- **Data model specifics** — table shapes for tracks/artists/groups/playlists/
+  tags; station-state representation. (design-doc work)
+- **Deployment specifics** — which host (Railway vs Fly vs Render), CI. (later)
+
+## Status
+
+**Brainstorm complete on all major decisions.** Next: consolidate into a formal
+design doc (spec), then an implementation plan.
