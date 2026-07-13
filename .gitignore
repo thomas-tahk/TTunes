@@ -3,6 +3,7 @@ dist/
 # Local MVP data (temporary local adapters — swaps to R2 + Postgres later)
 data/
 uploads/
+staging/
 *.log
 .env
 .env.local

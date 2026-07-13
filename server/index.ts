@@ -3,17 +3,21 @@ import cors from "cors";
 import multer from "multer";
 import { nanoid } from "nanoid";
 import { extname } from "node:path";
-import { parseFile } from "music-metadata";
+import { renameSync } from "node:fs";
 import { LocalDiskStorage } from "./storage.ts";
 import { JsonTrackRepo } from "./repo.ts";
+import { YouTubeIngest, IngestError } from "./ingest.ts";
+import { readAudioMeta } from "./metadata.ts";
 import type { Track } from "./types.ts";
 
-const PORT = 8787;
+const PORT = Number(process.env.PORT) || 8787;
 const UPLOAD_DIR = "uploads"; // local adapter; swaps to R2 later (design spec §9)
 const DATA_FILE = "data/tracks.json"; // local adapter; swaps to Postgres later
+const STAGING_DIR = "staging"; // holds extracted audio until the user confirms
 
 const storage = new LocalDiskStorage(UPLOAD_DIR);
 const repo = new JsonTrackRepo(DATA_FILE);
+const ingest = new YouTubeIngest(STAGING_DIR);
 
 const CONTENT_TYPES: Record<string, string> = {
   ".mp3": "audio/mpeg",
@@ -34,6 +38,7 @@ const upload = multer({
 
 const app = express();
 app.use(cors());
+app.use(express.json());
 
 app.get("/api/tracks", (_req: Request, res: Response) => {
   res.json(repo.all());
@@ -89,8 +94,70 @@ app.get("/audio/:id", (req: Request, res: Response) => {
   storage.readRange(track.storageKey, start, end).pipe(res);
 });
 
+// --- YouTube ingest (design spec §6): stage -> preview -> commit/discard ---
+
+app.post("/api/ingest/youtube", async (req: Request, res: Response) => {
+  const url = String(req.body?.url ?? "").trim();
+  if (!url) {
+    res.status(400).json({ error: "no url provided" });
+    return;
+  }
+  try {
+    res.status(201).json(await ingest.stage(url));
+  } catch (err) {
+    const message = err instanceof IngestError ? err.message : "Failed to fetch that link.";
+    res.status(422).json({ error: message });
+  }
+});
+
+// Preview the staged audio before committing — the user's "is this the song?" check.
+app.get("/api/ingest/youtube/:id/audio", (req: Request, res: Response) => {
+  const stream = ingest.stream(String(req.params.id));
+  if (!stream) {
+    res.status(404).end();
+    return;
+  }
+  res.setHeader("Content-Type", "audio/mpeg");
+  stream.pipe(res);
+});
+
+app.post("/api/ingest/youtube/:id/commit", (req: Request, res: Response) => {
+  const staged = ingest.get(String(req.params.id));
+  if (!staged) {
+    res.status(404).json({ error: "staged track not found" });
+    return;
+  }
+  const storageKey = nanoid() + ".mp3";
+  renameSync(staged.filePath, storage.destinationFor(storageKey));
+  ingest.take(staged.id); // forget staging entry; file now lives in the library
+  const track: Track = {
+    id: nanoid(),
+    title: cleanField(req.body?.title) ?? staged.title,
+    artist: cleanField(req.body?.artist) ?? staged.artist,
+    album: cleanField(req.body?.album) ?? staged.album,
+    durationSec: staged.durationSec,
+    bitrate: staged.bitrate,
+    format: staged.format,
+    sizeBytes: staged.sizeBytes,
+    storageKey,
+    createdAt: new Date().toISOString(),
+  };
+  repo.add(track);
+  res.status(201).json(track);
+});
+
+app.delete("/api/ingest/youtube/:id", (req: Request, res: Response) => {
+  ingest.discard(String(req.params.id));
+  res.status(204).end();
+});
+
+function cleanField(value: unknown): string | null {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  return trimmed.length ? trimmed : null;
+}
+
 async function buildTrack(file: Express.Multer.File): Promise<Track> {
-  const meta = await readMetadata(file.path);
+  const meta = await readAudioMeta(file.path);
   return {
     id: nanoid(),
     title: meta.title ?? file.originalname.replace(extname(file.originalname), ""),
@@ -103,31 +170,6 @@ async function buildTrack(file: Express.Multer.File): Promise<Track> {
     storageKey: file.filename,
     createdAt: new Date().toISOString(),
   };
-}
-
-interface ParsedMetadata {
-  title: string | null;
-  artist: string | null;
-  album: string | null;
-  durationSec: number | null;
-  bitrate: number | null;
-  format: string | null;
-}
-
-async function readMetadata(path: string): Promise<ParsedMetadata> {
-  try {
-    const { common, format } = await parseFile(path);
-    return {
-      title: common.title ?? null,
-      artist: common.artist ?? null,
-      album: common.album ?? null,
-      durationSec: format.duration ? Math.round(format.duration) : null,
-      bitrate: format.bitrate ? Math.round(format.bitrate) : null,
-      format: format.container ?? format.codec ?? null,
-    };
-  } catch {
-    return { title: null, artist: null, album: null, durationSec: null, bitrate: null, format: null };
-  }
 }
 
 app.listen(PORT, () => {
