@@ -2,13 +2,15 @@ import express, { type Request, type Response } from "express";
 import cors from "cors";
 import multer from "multer";
 import { nanoid } from "nanoid";
-import { extname } from "node:path";
+import { extname, join, resolve } from "node:path";
+import { existsSync } from "node:fs";
 import { parseFile } from "music-metadata";
 import { LocalDiskStorage } from "./storage.ts";
 import { JsonTrackRepo } from "./repo.ts";
 import type { Track } from "./types.ts";
 
-const PORT = 8787;
+const PORT = Number(process.env.PORT) || 8787;
+const DIST_DIR = resolve("dist"); // built front-end, served in production/PWA
 const UPLOAD_DIR = "uploads"; // local adapter; swaps to R2 later (design spec §9)
 const DATA_FILE = "data/tracks.json"; // local adapter; swaps to Postgres later
 
@@ -128,6 +130,19 @@ async function readMetadata(path: string): Promise<ParsedMetadata> {
   } catch {
     return { title: null, artist: null, album: null, durationSec: null, bitrate: null, format: null };
   }
+}
+
+// Serve the built PWA from the same origin (needed for the service worker and
+// for the cloud container to host the UI). Static files first, SPA fallback last.
+if (existsSync(DIST_DIR)) {
+  app.use(express.static(DIST_DIR));
+  app.use((req: Request, res: Response, next) => {
+    if (req.method === "GET" && !req.path.startsWith("/api") && !req.path.startsWith("/audio")) {
+      res.sendFile(join(DIST_DIR, "index.html"));
+    } else {
+      next();
+    }
+  });
 }
 
 app.listen(PORT, () => {

@@ -2,13 +2,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Track } from "./types.ts";
 import { fetchTracks, deleteTrack } from "./api.ts";
 import { usePlayer } from "./usePlayer.ts";
+import { useOfflineLibrary } from "./offline/useOfflineLibrary.ts";
 import { Uploader } from "./components/Uploader.tsx";
+import { OfflinePanel } from "./components/OfflinePanel.tsx";
 import { Library } from "./components/Library.tsx";
 import { PlayerBar } from "./components/PlayerBar.tsx";
 
 export default function App() {
   const [tracks, setTracks] = useState<Track[]>([]);
-  const controls = usePlayer(tracks);
+  const offline = useOfflineLibrary(tracks);
+  // Offline, the station only draws tracks that are actually on the device.
+  const controls = usePlayer(tracks, offline.isOffline ? offline.availableIds : null);
   const autoStarted = useRef(false);
 
   const refresh = useCallback(async () => {
@@ -47,7 +51,12 @@ export default function App() {
       </header>
 
       <main className="content">
-        <Uploader onAdded={refresh} />
+        <OfflinePanel offline={offline} trackCount={tracks.length} />
+        {offline.isOffline ? (
+          <p className="offline-note">You're offline — adding music is paused. Everything saved plays as normal.</p>
+        ) : (
+          <Uploader onAdded={refresh} />
+        )}
         <Library tracks={tracks} controls={controls} onDelete={handleDelete} />
       </main>
 

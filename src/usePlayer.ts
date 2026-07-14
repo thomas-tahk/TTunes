@@ -25,9 +25,10 @@ export interface PlayerControls {
   next: () => void;
 }
 
-// Shuffle + manual-queue + prefetch player. The active pool here is the whole
-// library (MVP); filtered channels/playlists bolt on later without changing this.
-export function usePlayer(tracks: Track[]): PlayerControls {
+// Shuffle + manual-queue + prefetch player. The active pool is the whole library,
+// except when `restrictTo` is set (offline: only tracks on the device) so the
+// station never stalls on a file it can't reach.
+export function usePlayer(tracks: Track[], restrictTo: Set<string> | null = null): PlayerControls {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const prefetchRef = useRef<HTMLAudioElement | null>(null);
   if (!audioRef.current) audioRef.current = new Audio();
@@ -46,11 +47,12 @@ export function usePlayer(tracks: Track[]): PlayerControls {
     setQueueState(next);
   }, []);
 
-  // Rebuild the shuffle order when the track set changes.
+  // Rebuild the shuffle order when the track set (or offline restriction) changes.
   useEffect(() => {
-    orderRef.current = shuffled(tracks.map((t) => t.id));
+    const ids = tracks.map((t) => t.id).filter((id) => !restrictTo || restrictTo.has(id));
+    orderRef.current = shuffled(ids);
     posRef.current = 0;
-  }, [tracks]);
+  }, [tracks, restrictTo]);
 
   const play = useCallback((id: string) => {
     const audio = audioRef.current!;
