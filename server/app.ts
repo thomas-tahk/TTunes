@@ -124,6 +124,8 @@ export function createApp({ repo, storage, uploadDir, auth, trustProxy }: AppDep
         await storage.delete(storageKey).catch(() => {});
         throw err;
       }
+      // remove the scratch file before answering (S3 put copies it); finally covers error paths
+      await rm(file.path, { force: true });
       res.status(201).json(track);
     } finally {
       await rm(file.path, { force: true });
@@ -187,6 +189,13 @@ export function createApp({ repo, storage, uploadDir, auth, trustProxy }: AppDep
       return;
     }
 
+    if (req.method === "HEAD") {
+      // headers only: don't pull the range from storage just to discard it
+      res.writeHead(range ? 206 : 200, headers);
+      res.end();
+      return;
+    }
+
     let stream: Readable;
     try {
       stream = await storage.readRange(track.storageKey, start, end);
@@ -201,8 +210,21 @@ export function createApp({ repo, storage, uploadDir, auth, trustProxy }: AppDep
     res.writeHead(range ? 206 : 200, headers);
     // pipeline destroys both sides on error, so a mid-stream failure (or a client
     // disconnect) ends this response instead of crashing the process
+    // Record which side failed first (listeners added before pipeline's run first): a
+    // listener seeking or closing the tab is routine, but an upstream reset must be logged.
+    let clientLeft = false;
+    let upstreamFailed = false;
+    stream.once("error", () => {
+      if (!clientLeft) upstreamFailed = true;
+    });
+    res.once("close", () => {
+      if (!res.writableFinished && !upstreamFailed) clientLeft = true;
+    });
     pipeline(stream, res, (err) => {
-      if (err && err.code !== "ERR_STREAM_PREMATURE_CLOSE") {
+      const benign =
+        err?.code === "ERR_STREAM_PREMATURE_CLOSE" ||
+        (clientLeft && (err?.code === "ECONNRESET" || err?.message === "aborted"));
+      if (err && !benign) {
         console.error(`stream error for ${track.storageKey}:`, err);
       }
     });

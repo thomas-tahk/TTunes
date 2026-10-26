@@ -2,16 +2,17 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Express } from "express";
+import { nanoid } from "nanoid";
 import { createApp } from "../app.ts";
 import { JsonTrackRepo } from "../repo.ts";
-import { LocalDiskStorage } from "../storage.ts";
+import { LocalDiskStorage, type StorageAdapter } from "../storage.ts";
 import { createAuth, type AuthOptions } from "../auth.ts";
 import type { Track } from "../types.ts";
 
 export interface TestApp {
   app: Express;
   repo: JsonTrackRepo;
-  storage: LocalDiskStorage;
+  storage: StorageAdapter;
   /** The seeded track (a fake audio file of `size` bytes). */
   track: Track;
   /** Exact bytes stored for the seeded track, for asserting response bodies. */
@@ -24,8 +25,8 @@ export interface TestApp {
 }
 
 /**
- * Builds an app against throwaway temp dirs (JsonTrackRepo + LocalDiskStorage)
- * with one seeded track whose file is `size` deterministic bytes (default 1000, `.mp3`).
+ * Builds an app against throwaway temp dirs (JsonTrackRepo + LocalDiskStorage, or
+ * the given `storage` adapter) with one seeded track whose file is `size` deterministic bytes (default 1000, `.mp3`).
  * Pass `auth` to put /api and /audio behind the owner password.
  * Call cleanup() in afterEach.
  */
@@ -33,6 +34,8 @@ export async function makeTestApp(
   opts: {
     size?: number;
     ext?: string;
+    /** storage adapter to use instead of a temp-dir LocalDiskStorage (e.g. S3Storage) */
+    storage?: StorageAdapter;
     /** enable the owner-password gate */
     auth?: AuthOptions;
     /** express "trust proxy" setting */
@@ -43,12 +46,12 @@ export async function makeTestApp(
   const ext = opts.ext ?? ".mp3";
   const root = mkdtempSync(join(tmpdir(), "ttunes-test-"));
   const repo = new JsonTrackRepo(join(root, "data", "tracks.json"));
-  const storage = new LocalDiskStorage(join(root, "storage"));
+  const storage = opts.storage ?? new LocalDiskStorage(join(root, "storage"));
   const uploadDir = join(root, "incoming");
 
   const bytes = Buffer.alloc(size);
   for (let i = 0; i < size; i++) bytes[i] = i % 256;
-  const storageKey = `seed${ext}`;
+  const storageKey = `seed-${nanoid()}${ext}`; // unique: S3 suites share one bucket
   const src = join(root, `src${ext}`);
   writeFileSync(src, bytes);
   await storage.put(storageKey, src);
