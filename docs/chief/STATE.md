@@ -1,9 +1,9 @@
 # Chief state
 Vision: docs/superpowers/specs/2026-06-30-ttunes-design.md (confirmed 2026-10-25, done-gate in header)
-Phase: Plan — awaiting his one approval of docs/chief/plan.html (https://claude.ai/artifact/6ucGXnDA4SqcMJm2mtC9ak)
-Built so far: MVP slice c9ec4d1 — upload, range streaming, shuffle, prefetch, play-now, queue (cap 6), delete. Local disk + JSON repo behind StorageAdapter/TrackRepo seams.
-Not built: AI librarian, bulk add, version groups, pools/playlists, R2 + Postgres adapters, cloud deploy, YouTube extraction
-Next action: on approval → create M1 GitHub milestone + 7 issues, branch m1-cloud-phone, start cloud Build
-Waiting on him: plan approval + 4 calls on the plan page (tap-to-start reading of gate, ~$5/mo host, owner password, 3 accounts mid-M1)
-Open questions: spec §10 (table shapes, AI request UX, host choice, queue cap) — chief decides during Plan
+Plan: docs/chief/plan.html (approved 2026-10-25) — https://claude.ai/artifact/6ucGXnDA4SqcMJm2mtC9ak
+Phase: Build — M1 "On my phone, from the cloud" (branch m1-cloud-phone, GitHub milestone 1, issues #4–#10)
+Order: #4 test harness → (#5 Postgres, #6 S3/R2, #9 password in parallel) → #7 station state → #8 player; #10 container/CI after #5 #6 #9
+Next action: build #4, then fan out
+Waiting on him: nothing until #10 needs his accounts (R2, Neon, host) — hand him a wizard then
+Decisions: gate read as "one tap, music within a second" (browser autoplay rule); host ~$5/mo is a STARTING point — owner wants to move TTunes to a home-lab server later, so keep the container portable and host-agnostic; single owner password, no accounts
 Updated: 2026-10-25
