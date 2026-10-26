@@ -5,7 +5,7 @@ import {
   UnauthorizedError,
   audioUrl,
   fetchStation,
-  recheckSession,
+  probeAudio,
   reportNowPlaying,
   stationDequeue,
   stationEnqueue,
@@ -103,8 +103,17 @@ export function usePlayer(): PlayerControls {
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   /** Tracks that failed to play since one last loaded fine (the skip-loop guard). */
   const failedInARowRef = useRef(0);
-  /** Where the loaded track started playing from (to tell real playback from a failed start). */
-  const loadedAtRef = useRef(0);
+  /** ...and which ones, so a skip never goes back to a track that just failed here. */
+  const failedIdsRef = useRef(new Set<string>());
+  /** Bumped on every load(): an async error check for an earlier load is dropped. */
+  const loadSeqRef = useRef(0);
+  /**
+   * This device means to be playing (it was started, or resumed, and not paused since).
+   * An error leaves the element paused, so `audio.paused` can't tell a listener apart.
+   */
+  const wantPlayRef = useRef(false);
+  /** Bumped on every pause the user (or the OS) made, so async work can tell one happened. */
+  const userPausesRef = useRef(0);
 
   /** Show a message; a `sticky` one stays until the next message or the user acts. */
   const setNotice = useCallback((msg: string, sticky = false) => {
@@ -122,6 +131,7 @@ export function usePlayer(): PlayerControls {
   const resetFailures = useCallback(() => {
     if (failedInARowRef.current >= MAX_FAILED_IN_A_ROW) clearNotice();
     failedInARowRef.current = 0;
+    failedIdsRef.current.clear();
   }, [clearNotice]);
 
   const markStarted = useCallback((value: boolean) => {
@@ -134,6 +144,7 @@ export function usePlayer(): PlayerControls {
       const name = (err as { name?: string } | null)?.name;
       if (name === "AbortError") return; // src changed under a pending play(); the new one plays
       setIsPlaying(false);
+      if (name === "NotAllowedError") wantPlayRef.current = false;
       // Autoplay blocked: show the big play button again so one tap starts it.
       if (name === "NotAllowedError") markStarted(false);
     },
@@ -172,7 +183,8 @@ export function usePlayer(): PlayerControls {
       // Re-applied on loadedmetadata if it didn't stick.
       pendingSeekRef.current = offsetSec;
       audio.currentTime = offsetSec;
-      loadedAtRef.current = offsetSec;
+      loadSeqRef.current++;
+      wantPlayRef.current = play;
       if (play) void audio.play().catch(onPlayRejected);
     },
     [clearDeferral, onPlayRejected],
@@ -298,51 +310,80 @@ export function usePlayer(): PlayerControls {
   );
 
   /**
-   * `track` can't be played here (the browser can't decode it): say so and move the
-   * station past it, so it never sits silent on a broken file. Before the first tap
-   * the station still moves on (the tune-in card then offers a playable track) but
-   * nothing starts. After MAX_FAILED_IN_A_ROW failures in a row it stops trying.
+   * `track` can't be played here (the server has it, but this browser can't decode it,
+   * or it's gone). If the station already moved on (e.g. during the finish-the-tail
+   * window), join it there, like onTrackEnded. Otherwise only the listener (started and
+   * meaning to play) moves the station past it, or any device when the station isn't
+   * playing (so the tune-in card offers a playable track; nothing autoplays before a
+   * tap). An idle device on a playing station just says so and waits: the track may play
+   * fine for whoever is listening. After MAX_FAILED_IN_A_ROW failures in a row it stops.
    */
   const skipBroken = useCallback(
     (track: Track) => {
-      const failed = ++failedInARowRef.current;
       setIsPlaying(false);
+      const listener = startedRef.current && wantPlayRef.current;
+      const np = stationRef.current?.nowPlaying;
+      // The station is on another track this device hasn't already failed on: join it.
+      // (One it failed on is just a skip still on its way to the server.)
+      const joinStation = !!np && np.track.id !== track.id && !failedIdsRef.current.has(np.track.id);
+      if (!joinStation && !listener && np?.playing) {
+        setNotice(`Can't play ${track.title} on this device.`);
+        return;
+      }
+      failedIdsRef.current.add(track.id);
+      const failed = ++failedInARowRef.current;
       if (failed >= MAX_FAILED_IN_A_ROW) {
+        wantPlayRef.current = false;
         setNotice(`Couldn't play ${failed} tracks in a row, so playback stopped. Tap Next to try again.`, true);
         return;
       }
       setNotice(`Couldn't play ${track.title} — skipping.`);
-      const wantPlay = startedRef.current;
+      if (joinStation && np) {
+        load(np.track, liveOffset(), listener && np.playing); // don't resume a station another device paused
+        return;
+      }
       const guess = stationRef.current?.upNext;
-      if (wantPlay && guess && guess.id !== track.id) load(guess, 0, true);
+      if (listener && guess && guess.id !== track.id) load(guess, 0, true);
+      const pauses = userPausesRef.current;
       call(() => stationNext(track.id))
         .then(() => {
-          // No usable guess (or the station picked another track): start whatever it chose.
+          // No usable guess (or the station chose another track): start what it chose,
+          // unless the listener paused in the meantime.
           const a = audioRef.current;
-          const now = currentRef.current;
-          if (wantPlay && a?.paused && now && now.id !== track.id && !a.error) {
-            void a.play().then(() => report(true), onPlayRejected);
-          }
+          if (!listener || !a || userPausesRef.current !== pauses) return;
+          if (!a.paused || a.error || !currentRef.current || currentRef.current.id === track.id) return;
+          wantPlayRef.current = true;
+          void a.play().then(() => report(true), onPlayRejected);
         })
         .catch(() => setNotice("Couldn't reach the station."));
     },
-    [call, load, onPlayRejected, report, setNotice],
+    [call, liveOffset, load, onPlayRejected, report, setNotice],
   );
 
-  /** The main <audio> failed. A 401 goes to the login screen first; only a file this browser can't play is skipped. */
+  /**
+   * The main <audio> failed. Browsers report a 500, 404, 401 or dropped connection the
+   * same way as an undecodable file, so ask the server for the file's first bytes first:
+   * 401 → the login screen; 5xx / no answer → say so and don't skip (a tap retries);
+   * 404 or served-but-undecodable → skipBroken.
+   */
   const onMediaError = useCallback(() => {
     const audio = audioRef.current;
     const track = currentRef.current;
     if (!audio?.error || !track || audio.getAttribute("src") !== audioUrl(track.id)) return;
     const code = audio.error.code;
-    void recheckSession().then((sessionOk) => {
-      if (sessionOk !== true) return; // logged out (the gate flipped), or offline: not the file's fault
-      if (currentRef.current?.id !== track.id) return; // already moved on
-      // Network trouble (code 2) or an abort isn't the file's fault either; decode/unsupported is.
-      if (code !== MediaError.MEDIA_ERR_DECODE && code !== MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) return;
+    if (code === MediaError.MEDIA_ERR_ABORTED) return;
+    const loadId = loadSeqRef.current;
+    void probeAudio(track.id).then((probe) => {
+      if (loadId !== loadSeqRef.current) return; // a newer load replaced this one meanwhile
+      if (probe === "unauthorized") return; // the gate is showing the login screen
+      if (probe === "unavailable" || (probe === "served" && code === MediaError.MEDIA_ERR_NETWORK)) {
+        setIsPlaying(false);
+        setNotice(`Couldn't load ${track.title}.`);
+        return;
+      }
       skipBroken(track);
     });
-  }, [skipBroken]);
+  }, [setNotice, skipBroken]);
 
   /** `ended`: if the station already moved on while we finished this track, join it there; else advance. */
   const onTrackEnded = useCallback(() => {
@@ -371,10 +412,11 @@ export function usePlayer(): PlayerControls {
       advance(np.track.id);
       return;
     }
-    if (currentRef.current?.id !== np.track.id) load(np.track, offset, false);
+    // A failed load (server hiccup) is retried by this tap.
+    if (currentRef.current?.id !== np.track.id || audio.error) load(np.track, offset, false);
     pendingSeekRef.current = offset;
     audio.currentTime = offset;
-    loadedAtRef.current = offset;
+    wantPlayRef.current = true;
     setPosition(offset);
     // Tell the station "playing" only once it really is (an autoplay block must not claim it).
     void audio.play().then(() => report(true), onPlayRejected);
@@ -389,6 +431,16 @@ export function usePlayer(): PlayerControls {
    */
   const resume = useCallback(
     (audio: HTMLAudioElement) => {
+      const cur = currentRef.current;
+      if (audio.error && cur) {
+        // The last load failed (e.g. a server hiccup): this tap retries it where it stopped.
+        resetFailures();
+        load(cur, audio.currentTime, false);
+        wantPlayRef.current = true;
+        void audio.play().then(() => report(true), onPlayRejected);
+        return;
+      }
+      wantPlayRef.current = true;
       const playing = audio.play();
       if (performance.now() - receivedAtRef.current <= STALE_VIEW_MS) {
         void playing.then(() => report(true), onPlayRejected);
@@ -412,7 +464,7 @@ export function usePlayer(): PlayerControls {
           if (audioRef.current && !audioRef.current.paused) report(true);
         });
     },
-    [call, liveOffset, onPlayRejected, report],
+    [call, liveOffset, load, onPlayRejected, report, resetFailures],
   );
 
   const toggle = useCallback(() => {
@@ -502,7 +554,10 @@ export function usePlayer(): PlayerControls {
     };
     const onPause = () => {
       setIsPlaying(false);
-      if (audio.ended || suppressPauseRef.current) return;
+      // A failed load pauses the element too; that isn't the listener pausing (onMediaError handles it).
+      if (audio.ended || suppressPauseRef.current || audio.error) return;
+      userPausesRef.current++;
+      wantPlayRef.current = false;
       handlers.current.report(false);
     };
     const onEnded = () => handlers.current.onTrackEnded();
@@ -517,12 +572,11 @@ export function usePlayer(): PlayerControls {
       const want = pendingSeekRef.current;
       if (want !== null && Math.abs(audio.currentTime - want) > 0.25) audio.currentTime = want;
     };
-    const onTime = () => {
-      setPosition(audio.currentTime);
-      // A second of real playback: this track works, so the skip-loop guard starts over.
-      if (failedInARowRef.current && !audio.paused && audio.currentTime - loadedAtRef.current >= 1) {
-        failedInARowRef.current = 0;
-      }
+    const onTime = () => setPosition(audio.currentTime);
+    // This track's media decodes: the skip-loop guard starts over.
+    const onLoadedData = () => {
+      failedInARowRef.current = 0;
+      failedIdsRef.current.clear();
     };
     // A load failure may be a 401 (session gone): the auth gate checks first; a file
     // this browser can't play is then skipped (onMediaError).
@@ -535,6 +589,7 @@ export function usePlayer(): PlayerControls {
       ["seeked", onSeeked],
       ["loadedmetadata", onMeta],
       ["timeupdate", onTime],
+      ["loadeddata", onLoadedData],
       ["error", onError],
     ];
     for (const [name, fn] of events) audio.addEventListener(name, fn);

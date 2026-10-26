@@ -69,18 +69,31 @@ export async function deleteTrack(id: string): Promise<void> {
 }
 
 /**
- * An <audio> load failed: if it was because the session is gone, flip to login.
- * Resolves true when the session is fine (so the failure was something else, like
- * the file itself), false when it's gone, null when the server couldn't be asked.
+ * What GET /audio/<id> answers now, asked after an <audio> load failed. Browsers report a
+ * 500, 404, 401 or a dropped connection on load the same way as an undecodable file
+ * (MediaError code 4), so the player asks for the first two bytes to tell them apart:
+ * - "served": 200/206, the server has the file (so a decode failure really is the file);
+ * - "gone": 404, the track no longer exists;
+ * - "unauthorized": 401, the session is gone (the login screen is already showing);
+ * - "unavailable": 5xx, another status, or no answer: a server or network hiccup.
  */
-export function recheckSession(): Promise<boolean | null> {
-  return checkSession().then(
-    (ok) => {
-      if (!ok) unauthorizedHandler();
-      return ok;
-    },
-    () => null,
-  );
+export type AudioProbe = "served" | "gone" | "unauthorized" | "unavailable";
+
+export async function probeAudio(id: string): Promise<AudioProbe> {
+  let res: Response;
+  try {
+    res = await fetch(audioUrl(id), { headers: { Range: "bytes=0-1" }, cache: "no-store" });
+  } catch {
+    return "unavailable";
+  }
+  void res.body?.cancel().catch(() => {});
+  if (res.status === 401) {
+    unauthorizedHandler();
+    return "unauthorized";
+  }
+  if (res.status === 404) return "gone";
+  if (res.status === 200 || res.status === 206) return "served";
+  return "unavailable";
 }
 
 export function audioUrl(id: string): string {

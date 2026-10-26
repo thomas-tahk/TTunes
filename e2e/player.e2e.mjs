@@ -28,7 +28,7 @@ const OFFSET = 7;
 const TRACK_SEC = 20;
 const TAP_TO_PLAY_MAX_MS = 1000;
 /** Every check() below; a run that stops early or skips one fails even if nothing FAILed. */
-const EXPECTED_CHECKS = 28;
+const EXPECTED_CHECKS = 32;
 
 const results = [];
 const check = (name, ok, detail) => {
@@ -558,28 +558,48 @@ async function main() {
       });
       if (zRes.status() !== 201) throw new Error(`upload Zeta: ${zRes.status()}`);
       const Z = (await zRes.json()).id;
-      // The mocked 415 below logs a "Failed to load resource" error; that one is expected.
+      // The server's 415 for the text file below logs a "Failed to load resource" error; that one is expected.
       watchConsole(p, consoleErrors, (msg) => msg.location().url.includes("/api/tracks") && msg.text().includes("415"));
       await p.route(`**/audio/${Z}`, serveGarbage);
+      let nexts = 0;
+      p.on("request", (r) => {
+        if (r.url().endsWith("/api/station/next") && r.method() === "POST") nexts++;
+      });
+      const notice = p.locator(".playerbar__notice");
 
-      // Cold open on it: the station moves past it, the card offers a playable track, nothing plays.
+      // Cold open while the station plays it: this idle tab says so locally and leaves the
+      // station alone (it may play fine for whoever is listening).
       await setStation(p, web, Z, 0, true);
       await p.goto(web);
-      const notice = p.locator(".playerbar__notice");
+      await notice.filter({ hasText: "Can't play Zeta Tone on this device." }).waitFor({ timeout: 6_000 });
+      await sleep(1500);
+      const idle = await audioState(p);
+      const idleStation = (await stationNow(p, web)).nowPlaying;
+      const idleHero = await p.locator(".hero__title").textContent();
+      check(
+        "cold open, station playing an unplayable track: local notice, station untouched",
+        nexts === 0 && idleStation.track.id === Z && idleStation.playing && idle.paused && idleHero === "Zeta Tone",
+        `POST /next=${nexts}; station on ${idleStation.track.title} playing=${idleStation.playing}; local paused=${idle.paused}`,
+      );
+
+      // Cold open while the station sits paused on it: the tab moves the station past it,
+      // the card offers a playable track, nothing plays.
+      await setStation(p, web, Z, 0, false);
+      await p.reload();
       await notice.filter({ hasText: "Couldn't play Zeta Tone — skipping." }).waitFor({ timeout: 6_000 });
-      await p.waitForFunction((z) => {
+      await p.waitForFunction(() => {
         const t = document.querySelector(".hero__title")?.textContent;
         return t && t !== "Zeta Tone";
-      }, Z);
+      });
       await sleep(300);
       const cold = await audioState(p);
       const coldStation = (await stationNow(p, web)).nowPlaying;
       const heroTitle = await p.locator(".hero__title").textContent();
       await p.screenshot({ path: join(SHOTS, "bad-track-skip-390x844.png") });
       check(
-        "cold open on an unplayable track: notice, station skips it, no autoplay",
-        coldStation.track.id !== Z && cold.src === `/audio/${coldStation.track.id}` && cold.paused && heroTitle === coldStation.track.title,
-        `station now ${coldStation.track.title}; card "${heroTitle}"; local paused=${cold.paused}`,
+        "cold open, station paused on an unplayable track: skips it, no autoplay",
+        nexts === 1 && coldStation.track.id !== Z && cold.src === `/audio/${coldStation.track.id}` && cold.paused && heroTitle === coldStation.track.title,
+        `POST /next=${nexts}; station now ${coldStation.track.title}; card "${heroTitle}"; local paused=${cold.paused}`,
       );
 
       // While listening: play-now on it skips to the next track and keeps playing.
@@ -600,13 +620,7 @@ async function main() {
         `now ${live.src} t=${live.t.toFixed(2)}s; station on ${liveStation.track.title} playing=${liveStation.playing}`,
       );
 
-      // A failed upload says so, with the server's reason, and stays up (the server's 415 is mocked here).
-      await p.route("**/api/tracks", async (route) => {
-        const body = route.request().postDataBuffer()?.toString("latin1") ?? "";
-        if (route.request().method() === "POST" && body.includes('filename="bad-notes.txt"')) {
-          await route.fulfill({ status: 415, contentType: "application/json", body: JSON.stringify({ error: "not a playable audio file" }) });
-        } else await route.continue();
-      });
+      // A failed upload says so, with the server's reason (its real 415), and stays up.
       await p.locator(".uploader input").setInputFiles([
         { name: "Gamma Tone.wav", mimeType: "audio/wav", buffer: sineWav(TRACK_SEC, 330) },
         { name: "bad-notes.txt", mimeType: "text/plain", buffer: Buffer.from("not music") },
@@ -658,7 +672,63 @@ async function main() {
       await ctx.close();
     }
 
-    // ---- every track unplayable: the skip stops after a few in a row instead of spinning ----
+    // ---- server or network hiccups on /audio look like decode failures; they must not skip ----
+    {
+      const ctx = await browser.newContext(PHONE);
+      const p = await ctx.newPage();
+      // The mocked 500 / 401 below log "Failed to load resource" errors; those are expected.
+      watchConsole(p, consoleErrors, (msg) => msg.location().url.includes("/audio/"));
+      let nexts = 0;
+      p.on("request", (r) => {
+        if (r.url().endsWith("/api/station/next") && r.method() === "POST") nexts++;
+      });
+      const notice = p.locator(".playerbar__notice");
+      await setStation(p, web, A, 1, true);
+      await p.goto(web);
+      await p.locator(".hero__play").tap();
+      await waitPlaying(p, A);
+
+      await p.route(`**/audio/${Bt}`, (route) => route.fulfill({ status: 500, contentType: "application/json", body: '{"error":"internal error"}' }));
+      await p.locator(".row", { hasText: "Beta Tone" }).locator(".row__play").tap();
+      await notice.filter({ hasText: "Couldn't load Beta Tone" }).waitFor({ timeout: 6_000 });
+      await sleep(1500);
+      const s500 = (await stationNow(p, web)).nowPlaying;
+      const l500 = await audioState(p);
+      check(
+        "a 500 on /audio: \"Couldn't load\" notice, no skip",
+        nexts === 0 && s500.track.id === Bt && l500.src === `/audio/${Bt}`,
+        `POST /next=${nexts}; station on ${s500.track.id === Bt ? "Beta" : s500.track.title}; local src=${l500.src}`,
+      );
+
+      await p.route(`**/audio/${A}`, (route) => route.abort("connectionreset"));
+      await p.locator(".row", { hasText: "Alpha Tone" }).locator(".row__play").tap();
+      await notice.filter({ hasText: "Couldn't load Alpha Tone." }).waitFor({ timeout: 6_000 });
+      await sleep(1500);
+      const sAbort = (await stationNow(p, web)).nowPlaying;
+      check(
+        "a dropped connection on /audio: \"Couldn't load\" notice, no skip",
+        nexts === 0 && sAbort.track.id === A,
+        `POST /next=${nexts}; station on ${sAbort.track.title}`,
+      );
+
+      await p.unroute(`**/audio/${A}`);
+      await p.unroute(`**/audio/${Bt}`);
+      await p.route(`**/audio/${Bt}`, (route) => route.fulfill({ status: 401, contentType: "application/json", body: '{"error":"login required"}' }));
+      await p.locator(".row", { hasText: "Beta Tone" }).locator(".row__play").tap();
+      const loginShown = await p
+        .getByLabel("Password")
+        .waitFor({ timeout: 6_000 })
+        .then(() => true, () => false);
+      await sleep(1000);
+      check(
+        "a 401 on /audio: login screen, no skip",
+        loginShown && nexts === 0,
+        `login screen=${loginShown}; POST /next=${nexts}`,
+      );
+      await ctx.close();
+    }
+
+    // ---- every track unplayable: the listener's skip stops after a few in a row instead of spinning ----
     {
       const ctx = await browser.newContext(PHONE);
       const p = await ctx.newPage();
@@ -668,7 +738,9 @@ async function main() {
       p.on("request", (r) => {
         if (r.url().endsWith("/api/station/next") && r.method() === "POST") nexts++;
       });
+      await setStation(p, web, A, 0, true); // playing: this tab only skips once it's the listener
       await p.goto(web);
+      await p.locator(".hero__play").tap();
       const stopNotice = p.locator(".playerbar__notice", { hasText: "in a row" });
       await stopNotice.waitFor({ timeout: 15_000 });
       const atStop = nexts;
