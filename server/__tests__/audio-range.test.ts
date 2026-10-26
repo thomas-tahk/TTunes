@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Readable } from "node:stream";
 import request from "supertest";
 import { makeTestApp, type TestApp } from "./helpers.ts";
 
@@ -60,6 +61,23 @@ describe("GET /audio/:id range streaming", () => {
     expect(whole.status).toBe(200);
     expect(whole.headers["content-length"]).toBe("1000");
     expect(readRange).not.toHaveBeenCalled();
+  });
+
+  it("still logs when the storage stream resets mid-response (client didn't leave)", async () => {
+    t.storage.readRange = async () => {
+      const r = new Readable({ read() {} });
+      r.push(Buffer.alloc(100));
+      setTimeout(() => r.destroy(Object.assign(new Error("aborted"), { code: "ECONNRESET" })), 20);
+      return r;
+    };
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await request(t.app).get(`/audio/${t.track.id}`).catch(() => {}); // response is cut short
+      await new Promise((r) => setTimeout(r, 100));
+      expect(errors).toHaveBeenCalledWith(expect.stringMatching(/^stream error for /), expect.anything());
+    } finally {
+      errors.mockRestore();
+    }
   });
 
   it("returns 404 for an unknown track", async () => {
