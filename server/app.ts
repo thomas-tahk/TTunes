@@ -65,7 +65,7 @@ function contentTypeFor(key: string): string {
  */
 export const AUDIO_CACHE_CONTROL = "private, max-age=31536000, immutable";
 
-export type ByteRange ={ start: number; end: number } | "unsatisfiable" | null;
+export type ByteRange = { start: number; end: number } | "unsatisfiable" | null;
 
 /**
  * Parses a single-range `Range` header against a known size.

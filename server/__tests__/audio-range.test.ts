@@ -96,7 +96,7 @@ describe("GET /audio/:id range streaming", () => {
     expect(headRanged.headers["cache-control"]).toBe(want);
   });
 
-  it("returns 404 for an unknown track",async () => {
+  it("returns 404 for an unknown track", async () => {
     const res = await request(t.app).get("/audio/nope").set("Range", "bytes=0-99");
     expect(res.status).toBe(404);
   });

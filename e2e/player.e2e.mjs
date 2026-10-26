@@ -28,7 +28,7 @@ const OFFSET = 7;
 const TRACK_SEC = 20;
 const TAP_TO_PLAY_MAX_MS = 1000;
 /** Every check() below; a run that stops early or skips one fails even if nothing FAILed. */
-const EXPECTED_CHECKS = 18;
+const EXPECTED_CHECKS = 19;
 
 const results = [];
 const check = (name, ok, detail) => {
@@ -344,6 +344,32 @@ async function main() {
       "...then joins the station's track on ended",
       joined.src === `/audio/${moveTo}` && !joined.paused,
       `src=${joined.src} t=${joined.t.toFixed(2)}`,
+    );
+
+    // Same again, but the listener pauses during those last seconds: the device must stay
+    // paused (on either track), not start the station's next one by itself.
+    const P = moveTo;
+    const pauseTo = (await stationNow(page, web)).upNext?.id;
+    const moved2 = await page.request.put(`${web}/api/station/now-playing`, {
+      data: { trackId: pauseTo, offsetSec: 0, playing: true, fromTrackId: P },
+    });
+    if (!moved2.ok()) throw new Error(`PUT now-playing (move on 2): ${moved2.status()} ${await moved2.text()}`);
+    const reported2 = page.waitForResponse((r) => r.url().endsWith("/api/station/now-playing") && r.request().method() === "PUT");
+    await page.evaluate((t) => {
+      document.querySelector('audio[data-role="main"]').currentTime = t;
+    }, TRACK_SEC - 3.5);
+    await reported2;
+    await page.waitForTimeout(300);
+    const deferred2 = await audioState(page);
+    await page.evaluate(() => document.querySelector('audio[data-role="main"]').pause());
+    await page.waitForTimeout(800);
+    const paused1 = await audioState(page);
+    await page.waitForTimeout(5000); // past the local track's end + the deferral deadline
+    const paused2 = await audioState(page);
+    check(
+      "pause during the finish-the-tail window stays paused",
+      deferred2.src === `/audio/${P}` && paused1.paused && paused2.paused,
+      `before pause src=${deferred2.src}; +0.8s src=${paused1.src} paused=${paused1.paused}; +5.8s src=${paused2.src} paused=${paused2.paused}`,
     );
     await phone.close();
 

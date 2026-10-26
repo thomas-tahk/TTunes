@@ -24,6 +24,8 @@ const NOTICE_MS = 4_000;
 const FINISH_TAIL_SEC = 5;
 /** Same, for a `stale` answer to this device's own report (it lagged behind the station). */
 const FINISH_STALE_SEC = 15;
+/** A deferred swap happens anyway this long after the local track should have ended (hung tail). */
+const FINISH_GRACE_SEC = 2;
 
 export type LoadState = "loading" | "error" | "ready";
 
@@ -55,19 +57,19 @@ export interface PlayerControls {
   liveOffset: () => number;
 }
 
+/** This device is playing (or stalled mid-play) and within `withinSec` of the loaded track's end. */
+function finishingLocally(audio: HTMLAudioElement | null, withinSec: number): boolean {
+  if (!audio || audio.paused || audio.ended || audio.error || !audio.getAttribute("src")) return false;
+  if (!Number.isFinite(audio.duration)) return false;
+  return audio.duration - audio.currentTime <= withinSec;
+}
+
 /**
  * The player follows the server-owned station (server/station.ts): it loads the
  * station's now-playing track at its offset, reports position back, and asks the
  * station what's next. Every station response is adopted; the audio source only
  * changes when the station's track id differs from what's loaded.
  */
-/** This device is playing (or stalled mid-play) and within `withinSec` of the loaded track's end. */
-function finishingLocally(audio: HTMLAudioElement | null, withinSec: number): boolean {
-  if (!audio || audio.paused || audio.ended || !audio.getAttribute("src")) return false;
-  if (!Number.isFinite(audio.duration)) return false;
-  return audio.duration - audio.currentTime <= withinSec;
-}
-
 export function usePlayer(): PlayerControls {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const prefetchRef = useRef<HTMLAudioElement | null>(null);
@@ -90,6 +92,8 @@ export function usePlayer(): PlayerControls {
   const seqRef = useRef(0);
   const adoptedSeqRef = useRef(0);
   const prefetchIdRef = useRef<string | null>(null);
+  /** A station track this device will switch to on `ended` (see deferSwap), with its deadline. */
+  const deferRef = useRef<{ trackId: string; until: number; timer: ReturnType<typeof setTimeout> } | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const setNotice = useCallback((msg: string) => {
@@ -114,11 +118,26 @@ export function usePlayer(): PlayerControls {
     [markStarted],
   );
 
+  /** Station's position for its now-playing track, as of this moment. */
+  const liveOffset = useCallback((): number => {
+    const np = stationRef.current?.nowPlaying;
+    if (!np) return 0;
+    let offset = np.offsetSec;
+    if (np.playing) offset += (performance.now() - receivedAtRef.current) / 1000;
+    return offset;
+  }, []);
+
+  const clearDeferral = useCallback(() => {
+    clearTimeout(deferRef.current?.timer);
+    deferRef.current = null;
+  }, []);
+
   /** Put `track` into the main player at `offsetSec`; `play` starts it immediately. */
   const load = useCallback(
     (track: Track, offsetSec: number, play: boolean) => {
       const audio = audioRef.current;
       if (!audio) return;
+      clearDeferral();
       currentRef.current = track;
       setCurrent(track);
       setPosition(offsetSec);
@@ -130,7 +149,37 @@ export function usePlayer(): PlayerControls {
       if (offsetSec > 0) audio.currentTime = offsetSec; // re-applied on loadedmetadata if it didn't stick
       if (play) void audio.play().catch(onPlayRejected);
     },
-    [onPlayRejected],
+    [clearDeferral, onPlayRejected],
+  );
+
+  /**
+   * The station naturally moved on (to the upNext this device knew) while this device
+   * still plays the last seconds of its track: finish them, and `ended` joins the
+   * station (onTrackEnded). A deadline swaps anyway if the tail hangs. True = deferring.
+   */
+  const deferSwap = useCallback(
+    (view: StationView, knownUpNextId: string | undefined): boolean => {
+      const np = view.nowPlaying;
+      const audio = audioRef.current;
+      const d = deferRef.current;
+      if (!np || !audio) return false;
+      const natural = np.track.id === knownUpNextId || d?.trackId === np.track.id;
+      if (!natural || !finishingLocally(audio, view.stale ? FINISH_STALE_SEC : FINISH_TAIL_SEC)) return false;
+      if (d?.trackId === np.track.id) return performance.now() < d.until;
+      clearDeferral();
+      const ms = (audio.duration - audio.currentTime + FINISH_GRACE_SEC) * 1000;
+      const timer = setTimeout(() => {
+        deferRef.current = null;
+        const cur = stationRef.current?.nowPlaying;
+        const a = audioRef.current;
+        if (cur && a && cur.track.id !== currentRef.current?.id) {
+          load(cur.track, liveOffset(), startedRef.current && !a.paused);
+        }
+      }, ms);
+      deferRef.current = { trackId: np.track.id, until: performance.now() + ms, timer };
+      return true;
+    },
+    [clearDeferral, liveOffset, load],
   );
 
   const prefetch = useCallback((track: Track | null) => {
@@ -147,6 +196,7 @@ export function usePlayer(): PlayerControls {
     (view: StationView, seq: number) => {
       if (seq < adoptedSeqRef.current) return;
       adoptedSeqRef.current = seq;
+      const knownUpNextId = stationRef.current?.upNext?.id;
       stationRef.current = view;
       receivedAtRef.current = performance.now();
       setStation(view);
@@ -162,16 +212,15 @@ export function usePlayer(): PlayerControls {
         currentRef.current = null;
         setCurrent(null);
       } else if (np.track.id !== currentRef.current?.id) {
-        if (!finishingLocally(audio, view.stale ? FINISH_STALE_SEC : FINISH_TAIL_SEC)) {
-          load(np.track, np.offsetSec, startedRef.current);
-        } // else: `ended` picks up the station's track (see onTrackEnded)
+        // Keep this device's paused/playing state: a pause here must not start another track.
+        if (!deferSwap(view, knownUpNextId)) load(np.track, np.offsetSec, startedRef.current && !!audio && !audio.paused);
       } else {
         currentRef.current = np.track; // same track; pick up any metadata change
         setCurrent(np.track);
       }
       prefetch(view.upNext);
     },
-    [load, prefetch],
+    [deferSwap, load, prefetch],
   );
 
   /** Run a station request and adopt its answer. 401s are handled by the login gate. */
@@ -212,15 +261,6 @@ export function usePlayer(): PlayerControls {
     }
   }, [call]);
 
-  /** Station's position for its now-playing track, as of this moment. */
-  const liveOffset = useCallback((): number => {
-    const np = stationRef.current?.nowPlaying;
-    if (!np) return 0;
-    let offset = np.offsetSec;
-    if (np.playing) offset += (performance.now() - receivedAtRef.current) / 1000;
-    return offset;
-  }, []);
-
   /** Move to the next track: play the prefetched upNext right away, then tell the station. */
   const advance = useCallback(
     (fromTrackId: string | undefined) => {
@@ -236,7 +276,7 @@ export function usePlayer(): PlayerControls {
     const ended = currentRef.current?.id;
     const np = stationRef.current?.nowPlaying;
     if (np && ended && np.track.id !== ended && startedRef.current) {
-      load(np.track, liveOffset(), true);
+      load(np.track, liveOffset(), np.playing); // don't resume a station another device paused
       return;
     }
     advance(ended);
@@ -263,7 +303,7 @@ export function usePlayer(): PlayerControls {
     setPosition(offset);
     // Tell the station "playing" only once it really is (an autoplay block must not claim it).
     void audio.play().then(() => report(true), onPlayRejected);
-  },[advance, liveOffset, load, markStarted, onPlayRejected, report]);
+  }, [advance, liveOffset, load, markStarted, onPlayRejected, report]);
 
   const toggle = useCallback(() => {
     const audio = audioRef.current;
@@ -432,7 +472,13 @@ export function usePlayer(): PlayerControls {
     if ("mediaSession" in navigator) navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
   }, [isPlaying]);
 
-  useEffect(() => () => clearTimeout(noticeTimer.current), []);
+  useEffect(
+    () => () => {
+      clearTimeout(noticeTimer.current);
+      clearDeferral();
+    },
+    [clearDeferral],
+  );
 
   return {
     audioRef,
