@@ -4,7 +4,7 @@ import multer from "multer";
 import { nanoid } from "nanoid";
 import { extname } from "node:path";
 import { rm } from "node:fs/promises";
-import { pipeline } from "node:stream";
+import { pipeline, type Readable } from "node:stream";
 import { parseFile } from "music-metadata";
 import { StorageNotFoundError, type StorageAdapter } from "./storage.ts";
 import type { TrackRepo } from "./repo.ts";
@@ -82,7 +82,13 @@ export function createApp({ repo, storage, uploadDir }: AppDeps): Express {
       const storageKey = nanoid() + ext;
       const track = await buildTrack(file, storageKey);
       await storage.put(storageKey, file.path, contentTypeFor(storageKey));
-      await repo.add(track);
+      try {
+        await repo.add(track);
+      } catch (err) {
+        // don't leave an orphaned object in storage when the catalog write fails
+        await storage.delete(storageKey).catch(() => {});
+        throw err;
+      }
       res.status(201).json(track);
     } finally {
       await rm(file.path, { force: true });
@@ -146,7 +152,17 @@ export function createApp({ repo, storage, uploadDir }: AppDeps): Express {
       return;
     }
 
-    const stream = await storage.readRange(track.storageKey, start, end);
+    let stream: Readable;
+    try {
+      stream = await storage.readRange(track.storageKey, start, end);
+    } catch (err) {
+      // deleted between stat and read
+      if (err instanceof StorageNotFoundError) {
+        res.status(404).end();
+        return;
+      }
+      throw err;
+    }
     res.writeHead(range ? 206 : 200, headers);
     // pipeline destroys both sides on error, so a mid-stream failure (or a client
     // disconnect) ends this response instead of crashing the process

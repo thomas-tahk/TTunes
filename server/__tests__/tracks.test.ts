@@ -45,4 +45,13 @@ describe("/api/tracks", () => {
     const again = await request(t.app).delete(`/api/tracks/${t.track.id}`);
     expect(again.status).toBe(404);
   });
+  it("removes the stored object when the catalog write fails", async () => {
+    t.repo.add = async () => {
+      throw new Error("db down");
+    };
+    const before = readdirSync(join(t.root, "storage"));
+    const res = await request(t.app).post("/api/tracks").attach("file", Buffer.alloc(50, 1), "x.mp3");
+    expect(res.status).toBe(500);
+    expect(readdirSync(join(t.root, "storage"))).toEqual(before);
+  });
 });
