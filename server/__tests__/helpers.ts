@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { Express } from "express";
 import { createApp } from "../app.ts";
 import { JsonTrackRepo } from "../repo.ts";
+import { JsonStationRepo } from "../station-repo.ts";
 import { LocalDiskStorage } from "../storage.ts";
 import type { Track } from "../types.ts";
 
@@ -56,7 +57,8 @@ export async function makeTestApp(opts: { size?: number; ext?: string } = {}): P
   };
   await repo.add(track);
 
-  const app = createApp({ repo, storage, uploadDir });
+  const station = new JsonStationRepo(join(root, "data", "station.json"));
+  const app = createApp({ repo, storage, uploadDir, station });
   return {
     app,
     repo,

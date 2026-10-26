@@ -35,7 +35,8 @@ function toTrack(r: TrackRow): Track {
 
 /** Postgres-backed catalog. Expects migrate() to have run. */
 export class PgTrackRepo implements TrackRepo {
-  private readonly pool: pg.Pool;
+  /** Public so the station repo can share this pool (createStationRepoFromEnv). */
+  readonly pool: pg.Pool;
 
   constructor(pool: pg.Pool) {
     this.pool = pool;

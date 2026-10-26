@@ -8,6 +8,9 @@ import { pipeline, type Readable } from "node:stream";
 import { parseFile } from "music-metadata";
 import { StorageNotFoundError, type StorageAdapter } from "./storage.ts";
 import type { TrackRepo } from "./repo.ts";
+import type { StationRepo } from "./station-repo.ts";
+import { StationService, type StationOptions } from "./station.ts";
+import { stationRouter } from "./station-routes.ts";
 import type { Track } from "./types.ts";
 
 export interface AppDeps {
@@ -15,6 +18,10 @@ export interface AppDeps {
   storage: StorageAdapter;
   /** Scratch dir multer writes incoming uploads to before storage.put takes them. */
   uploadDir: string;
+  /** Server-owned station state (spec §4/§5), served at /api/station. */
+  station: StationRepo;
+  /** Clock / randomness overrides for the station; tests only. */
+  stationOptions?: StationOptions;
 }
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -54,7 +61,7 @@ export function parseRange(header: string | undefined, size: number): ByteRange 
   return { start, end };
 }
 
-export function createApp({ repo, storage, uploadDir }: AppDeps): Express {
+export function createApp({ repo, storage, uploadDir, station, stationOptions }: AppDeps): Express {
   const upload = multer({
     storage: multer.diskStorage({
       destination: uploadDir,
@@ -66,6 +73,8 @@ export function createApp({ repo, storage, uploadDir }: AppDeps): Express {
 
   const app = express();
   app.use(cors());
+
+  app.use("/api/station", stationRouter(new StationService(repo, station, stationOptions)));
 
   app.get("/api/tracks", async (_req: Request, res: Response) => {
     res.json(await repo.all());

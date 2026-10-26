@@ -3,7 +3,9 @@ import type pg from "pg";
 import { migrate } from "../db/migrate.ts";
 import { PgTrackRepo } from "../db/pg-track-repo.ts";
 import { createPool } from "../db/pool.ts";
-import { createRepoFromEnv } from "../db/index.ts";
+import { createRepoFromEnv, createStationRepoFromEnv } from "../db/index.ts";
+import { PgStationRepo } from "../db/pg-station-repo.ts";
+import { stationContract } from "./station.contract.ts";
 import type { Track } from "../types.ts";
 import { trackRepoContract } from "./track-repo.contract.ts";
 
@@ -113,6 +115,86 @@ describe.skipIf(!url)("Postgres", () => {
       const repo = await createRepoFromEnv("unused.json", { DATABASE_URL: url });
       expect(repo).toBeInstanceOf(PgTrackRepo);
       await (repo as unknown as { pool: pg.Pool }).pool.end();
+    });
+  });
+
+  // A fresh pool per reopen() = a restarted server on the same database.
+  const extraPools: pg.Pool[] = [];
+  afterAll(async () => {
+    await Promise.all(extraPools.splice(0).map((p) => p.end()));
+  });
+  const resetStation = async () => {
+    await migrate(pool);
+    await pool.query("DELETE FROM tracks"); // cascades the queue
+    await pool.query(
+      `UPDATE station SET active_pool = '{"kind": "library"}', now_playing_track_id = NULL,
+         now_playing_offset_sec = 0, now_playing_reported_at = NULL, now_playing_playing = false`,
+    );
+  };
+
+  stationContract("PgStationRepo", async () => {
+    await resetStation();
+    return {
+      tracks: new PgTrackRepo(pool),
+      station: new PgStationRepo(pool),
+      reopen: async () => {
+        const p = createPool(url!);
+        extraPools.push(p);
+        return { tracks: new PgTrackRepo(p), station: new PgStationRepo(p) };
+      },
+    };
+  });
+
+  describe("PgStationRepo extras", () => {
+    it("rewrites queue positions as 0..n-1, closing gaps left by cascades", async () => {
+      await resetStation();
+      const tracks = new PgTrackRepo(pool);
+      for (const id of ["a", "b", "c"]) {
+        await tracks.add({
+          id,
+          title: id,
+          artist: "A",
+          album: null,
+          durationSec: 100,
+          bitrate: null,
+          format: null,
+          sizeBytes: 1,
+          storageKey: `${id}.mp3`,
+          createdAt: new Date(0).toISOString(),
+        });
+      }
+      const station = new PgStationRepo(pool);
+      await station.update((s) => ({ ...s, queue: ["a", "b", "a", "c"] }));
+      await tracks.remove("a");
+      const rows = async () =>
+        (await pool.query("SELECT position, track_id FROM station_queue ORDER BY position")).rows;
+      expect(await rows()).toEqual([
+        { position: 1, track_id: "b" },
+        { position: 3, track_id: "c" },
+      ]);
+      expect((await station.get()).queue).toEqual(["b", "c"]);
+      await station.update((s) => ({ ...s, queue: [...s.queue, "b"] }));
+      expect(await rows()).toEqual([
+        { position: 0, track_id: "b" },
+        { position: 1, track_id: "c" },
+        { position: 2, track_id: "b" },
+      ]);
+    });
+
+    it("a failed write (unknown track) rolls back and leaves the pool usable", async () => {
+      await resetStation();
+      const station = new PgStationRepo(pool);
+      await expect(station.update((s) => ({ ...s, queue: ["ghost"] }))).rejects.toThrow(/foreign key/);
+      expect((await station.get()).queue).toEqual([]);
+    });
+
+    it("createStationRepoFromEnv shares the catalog's pool", async () => {
+      const repo = await createRepoFromEnv("unused.json", { DATABASE_URL: url });
+      const station = createStationRepoFromEnv("unused.json", repo, { DATABASE_URL: url });
+      expect(station).toBeInstanceOf(PgStationRepo);
+      const repoPool = (repo as PgTrackRepo).pool;
+      expect((station as unknown as { pool: pg.Pool }).pool).toBe(repoPool);
+      await repoPool.end();
     });
   });
 
