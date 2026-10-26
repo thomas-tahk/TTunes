@@ -1,12 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Track } from "./types.ts";
-import { fetchTracks, deleteTrack } from "./api.ts";
+import { fetchTracks, deleteTrack, checkSession } from "./api.ts";
 import { usePlayer } from "./usePlayer.ts";
 import { Uploader } from "./components/Uploader.tsx";
 import { Library } from "./components/Library.tsx";
 import { PlayerBar } from "./components/PlayerBar.tsx";
+import { Login } from "./components/Login.tsx";
 
+// Auth gate: ask the server whether we have a session; show the password screen on 401.
 export default function App() {
+  const [authed, setAuthed] = useState<boolean | null>(null);
+  useEffect(() => {
+    checkSession().then(setAuthed, () => setAuthed(false));
+  }, []);
+  if (authed === null) return null;
+  if (!authed) return <Login onSuccess={() => setAuthed(true)} />;
+  return <Station />;
+}
+
+function Station() {
   const [tracks, setTracks] = useState<Track[]>([]);
   const controls = usePlayer(tracks);
   const autoStarted = useRef(false);

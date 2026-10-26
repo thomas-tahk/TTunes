@@ -253,6 +253,57 @@ body {
   cursor: not-allowed;
 }
 
+.login {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.login__form {
+  width: 100%;
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--panel);
+  border: 1px solid #3a322d;
+  border-radius: var(--radius);
+  padding: 28px 24px;
+}
+
+.login__form .brand {
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.login__input {
+  background: var(--panel-hi);
+  border: 1px solid #3a322d;
+  color: var(--text);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 16px; /* 16px+ stops iOS zooming into the field */
+}
+
+.login__input:focus {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 1px;
+}
+
+.login__form .ctrl {
+  padding: 10px 12px;
+  font-size: 15px;
+}
+
+.login__error {
+  margin: 0;
+  color: var(--low);
+  font-size: 13px;
+  text-align: center;
+}
+
 .playerbar__queue {
   flex: 0 0 auto;
   color: var(--muted);

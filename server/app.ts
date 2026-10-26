@@ -9,12 +9,15 @@ import { parseFile } from "music-metadata";
 import { StorageNotFoundError, type StorageAdapter } from "./storage.ts";
 import type { TrackRepo } from "./repo.ts";
 import type { Track } from "./types.ts";
+import type { Auth } from "./auth.ts";
 
 export interface AppDeps {
   repo: TrackRepo;
   storage: StorageAdapter;
   /** Scratch dir multer writes incoming uploads to before storage.put takes them. */
   uploadDir: string;
+  /** Owner-password gate. When present, /api (except login/logout/session) and /audio need a session. */
+  auth?: Auth;
 }
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -54,7 +57,7 @@ export function parseRange(header: string | undefined, size: number): ByteRange 
   return { start, end };
 }
 
-export function createApp({ repo, storage, uploadDir }: AppDeps): Express {
+export function createApp({ repo, storage, uploadDir, auth }: AppDeps): Express {
   const upload = multer({
     storage: multer.diskStorage({
       destination: uploadDir,
@@ -66,6 +69,21 @@ export function createApp({ repo, storage, uploadDir }: AppDeps): Express {
 
   const app = express();
   app.use(cors());
+
+  // Public liveness probe for the container (outside auth).
+  app.get("/health", (_req: Request, res: Response) => {
+    res.type("text/plain").send("ok");
+  });
+
+  if (auth) {
+    app.use(auth.router);
+    app.use(["/api", "/audio"], auth.requireSession);
+  } else {
+    // auth off (dev): the front end asks this before rendering, so report "logged in"
+    app.get("/api/session", (_req: Request, res: Response) => {
+      res.status(204).end();
+    });
+  }
 
   app.get("/api/tracks", async (_req: Request, res: Response) => {
     res.json(await repo.all());
