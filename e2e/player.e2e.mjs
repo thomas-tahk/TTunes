@@ -28,7 +28,7 @@ const OFFSET = 7;
 const TRACK_SEC = 20;
 const TAP_TO_PLAY_MAX_MS = 1000;
 /** Every check() below; a run that stops early or skips one fails even if nothing FAILed. */
-const EXPECTED_CHECKS = 19;
+const EXPECTED_CHECKS = 28;
 
 const results = [];
 const check = (name, ok, detail) => {
@@ -83,13 +83,29 @@ async function waitFor(url, ms = 30_000) {
   throw new Error(`timed out waiting for ${url}`);
 }
 
-/** A valid 16-bit mono PCM WAV of a sine tone, so music-metadata reads a real duration. */
-function sineWav(seconds, freq, rate = 22_050) {
+/**
+ * A valid 16-bit mono PCM WAV of a sine tone, so music-metadata reads a real duration.
+ * With `artist`, a RIFF LIST/INFO IART chunk carries it (music-metadata reads it as the artist).
+ */
+function sineWav(seconds, freq, { rate = 22_050, artist } = {}) {
   const samples = seconds * rate;
   const data = samples * 2;
+  let info = Buffer.alloc(0);
+  if (artist) {
+    const text = Buffer.from(`${artist}\0`, "latin1");
+    const padded = Buffer.alloc(text.length + (text.length % 2), 0);
+    text.copy(padded);
+    info = Buffer.alloc(12 + 8 + padded.length);
+    info.write("LIST", 0);
+    info.writeUInt32LE(4 + 8 + padded.length, 4);
+    info.write("INFO", 8);
+    info.write("IART", 12);
+    info.writeUInt32LE(text.length, 16);
+    padded.copy(info, 20);
+  }
   const buf = Buffer.alloc(44 + data);
   buf.write("RIFF", 0);
-  buf.writeUInt32LE(36 + data, 4);
+  buf.writeUInt32LE(36 + data + info.length, 4);
   buf.write("WAVE", 8);
   buf.write("fmt ", 12);
   buf.writeUInt32LE(16, 16); // fmt chunk size
@@ -104,18 +120,48 @@ function sineWav(seconds, freq, rate = 22_050) {
   for (let i = 0; i < samples; i++) {
     buf.writeInt16LE(Math.round(Math.sin((2 * Math.PI * freq * i) / rate) * 8000), 44 + i * 2);
   }
-  return buf;
+  return Buffer.concat([buf, info]);
 }
 
-/** Console errors, minus the expected 401 from the pre-login session probe. */
-function watchConsole(page, errors) {
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Bytes no browser can decode, served in place of a track to make it "broken" for one context. */
+const GARBAGE = Buffer.from(Array.from({ length: 8192 }, (_, i) => (i * 7919 + 13) % 251));
+const serveGarbage = (route) => route.fulfill({ status: 200, contentType: "audio/wav", body: GARBAGE });
+
+/** Console errors, minus the expected 401 from the pre-login session probe (and any `allow`ed). */
+function watchConsole(page, errors, allow = () => false) {
   page.on("console", (msg) => {
     if (msg.type() !== "error") return;
     if (msg.location().url.includes("/api/session")) return;
+    if (allow(msg)) return;
     errors.push(msg.text());
   });
   page.on("pageerror", (err) => errors.push(String(err)));
 }
+
+/** Point the station at `trackId` (as a device that's on the station's current track would). */
+async function setStation(page, web, trackId, offsetSec, playing = true) {
+  const cur = (await stationNow(page, web)).nowPlaying?.track.id;
+  const res = await page.request.put(`${web}/api/station/now-playing`, {
+    data: { trackId, offsetSec, playing, ...(cur ? { fromTrackId: cur } : {}) },
+  });
+  if (!res.ok()) throw new Error(`PUT now-playing: ${res.status()} ${await res.text()}`);
+  const view = await res.json();
+  if (view.stale || view.nowPlaying?.track.id !== trackId) throw new Error(`station didn't take ${trackId}: ${JSON.stringify(view)}`);
+  return view;
+}
+
+/** The main element is playing `id` (any id when omitted) with data to play. */
+const waitPlaying = (page, id, timeout = 8_000) =>
+  page.waitForFunction(
+    (want) => {
+      const a = document.querySelector('audio[data-role="main"]');
+      return a && !a.paused && a.readyState >= 3 && (!want || a.getAttribute("src") === `/audio/${want}`);
+    },
+    id ?? null,
+    { timeout },
+  );
 
 /** Arms timing hooks, taps the big play button, and waits until audio is really playing at >= OFFSET. */
 async function tapAndMeasure(page, tap, minOffset = OFFSET) {
@@ -207,9 +253,11 @@ async function main() {
     // Seed the station through the API (the page's session cookie authenticates these).
     const ids = [];
     const longName = "Beta Tone (an extraordinarily long extended-remix-version-title that has to wrap on a phone).wav";
-    for (const [name, freq] of [["Alpha Tone.wav", 440], [longName, 554]]) {
+    // Alpha has a long artist: the player bar must ellipsize it and keep the time on screen.
+    const longArtist = "The Extraordinarily Long-Named Philharmonic Orchestra and Choir of Somewhere Far Away";
+    for (const [name, freq, artist] of [["Alpha Tone.wav", 440, longArtist], [longName, 554]]) {
       const res = await page.request.post(`${web}/api/tracks`, {
-        multipart: { file: { name, mimeType: "audio/wav", buffer: sineWav(TRACK_SEC, freq) } },
+        multipart: { file: { name, mimeType: "audio/wav", buffer: sineWav(TRACK_SEC, freq, { artist }) } },
       });
       if (res.status() !== 201) throw new Error(`upload ${name}: ${res.status()} ${await res.text()}`);
       const track = await res.json();
@@ -285,6 +333,29 @@ async function main() {
     check("all visible buttons are at least 44x44", targets.length === 0, targets.map((t) => `${t.label} ${t.w}x${t.h}`).join(", "));
 
     await page.screenshot({ path: join(SHOTS, "playing-390x844.png") });
+
+    const bar = await page.evaluate(() => {
+      const box = (sel) => {
+        const r = document.querySelector(sel)?.getBoundingClientRect();
+        return r ? { left: r.left, right: r.right, top: r.top, bottom: r.bottom } : null;
+      };
+      return {
+        artist: document.querySelector(".playerbar__artist")?.textContent,
+        time: box(".playerbar__time"),
+        vw: document.documentElement.clientWidth,
+        vh: window.innerHeight,
+      };
+    });
+    check(
+      "player bar time stays on screen at 390 with a long artist",
+      bar.artist === longArtist &&
+        !!bar.time &&
+        bar.time.left >= 0 &&
+        bar.time.right <= bar.vw &&
+        bar.time.top >= 0 &&
+        bar.time.bottom <= bar.vh,
+      `artist="${bar.artist?.slice(0, 24)}…" time box x ${bar.time?.left.toFixed(0)}..${bar.time?.right.toFixed(0)} of ${bar.vw}`,
+    );
 
     // Let the track run out: the player moves to upNext and tells the station (POST /next {fromTrackId}).
     await page.evaluate(() => {
@@ -374,14 +445,16 @@ async function main() {
     await phone.close();
 
     // ---- desktop ----
-    const desk = await browser.newContext({ viewport: { width: 1280, height: 800 }, storageState: await (async () => {
-      // reuse the session cookie: log in once more via the API in a scratch context
+    // A session cookie for the later contexts: log in once more via the API in a scratch context.
+    const session = await (async () => {
       const c = await browser.newContext();
       await c.request.post(`${web}/api/login`, { data: { password: PASSWORD } });
       const s = await c.storageState();
       await c.close();
       return s;
-    })() });
+    })();
+    const PHONE = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, storageState: session };
+    const desk = await browser.newContext({ viewport: { width: 1280, height: 800 }, storageState: session });
     const dpage = await desk.newPage();
     watchConsole(dpage, consoleErrors);
     await dpage.goto(web);
@@ -400,6 +473,214 @@ async function main() {
     check("no horizontal scroll at 1280", dw.scrollWidth <= dw.innerWidth, `scrollWidth=${dw.scrollWidth} innerWidth=${dw.innerWidth}`);
     await dpage.screenshot({ path: join(SHOTS, "playing-1280x800.png") });
     await desk.close();
+
+    const [A, Bt] = ids; // Alpha, Beta (the long title)
+
+    // ---- play now right after opening, before the first track's metadata arrives ----
+    // The station sits 12s into Alpha; audio is slow; Beta's play-now must start Beta at 0,
+    // not at Alpha's pending 12s.
+    {
+      const ctx = await browser.newContext(PHONE);
+      const p = await ctx.newPage();
+      watchConsole(p, consoleErrors);
+      await p.route("**/audio/**", async (route) => {
+        await sleep(1500);
+        await route.continue().catch(() => {}); // the request may be gone (src changed)
+      });
+      await setStation(p, web, A, 12, true);
+      await p.goto(web);
+      await p.waitForFunction((id) => document.querySelector('audio[data-role="main"]')?.getAttribute("src") === `/audio/${id}`, A);
+      const meta = await p.evaluate(() => document.querySelector('audio[data-role="main"]').readyState);
+      await p.evaluate(() => {
+        const a = document.querySelector('audio[data-role="main"]');
+        window.__firstPlaying = null;
+        a.addEventListener("playing", () => (window.__firstPlaying ??= { src: a.getAttribute("src"), t: a.currentTime }));
+      });
+      await p.locator(".row", { hasText: "Beta Tone" }).locator(".row__play").tap();
+      await waitPlaying(p, Bt);
+      await sleep(300);
+      const s = await p.evaluate(() => ({ first: window.__firstPlaying, t: document.querySelector('audio[data-role="main"]').currentTime }));
+      check(
+        "play now tapped right after opening starts the new track at 0",
+        meta === 0 && s.first?.src === `/audio/${Bt}` && s.first.t < 1 && s.t < 2,
+        `readyState at tap=${meta}; first playing src=${s.first?.src} at ${s.first?.t.toFixed(2)}s; +0.3s at ${s.t.toFixed(2)}s`,
+      );
+      await ctx.close();
+    }
+
+    // ---- a paused tab that sat around while the station moved on, then Play ----
+    {
+      const ctx = await browser.newContext(PHONE);
+      const p = await ctx.newPage();
+      watchConsole(p, consoleErrors);
+      await setStation(p, web, A, 1, true);
+      await p.goto(web);
+      await p.locator(".hero__play").waitFor();
+      await p.locator(".hero__play").tap();
+      await waitPlaying(p, A);
+      const playPause = p.locator(".playerbar__controls .ctrl--primary");
+      await playPause.tap(); // pause at ~1-2s; the station records it
+      await sleep(5600); // the tab's view of the station is now stale
+      const pausedAt = (await audioState(p)).t;
+      await setStation(p, web, A, 11, true); // another device played on to 0:11
+      await playPause.tap();
+      await sleep(900);
+      const same = await audioState(p);
+      const st1 = (await stationNow(p, web)).nowPlaying;
+      check(
+        "stale paused tab: Play joins the station's position on the same track",
+        !same.paused && same.src === `/audio/${A}` && same.t >= 10.5 && st1.track.id === A && st1.offsetSec >= 10.5,
+        `paused at ${pausedAt.toFixed(2)}s; after Play local t=${same.t.toFixed(2)}s, station ${st1.track.id === A ? "A" : st1.track.id} at ${st1.offsetSec.toFixed(2)}s`,
+      );
+
+      await playPause.tap();
+      await sleep(5600);
+      await setStation(p, web, Bt, 4, true); // another device moved to Beta
+      await playPause.tap();
+      await waitPlaying(p, Bt, 5_000).catch(() => {});
+      await sleep(300);
+      const other = await audioState(p);
+      const st2 = (await stationNow(p, web)).nowPlaying;
+      check(
+        "stale paused tab: Play swaps to the station's other track",
+        !other.paused && other.src === `/audio/${Bt}` && other.t >= 3.5 && st2.track.id === Bt,
+        `local src=${other.src} t=${other.t.toFixed(2)}s; station ${st2.track.id === Bt ? "B" : st2.track.id} at ${st2.offsetSec.toFixed(2)}s`,
+      );
+      await ctx.close();
+    }
+
+    // ---- a track this browser can't decode (served as garbage to this context only) ----
+    {
+      const ctx = await browser.newContext(PHONE);
+      const p = await ctx.newPage();
+      const zRes = await p.request.post(`${web}/api/tracks`, {
+        multipart: { file: { name: "Zeta Tone.wav", mimeType: "audio/wav", buffer: sineWav(TRACK_SEC, 660) } },
+      });
+      if (zRes.status() !== 201) throw new Error(`upload Zeta: ${zRes.status()}`);
+      const Z = (await zRes.json()).id;
+      // The mocked 415 below logs a "Failed to load resource" error; that one is expected.
+      watchConsole(p, consoleErrors, (msg) => msg.location().url.includes("/api/tracks") && msg.text().includes("415"));
+      await p.route(`**/audio/${Z}`, serveGarbage);
+
+      // Cold open on it: the station moves past it, the card offers a playable track, nothing plays.
+      await setStation(p, web, Z, 0, true);
+      await p.goto(web);
+      const notice = p.locator(".playerbar__notice");
+      await notice.filter({ hasText: "Couldn't play Zeta Tone — skipping." }).waitFor({ timeout: 6_000 });
+      await p.waitForFunction((z) => {
+        const t = document.querySelector(".hero__title")?.textContent;
+        return t && t !== "Zeta Tone";
+      }, Z);
+      await sleep(300);
+      const cold = await audioState(p);
+      const coldStation = (await stationNow(p, web)).nowPlaying;
+      const heroTitle = await p.locator(".hero__title").textContent();
+      await p.screenshot({ path: join(SHOTS, "bad-track-skip-390x844.png") });
+      check(
+        "cold open on an unplayable track: notice, station skips it, no autoplay",
+        coldStation.track.id !== Z && cold.src === `/audio/${coldStation.track.id}` && cold.paused && heroTitle === coldStation.track.title,
+        `station now ${coldStation.track.title}; card "${heroTitle}"; local paused=${cold.paused}`,
+      );
+
+      // While listening: play-now on it skips to the next track and keeps playing.
+      await p.locator(".hero__play").tap();
+      await waitPlaying(p);
+      await p.locator(".row", { hasText: "Zeta Tone" }).locator(".row__play").tap();
+      await notice.filter({ hasText: "Couldn't play Zeta Tone — skipping." }).waitFor({ timeout: 6_000 });
+      await p.waitForFunction((z) => {
+        const a = document.querySelector('audio[data-role="main"]');
+        return !a.paused && a.readyState >= 3 && a.getAttribute("src") !== `/audio/${z}`;
+      }, Z, { timeout: 8_000 });
+      await sleep(500);
+      const live = await audioState(p);
+      const liveStation = (await stationNow(p, web)).nowPlaying;
+      check(
+        "listening, an unplayable track is skipped and playback carries on",
+        !live.paused && live.src === `/audio/${liveStation.track.id}` && liveStation.track.id !== Z && liveStation.playing,
+        `now ${live.src} t=${live.t.toFixed(2)}s; station on ${liveStation.track.title} playing=${liveStation.playing}`,
+      );
+
+      // A failed upload says so, with the server's reason, and stays up (the server's 415 is mocked here).
+      await p.route("**/api/tracks", async (route) => {
+        const body = route.request().postDataBuffer()?.toString("latin1") ?? "";
+        if (route.request().method() === "POST" && body.includes('filename="bad-notes.txt"')) {
+          await route.fulfill({ status: 415, contentType: "application/json", body: JSON.stringify({ error: "not a playable audio file" }) });
+        } else await route.continue();
+      });
+      await p.locator(".uploader input").setInputFiles([
+        { name: "Gamma Tone.wav", mimeType: "audio/wav", buffer: sineWav(TRACK_SEC, 330) },
+        { name: "bad-notes.txt", mimeType: "text/plain", buffer: Buffer.from("not music") },
+      ]);
+      const upErr = p.locator(".upload-error");
+      await upErr.waitFor({ timeout: 8_000 });
+      await sleep(4500); // longer than any transient notice
+      const upText = (await upErr.textContent())?.replace("✕", "").trim();
+      const upVisible = await upErr.isVisible();
+      await p.locator(".row", { hasText: "Gamma Tone" }).waitFor({ timeout: 5_000 });
+      await p.screenshot({ path: join(SHOTS, "upload-failed-390x844.png") });
+      await upErr.getByRole("button", { name: "Dismiss" }).tap();
+      const dismissed = (await upErr.count()) === 0;
+      check(
+        "a failed upload stays on screen with the server's reason until dismissed",
+        upVisible && upText === "Couldn't add 1 of 2: bad-notes.txt (not a playable audio file)" && dismissed,
+        `"${upText}" visible after 4.5s=${upVisible}, gone after dismiss=${dismissed}`,
+      );
+
+      // Queue full on touch: the buttons and Up next say so (no hover needed).
+      const cap = (await stationNow(p, web)).queueCap;
+      const firstQueue = p.locator(".row__queue").first();
+      for (let i = 0; i < cap; i++) {
+        const answered = p.waitForResponse((r) => r.url().endsWith("/api/station/queue") && r.request().method() === "POST");
+        await firstQueue.tap();
+        await answered;
+      }
+      await p.locator(".upnext__full").waitFor({ timeout: 3_000 });
+      const qButtons = await p.evaluate(() =>
+        [...document.querySelectorAll(".row__queue")].map((b) => ({ text: b.textContent, disabled: b.disabled, h: b.offsetHeight, w: b.offsetWidth })),
+      );
+      const fullLine = await p.locator(".upnext__full").textContent();
+      // The "full" line at the top, the library's "Queue full" buttons under it.
+      await p.locator(".upnext__full").evaluate((el) => el.scrollIntoView({ block: "start" }));
+      await p.screenshot({ path: join(SHOTS, "queue-full-390x844.png") });
+      check(
+        "queue full is visible without hover, buttons stay 44px",
+        fullLine === "Queue is full — remove one to add more." &&
+          qButtons.length > 0 &&
+          qButtons.every((b) => b.text === "Queue full" && b.disabled && b.h >= 44 && b.w >= 44),
+        `"${fullLine}"; buttons ${[...new Set(qButtons.map((b) => `${b.text} ${b.w}x${b.h}`))].join(", ")}`,
+      );
+      // Leave the queue empty for anything after this.
+      for (let i = 0; i < cap; i++) {
+        const view = await stationNow(p, web);
+        if (!view.queue.length) break;
+        await p.request.delete(`${web}/api/station/queue/0?trackId=${view.queue[0].id}`);
+      }
+      await ctx.close();
+    }
+
+    // ---- every track unplayable: the skip stops after a few in a row instead of spinning ----
+    {
+      const ctx = await browser.newContext(PHONE);
+      const p = await ctx.newPage();
+      watchConsole(p, consoleErrors);
+      await p.route("**/audio/**", serveGarbage);
+      let nexts = 0;
+      p.on("request", (r) => {
+        if (r.url().endsWith("/api/station/next") && r.method() === "POST") nexts++;
+      });
+      await p.goto(web);
+      const stopNotice = p.locator(".playerbar__notice", { hasText: "in a row" });
+      await stopNotice.waitFor({ timeout: 15_000 });
+      const atStop = nexts;
+      await sleep(3000);
+      const stopText = await stopNotice.textContent().catch(() => null);
+      check(
+        "every track unplayable: stops skipping after 5 in a row, with a notice that stays",
+        atStop === 4 && nexts === 4 && stopText === "Couldn't play 5 tracks in a row, so playback stopped. Tap Next to try again.",
+        `next requests at stop=${atStop}, 3s later=${nexts}; notice "${stopText}"`,
+      );
+      await ctx.close();
+    }
 
     check("no console errors", consoleErrors.length === 0, consoleErrors.join(" | "));
   } finally {

@@ -27,11 +27,39 @@ export async function fetchTracks(): Promise<Track[]> {
   return res.json();
 }
 
+/** An upload the server refused (or that never got there); `reason` is the server's `{error}` text, if any. */
+export class UploadError extends Error {
+  readonly fileName: string;
+  readonly reason: string | null;
+  constructor(fileName: string, reason: string | null) {
+    super(reason ? `upload failed: ${fileName}: ${reason}` : `upload failed: ${fileName}`);
+    this.fileName = fileName;
+    this.reason = reason;
+  }
+}
+
+/** The `error` field of a JSON error body, else null. */
+async function errorText(res: Response): Promise<string | null> {
+  try {
+    const body: unknown = await res.json();
+    const err = (body as { error?: unknown } | null)?.error;
+    return typeof err === "string" && err.trim() ? err.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function uploadTrack(file: File): Promise<Track> {
   const body = new FormData();
   body.append("file", file);
-  const res = guard(await fetch("/api/tracks", { method: "POST", body }));
-  if (!res.ok) throw new Error(`upload failed: ${file.name}`);
+  let res: Response;
+  try {
+    res = guard(await fetch("/api/tracks", { method: "POST", body }));
+  } catch (err) {
+    if (err instanceof UnauthorizedError) throw err;
+    throw new UploadError(file.name, "couldn't reach the server");
+  }
+  if (!res.ok) throw new UploadError(file.name, await errorText(res));
   return res.json();
 }
 
@@ -40,13 +68,18 @@ export async function deleteTrack(id: string): Promise<void> {
   if (!res.ok) throw new Error("delete failed");
 }
 
-/** An <audio> load failed: if it was because the session is gone, flip to login. */
-export function recheckSession(): void {
-  checkSession().then(
+/**
+ * An <audio> load failed: if it was because the session is gone, flip to login.
+ * Resolves true when the session is fine (so the failure was something else, like
+ * the file itself), false when it's gone, null when the server couldn't be asked.
+ */
+export function recheckSession(): Promise<boolean | null> {
+  return checkSession().then(
     (ok) => {
       if (!ok) unauthorizedHandler();
+      return ok;
     },
-    () => {},
+    () => null,
   );
 }
 

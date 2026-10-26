@@ -58,10 +58,10 @@ export function Library({ tracks, player, onDelete }: LibraryProps) {
                   className="row__queue"
                   onClick={() => player.enqueue(track.id)}
                   disabled={!player.canQueue}
-                  aria-label={`Add ${track.title} to the queue`}
+                  aria-label={player.canQueue ? `Add ${track.title} to the queue` : `Queue full, can't add ${track.title}`}
                   title={player.canQueue ? "Add to queue" : "Queue full"}
                 >
-                  + Queue
+                  {player.canQueue ? "+ Queue" : "Queue full"}
                 </button>
                 <button
                   className="row__delete"

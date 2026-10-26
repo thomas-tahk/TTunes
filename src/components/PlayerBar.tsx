@@ -29,10 +29,10 @@ export function PlayerBar({ player }: { player: PlayerControls }) {
           {current ? (
             <>
               <span className="playerbar__title">{current.title}</span>
-              <span className="playerbar__artist">
-                {current.artist}
+              {/* The artist ellipsizes; the time never shrinks off the edge. */}
+              <span className="playerbar__sub">
+                <span className="playerbar__artist">{current.artist}</span>
                 <span className="playerbar__time">
-                  {" · "}
                   {formatTime(position)} / {formatTime(max)}
                 </span>
               </span>

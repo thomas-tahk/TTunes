@@ -252,7 +252,32 @@ button {
   overflow: hidden;
 }
 
+.upload-error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 6px 6px 6px 14px;
+  border: 1px solid var(--low);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--low);
+  font-size: 14px;
+}
+
+.upload-error__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 /* ---- up next ---- */
+
+.upnext__full {
+  margin: 8px 4px 0;
+  color: var(--accent);
+  font-size: 14px;
+}
 
 .upnext__list {
   list-style: none;
@@ -425,8 +450,10 @@ button {
   border-color: var(--accent-soft);
 }
 
+/* Queue full: readable (it's the label that says why), just not tappable. */
 .row__queue:disabled {
-  opacity: 0.35;
+  color: var(--muted);
+  border-style: dashed;
   cursor: not-allowed;
 }
 
@@ -499,16 +526,29 @@ button {
   overflow-wrap: anywhere;
 }
 
-.playerbar__artist {
+.playerbar__sub {
+  display: flex;
+  min-width: 0;
   color: var(--muted);
   font-size: 13px;
   white-space: nowrap;
+}
+
+.playerbar__artist {
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .playerbar__time {
+  flex: 0 0 auto;
   font-variant-numeric: tabular-nums;
+}
+
+.playerbar__time::before {
+  content: "·";
+  padding: 0 0.4em;
 }
 
 .playerbar__idle {
