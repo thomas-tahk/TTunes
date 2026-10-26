@@ -8,6 +8,7 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
+import { parseBool } from "./env.ts";
 import { LocalDiskStorage, StorageNotFoundError, type StorageAdapter } from "./storage.ts";
 
 export interface S3StorageConfig {
@@ -149,7 +150,7 @@ export function createStorageFromEnv(env: NodeJS.ProcessEnv = process.env): Stor
     region,
     accessKeyId,
     secretAccessKey,
-    forcePathStyle: parseBool(env.S3_FORCE_PATH_STYLE, true),
+    forcePathStyle: parseBool(env.S3_FORCE_PATH_STYLE, true, "S3_FORCE_PATH_STYLE"),
   });
 }
 
@@ -158,10 +159,3 @@ export async function verifyStorage(storage: StorageAdapter): Promise<void> {
   if (storage instanceof S3Storage) await storage.verify();
 }
 
-function parseBool(value: string | undefined, fallback: boolean): boolean {
-  if (value === undefined || value.trim() === "") return fallback;
-  const v = value.trim().toLowerCase();
-  if (["1", "true", "yes", "on"].includes(v)) return true;
-  if (["0", "false", "no", "off"].includes(v)) return false;
-  throw new Error(`invalid boolean: ${value}`);
-}

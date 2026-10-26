@@ -308,5 +308,17 @@ describe("authFromEnv", () => {
     expect(await secureOf({ ...base, NODE_ENV: "production", COOKIE_SECURE: "false" })).toBe(false);
     expect(await secureOf({ ...base })).toBe(false);
     expect(await secureOf({ ...base, COOKIE_SECURE: "true" })).toBe(true);
+    // same boolean spellings as S3_FORCE_PATH_STYLE; blank means "use the default"
+    for (const v of ["1", "yes", "on", "TRUE", " True "]) expect(await secureOf({ ...base, COOKIE_SECURE: v })).toBe(true);
+    for (const v of ["0", "no", "off", "FALSE"]) {
+      expect(await secureOf({ ...base, NODE_ENV: "production", COOKIE_SECURE: v })).toBe(false);
+    }
+    expect(await secureOf({ ...base, NODE_ENV: "production", COOKIE_SECURE: "" })).toBe(true);
+  });
+
+  it("refuses junk in COOKIE_SECURE, naming the variable", () => {
+    expect(() => authFromEnv({ OWNER_PASSWORD: "pw", SESSION_SECRET: "s", COOKIE_SECURE: "ture" })).toThrow(
+      /COOKIE_SECURE.*ture/,
+    );
   });
 });

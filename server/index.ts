@@ -4,6 +4,9 @@ import { createApp, parseTrustProxy } from "./app.ts";
 import { createStorageFromEnv, verifyStorage } from "./s3-storage.ts";
 import type { StorageAdapter } from "./storage.ts";
 import { createRepoFromEnv, createStationRepoFromEnv } from "./db/index.ts";
+import { dbErrorMessage } from "./db/pool.ts";
+import type { TrackRepo } from "./repo.ts";
+import type { StationRepo } from "./station-repo.ts";
 import { authFromEnv } from "./auth.ts";
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -36,10 +39,20 @@ try {
   process.exit(1);
 }
 
-const repo = await createRepoFromEnv(DATA_FILE); // Postgres when DATABASE_URL is set
+// Postgres when DATABASE_URL is set (migrations run here, so a bad URL fails now, in one line).
+let repo: TrackRepo;
+let station: StationRepo;
+try {
+  repo = await createRepoFromEnv(DATA_FILE);
+  station = createStationRepoFromEnv(STATION_FILE, repo); // same pool as the catalog
+} catch (err) {
+  console.error(`TTunes: database unreachable: ${dbErrorMessage(err, process.env.DATABASE_URL ?? "")}`);
+  process.exit(1);
+}
+
 const app = createApp({
   repo,
-  station: createStationRepoFromEnv(STATION_FILE, repo), // same pool as the catalog
+  station,
   storage,
   uploadDir: INCOMING_DIR,
   auth,
