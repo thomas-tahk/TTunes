@@ -30,7 +30,14 @@ export interface TestApp {
  * Call cleanup() in afterEach.
  */
 export async function makeTestApp(
-  opts: { size?: number; ext?: string; /** enable the owner-password gate */ auth?: AuthOptions } = {},
+  opts: {
+    size?: number;
+    ext?: string;
+    /** enable the owner-password gate */
+    auth?: AuthOptions;
+    /** express "trust proxy" setting */
+    trustProxy?: boolean | number | string;
+  } = {},
 ): Promise<TestApp> {
   const size = opts.size ?? 1000;
   const ext = opts.ext ?? ".mp3";
@@ -60,7 +67,9 @@ export async function makeTestApp(
   };
   await repo.add(track);
 
-  const app = createApp({ repo, storage, uploadDir, auth: opts.auth ? createAuth(opts.auth) : undefined });
+  const app = createApp({ repo, storage, uploadDir, auth: opts.auth ? createAuth(opts.auth) : undefined,
+    trustProxy: opts.trustProxy,
+  });
   return {
     app,
     repo,

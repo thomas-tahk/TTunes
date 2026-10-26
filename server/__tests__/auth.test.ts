@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import { makeTestApp, type TestApp } from "./helpers.ts";
 import { authFromEnv, createAuth } from "../auth.ts";
-import { createApp } from "../app.ts";
+import { createApp, parseTrustProxy } from "../app.ts";
 
 const AUTH = { password: "pw-correct", secret: "test-secret" };
 
@@ -77,7 +77,59 @@ describe("owner password auth", () => {
     t = await makeTestApp({ auth: AUTH });
     expect((await request(t.app).post("/api/login").send({})).status).toBe(401);
     expect((await request(t.app).post("/api/login").send({ password: 123 })).status).toBe(401);
-    expect((await request(t.app).post("/api/login")).status).toBe(401);
+    expect((await request(t.app).post("/api/login").send([])).status).toBe(401);
+  });
+
+  it("answers a non-JSON login with 400 and does not count it toward the lockout", async () => {
+    t = await makeTestApp({ auth: AUTH });
+    for (let i = 0; i < 15; i++) {
+      expect((await request(t.app).post("/api/login")).status).toBe(400);
+      const form = await request(t.app).post("/api/login").type("form").send({ password: "bad" });
+      expect(form.status).toBe(400);
+    }
+    expect((await request(t.app).post("/api/login").send({ password: AUTH.password })).status).toBe(204);
+  });
+
+  it("answers malformed JSON with 400, never logs the body, and counts it as a failure", async () => {
+    t = await makeTestApp({ auth: AUTH });
+    const secret = "hunter2-SECRET-attempt";
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const warns = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      for (let i = 0; i < 10; i++) {
+        const res = await request(t.app)
+          .post("/api/login")
+          .set("Content-Type", "application/json")
+          .send(`{"password":"${secret}`);
+        expect(res.status).toBe(400);
+        expect(res.body).toEqual({ error: "bad request" });
+        expect(res.text).not.toContain(secret);
+      }
+      const big = await request(t.app)
+        .post("/api/login")
+        .send({ password: secret + "x".repeat(10_000) });
+      expect(big.status).toBe(429); // the 10 malformed attempts counted
+      const logged = JSON.stringify([...errors.mock.calls, ...warns.mock.calls], (_k, v) =>
+        v instanceof Error ? { ...v, message: v.message, stack: v.stack } : v,
+      );
+      expect(logged).not.toContain(secret);
+      expect(errors).not.toHaveBeenCalled();
+    } finally {
+      errors.mockRestore();
+      warns.mockRestore();
+    }
+  });
+
+  it("answers an oversized JSON body with 400 without logging it", async () => {
+    t = await makeTestApp({ auth: AUTH });
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const res = await request(t.app).post("/api/login").send({ password: "y".repeat(10_000) });
+      expect(res.status).toBe(400);
+      expect(errors).not.toHaveBeenCalled();
+    } finally {
+      errors.mockRestore();
+    }
   });
 
   it("rejects a tampered or forged cookie", async () => {
@@ -139,6 +191,56 @@ describe("owner password auth", () => {
     }
   });
 
+  it("with trust proxy = 1, failures from one X-Forwarded-For client don't lock out another", async () => {
+    t = await makeTestApp({ auth: AUTH, trustProxy: 1 });
+    for (let i = 0; i < 10; i++) {
+      await request(t.app).post("/api/login").set("X-Forwarded-For", "203.0.113.1").send({ password: "bad" });
+    }
+    const a = await request(t.app)
+      .post("/api/login")
+      .set("X-Forwarded-For", "203.0.113.1")
+      .send({ password: AUTH.password });
+    expect(a.status).toBe(429);
+    const b = await request(t.app)
+      .post("/api/login")
+      .set("X-Forwarded-For", "198.51.100.7")
+      .send({ password: AUTH.password });
+    expect(b.status).toBe(204);
+  });
+
+  it("without trust proxy, X-Forwarded-For is ignored: everyone behind one proxy shares a bucket", async () => {
+    // This is why production behind Fly.io's edge must set TRUST_PROXY=1.
+    t = await makeTestApp({ auth: AUTH });
+    for (let i = 0; i < 10; i++) {
+      await request(t.app).post("/api/login").set("X-Forwarded-For", "203.0.113.1").send({ password: "bad" });
+    }
+    const b = await request(t.app)
+      .post("/api/login")
+      .set("X-Forwarded-For", "198.51.100.7")
+      .send({ password: AUTH.password });
+    expect(b.status).toBe(429);
+  });
+
+  it("the generic error handler never logs an error's attached body", async () => {
+    t = await makeTestApp({ auth: AUTH });
+    t.repo.all = async () => {
+      throw Object.assign(new Error("db down"), { body: "SENSITIVE-BODY" });
+    };
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const agent = request.agent(t.app);
+      await agent.post("/api/login").send({ password: AUTH.password });
+      expect((await agent.get("/api/tracks")).status).toBe(500);
+      expect(errors).toHaveBeenCalled();
+      for (const call of errors.mock.calls) {
+        for (const arg of call) expect(typeof arg).toBe("string");
+        expect(call.join(" ")).not.toContain("SENSITIVE-BODY");
+      }
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
   it("keeps /health public", async () => {
     t = await makeTestApp({ auth: AUTH });
     const res = await request(t.app).get("/health");
@@ -156,6 +258,17 @@ describe("auth disabled (no auth dep)", () => {
     expect((await request(t.app).get("/api/tracks")).status).toBe(200);
     expect((await request(t.app).get("/api/session")).status).toBe(204);
     expect((await request(t.app).get("/health")).status).toBe(200);
+  });
+});
+
+describe("parseTrustProxy", () => {
+  it("parses booleans, hop counts and address lists; unset means don't set it", () => {
+    expect(parseTrustProxy(undefined)).toBeUndefined();
+    expect(parseTrustProxy("")).toBeUndefined();
+    expect(parseTrustProxy("1")).toBe(1);
+    expect(parseTrustProxy("true")).toBe(true);
+    expect(parseTrustProxy("false")).toBe(false);
+    expect(parseTrustProxy("loopback, 10.0.0.0/8")).toBe("loopback, 10.0.0.0/8");
   });
 });
 

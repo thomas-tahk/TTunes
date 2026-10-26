@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Track } from "./types.ts";
-import { fetchTracks, deleteTrack, checkSession } from "./api.ts";
+import { fetchTracks, deleteTrack, checkSession, onUnauthorized, UnauthorizedError } from "./api.ts";
 import { usePlayer } from "./usePlayer.ts";
 import { Uploader } from "./components/Uploader.tsx";
 import { Library } from "./components/Library.tsx";
 import { PlayerBar } from "./components/PlayerBar.tsx";
 import { Login } from "./components/Login.tsx";
 
-// Auth gate: ask the server whether we have a session; show the password screen on 401.
+// Auth gate: ask the server whether we have a session; show the password screen
+// on 401 — at load, or whenever an api call / audio load hits 401 mid-session.
 export default function App() {
   const [authed, setAuthed] = useState<boolean | null>(null);
   useEffect(() => {
+    onUnauthorized(() => setAuthed(false));
     checkSession().then(setAuthed, () => setAuthed(false));
   }, []);
   if (authed === null) return null;
@@ -24,7 +26,11 @@ function Station() {
   const autoStarted = useRef(false);
 
   const refresh = useCallback(async () => {
-    setTracks(await fetchTracks());
+    try {
+      setTracks(await fetchTracks());
+    } catch (err) {
+      if (!(err instanceof UnauthorizedError)) throw err; // 401: the gate already flipped to login
+    }
   }, []);
 
   useEffect(() => {

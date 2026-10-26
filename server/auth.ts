@@ -88,7 +88,19 @@ export function createAuth({ password, secret, secure = false }: AuthOptions): A
 
   const router = express.Router();
 
-  router.post("/api/login", express.json({ limit: "4kb" }), (req: Request, res: Response) => {
+  const recordFailure = (ip: string, now: number) => {
+    if (failures.size > 10_000) prune(now);
+    const entry = failureEntry(ip, now);
+    if (entry) entry.count++;
+    else failures.set(ip, { count: 1, windowStart: now });
+  };
+
+  const jsonParser = express.json({ limit: "4kb" });
+
+  // Keyed on req.ip, which is the real client only when the app's "trust proxy"
+  // setting matches the deployment (TRUST_PROXY=1 on Fly.io). Without it, every
+  // client behind a proxy shares the proxy's bucket.
+  router.post("/api/login", (req: Request, res: Response) => {
     const ip = req.ip ?? "unknown";
     const now = Date.now();
     const entry = failureEntry(ip, now);
@@ -98,18 +110,31 @@ export function createAuth({ password, secret, secure = false }: AuthOptions): A
       res.status(429).json({ error: "too many attempts, try again later" });
       return;
     }
-    const body: unknown = req.body;
-    const given = body && typeof body === "object" ? (body as { password?: unknown }).password : undefined;
-    if (!passwordMatches(given)) {
-      if (failures.size > 10_000) prune(now);
-      if (entry) entry.count++;
-      else failures.set(ip, { count: 1, windowStart: now });
-      res.status(401).json({ error: "wrong password" });
+    // Not a JSON request at all: reject without counting, it never reached the password check.
+    if (!req.is("application/json")) {
+      res.status(400).json({ error: "bad request" });
       return;
     }
-    failures.delete(ip);
-    res.cookie(SESSION_COOKIE, issue(), { ...cookieOptions, maxAge: MAX_AGE_MS });
-    res.status(204).end();
+    jsonParser(req, res, (err?: unknown) => {
+      if (err) {
+        // Malformed / oversized JSON. body-parser's error carries the raw body
+        // (the attempted password) in err.body and often in err.message, so it
+        // is never logged or passed on. Counted as a failed attempt.
+        recordFailure(ip, now);
+        res.status(400).json({ error: "bad request" });
+        return;
+      }
+      const body: unknown = req.body;
+      const given = body && typeof body === "object" ? (body as { password?: unknown }).password : undefined;
+      if (!passwordMatches(given)) {
+        recordFailure(ip, now);
+        res.status(401).json({ error: "wrong password" });
+        return;
+      }
+      failures.delete(ip);
+      res.cookie(SESSION_COOKIE, issue(), { ...cookieOptions, maxAge: MAX_AGE_MS });
+      res.status(204).end();
+    });
   });
 
   router.post("/api/logout", (_req: Request, res: Response) => {

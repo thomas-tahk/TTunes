@@ -1,5 +1,4 @@
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
-import cors from "cors";
 import multer from "multer";
 import { nanoid } from "nanoid";
 import { extname } from "node:path";
@@ -18,6 +17,22 @@ export interface AppDeps {
   uploadDir: string;
   /** Owner-password gate. When present, /api (except login/logout/session) and /audio need a session. */
   auth?: Auth;
+  /**
+   * Express "trust proxy" setting, so req.ip (and the login lockout keyed on it)
+   * is the real client behind a reverse proxy. Fly.io's edge is one hop: TRUST_PROXY=1.
+   * Unset = trust nothing (req.ip is the direct peer).
+   */
+  trustProxy?: boolean | number | string;
+}
+
+/** Parses TRUST_PROXY per the express docs: "true"/"false", a hop count, or an IP/subnet list. */
+export function parseTrustProxy(value: string | undefined): boolean | number | string | undefined {
+  const v = value?.trim();
+  if (!v) return undefined;
+  if (v === "true") return true;
+  if (v === "false") return false;
+  if (/^\d+$/.test(v)) return Number(v);
+  return v;
 }
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -57,7 +72,7 @@ export function parseRange(header: string | undefined, size: number): ByteRange 
   return { start, end };
 }
 
-export function createApp({ repo, storage, uploadDir, auth }: AppDeps): Express {
+export function createApp({ repo, storage, uploadDir, auth, trustProxy }: AppDeps): Express {
   const upload = multer({
     storage: multer.diskStorage({
       destination: uploadDir,
@@ -68,7 +83,9 @@ export function createApp({ repo, storage, uploadDir, auth }: AppDeps): Express 
   });
 
   const app = express();
-  app.use(cors());
+  // No CORS middleware: the UI is same-origin (served by this server, or via the
+  // vite dev proxy), so cross-origin reads stay blocked by the browser default.
+  if (trustProxy !== undefined) app.set("trust proxy", trustProxy);
 
   // Public liveness probe for the container (outside auth).
   app.get("/health", (_req: Request, res: Response) => {
@@ -193,7 +210,11 @@ export function createApp({ repo, storage, uploadDir, auth }: AppDeps): Express 
 
   // Rejected async handlers land here (express 5) — answer 500 instead of hanging.
   app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
-    console.error(err);
+    // Log message/stack only, never the whole object: body-parser errors carry
+    // the raw request body (err.body), and their message can quote it too.
+    const type = (err as { type?: unknown } | null)?.type;
+    if (typeof type === "string" && type.startsWith("entity.")) console.error(`request body error: ${type}`);
+    else console.error(err instanceof Error ? (err.stack ?? err.message) : String(err));
     if (res.headersSent) {
       next(err);
       return;

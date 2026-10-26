@@ -1,4 +1,4 @@
-import { createApp } from "./app.ts";
+import { createApp, parseTrustProxy } from "./app.ts";
 import { LocalDiskStorage } from "./storage.ts";
 import { JsonTrackRepo } from "./repo.ts";
 import { authFromEnv } from "./auth.ts";
@@ -21,6 +21,9 @@ const app = createApp({
   storage: new LocalDiskStorage(STORAGE_DIR),
   uploadDir: INCOMING_DIR,
   auth,
+  // Fly.io (or any single reverse proxy in front): set TRUST_PROXY=1, otherwise
+  // every client shares the proxy's IP and one stranger can trip the login lockout.
+  trustProxy: parseTrustProxy(process.env.TRUST_PROXY),
 });
 
 app.listen(PORT, () => {
