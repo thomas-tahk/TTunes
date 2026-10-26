@@ -25,10 +25,23 @@ export interface StationState {
   nowPlaying: NowPlayingState | null;
   /** Track ids, index 0 plays first. Duplicates allowed. */
   queue: string[];
+  /** Pre-drawn shuffle pick: plays next once the queue is empty. null = not drawn yet. */
+  upNext: string | null;
 }
 
 export function defaultStation(): StationState {
-  return { activePool: { kind: "library" }, nowPlaying: null, queue: [] };
+  return { activePool: { kind: "library" }, nowPlaying: null, queue: [], upNext: null };
+}
+
+/**
+ * A write referenced a track that no longer exists (deleted between the caller's
+ * catalog read and the write). Nothing was written; re-read the catalog and retry.
+ */
+export class StationConflictError extends Error {
+  constructor(cause?: unknown) {
+    super("station write referenced a deleted track", { cause });
+    this.name = "StationConflictError";
+  }
 }
 
 export interface StationRepo {
@@ -38,11 +51,38 @@ export interface StationRepo {
    * or null to leave it unchanged; it must not do I/O (the Pg version holds a row lock
    * while it runs). Throwing aborts with nothing written. Concurrent updates run one
    * after another, never interleaved. Resolves with the state after the update.
+   * May reject with StationConflictError (see there).
    */
   update(fn: (current: StationState) => StationState | null): Promise<StationState>;
 }
 
 const clone = (s: StationState): StationState => structuredClone(s);
+
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
+
+/** Parses a stored station, or returns undefined if it isn't one. */
+function parseStation(v: unknown): StationState | undefined {
+  if (!isObj(v)) return undefined;
+  const { activePool, nowPlaying, queue, upNext = null } = v;
+  if (!isObj(activePool) || activePool.kind !== "library") return undefined;
+  if (!Array.isArray(queue) || queue.length > QUEUE_CAP || !queue.every((id) => typeof id === "string")) {
+    return undefined;
+  }
+  if (upNext !== null && typeof upNext !== "string") return undefined;
+  if (nowPlaying !== null) {
+    if (!isObj(nowPlaying)) return undefined;
+    const { trackId, offsetSec, reportedAt, playing } = nowPlaying;
+    if (typeof trackId !== "string" || typeof playing !== "boolean") return undefined;
+    if (typeof offsetSec !== "number" || !(offsetSec >= 0)) return undefined;
+    if (typeof reportedAt !== "string" || Number.isNaN(Date.parse(reportedAt))) return undefined;
+  }
+  return {
+    activePool: { kind: "library" },
+    nowPlaying: nowPlaying as NowPlayingState | null,
+    queue: queue as string[],
+    upNext: upNext as string | null,
+  };
+}
 
 /** Dev default: one JSON file. Updates are serialised through a promise chain. */
 export class JsonStationRepo implements StationRepo {
@@ -52,9 +92,25 @@ export class JsonStationRepo implements StationRepo {
 
   constructor(file: string) {
     this.file = file;
-    this.state = existsSync(file)
-      ? { ...defaultStation(), ...(JSON.parse(readFileSync(file, "utf8")) as Partial<StationState>) }
-      : defaultStation();
+    this.state = this.load();
+  }
+
+  // A corrupt or hand-mangled file must not stop the server: the station is
+  // recoverable state (worst case: a fresh shuffle), so log loudly and start over.
+  private load(): StationState {
+    if (!existsSync(this.file)) return defaultStation();
+    let parsed: StationState | undefined;
+    try {
+      parsed = parseStation(JSON.parse(readFileSync(this.file, "utf8")));
+    } catch (err) {
+      console.error(`station: can't read ${this.file} (${(err as Error).message}); starting fresh`);
+      return defaultStation();
+    }
+    if (!parsed) {
+      console.error(`station: ${this.file} isn't a valid station; starting fresh`);
+      return defaultStation();
+    }
+    return parsed;
   }
 
   async get(): Promise<StationState> {

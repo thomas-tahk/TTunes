@@ -82,6 +82,7 @@ export function stationContract(name: string, make: () => Promise<StationFixture
           activePool: { kind: "library" },
           nowPlaying: { trackId: "a", offsetSec: 12.25, reportedAt: "2026-10-01T12:00:00.000Z", playing: true },
           queue: ["b", "a", "b"],
+          upNext: "b",
         };
         expect(await fx.station.update(() => s)).toEqual(s);
         expect(await fx.station.get()).toEqual(s);
@@ -113,6 +114,15 @@ export function stationContract(name: string, make: () => Promise<StationFixture
         await fx.station.update((cur) => ({ ...cur, queue: ["a", "a"] }));
         const again = await fx.reopen();
         expect((await again.station.get()).queue).toEqual(["a", "a"]);
+      });
+
+      it("upNext round-trips and survives reopening", async () => {
+        await fx.tracks.add(track("a"));
+        await fx.station.update((cur) => ({ ...cur, upNext: "a" }));
+        expect((await fx.station.get()).upNext).toBe("a");
+        expect((await (await fx.reopen()).station.get()).upNext).toBe("a");
+        await fx.station.update((cur) => ({ ...cur, upNext: null }));
+        expect((await fx.station.get()).upNext).toBeNull();
       });
     });
 
@@ -183,7 +193,13 @@ export function stationContract(name: string, make: () => Promise<StationFixture
       it("empty library: nothing playing", async () => {
         const res = await request(appFor(fx)).get("/api/station");
         expect(res.status).toBe(200);
-        expect(res.body).toEqual({ nowPlaying: null, queue: [], activePool: { kind: "library" }, queueCap: 6 });
+        expect(res.body).toEqual({
+          nowPlaying: null,
+          upNext: null,
+          queue: [],
+          activePool: { kind: "library" },
+          queueCap: 6,
+        });
       });
 
       it("nothing set yet: cues a random track at 0, paused, and keeps it", async () => {
@@ -209,7 +225,10 @@ export function stationContract(name: string, make: () => Promise<StationFixture
         await request(app).post("/api/station/queue").send({ trackId: "q2" });
         clock.t += 9_000;
         expect((await request(app).get("/api/station")).body.nowPlaying.track.id).toBe("x");
-        clock.t += 1_500; // 100.5s > 100s
+        clock.t += 2_000; // 101s: past durationSec but inside the grace (durationSec is rounded)
+        const inGrace = await request(app).get("/api/station");
+        expect(inGrace.body.nowPlaying).toMatchObject({ track: { id: "x" }, offsetSec: 100 }); // clamped to the end
+        clock.t += 1_000; // 102s = duration + grace
         const res = await request(app).get("/api/station");
         expect(res.body.nowPlaying).toEqual({
           track: expect.objectContaining({ id: "q1" }),
@@ -230,10 +249,156 @@ export function stationContract(name: string, make: () => Promise<StationFixture
         const { clock, opts } = fakeClock();
         const app = appFor(fx, opts);
         for (let i = 0; i < 5; i++) {
-          await request(app).put("/api/station/now-playing").send({ trackId: "x", offsetSec: 0, playing: true });
-          clock.t += 11_000;
+          await request(app).post("/api/station/play-now").send({ trackId: "x" });
+          clock.t += 13_000;
           expect((await request(app).get("/api/station")).body.nowPlaying.track.id).toBe("y");
         }
+      });
+
+      it("race: GET advanced past the end, then the device's ended → POST /next {fromTrackId} is stale", async () => {
+        await fx.tracks.add(track("c", { durationSec: 100 }));
+        for (const id of ["q1", "q2"]) await fx.tracks.add(track(id));
+        const { clock, opts } = fakeClock();
+        const app = appFor(fx, opts);
+        await request(app).post("/api/station/play-now").send({ trackId: "c" });
+        await request(app).post("/api/station/queue").send({ trackId: "q1" });
+        await request(app).post("/api/station/queue").send({ trackId: "q2" });
+        clock.t += 103_000;
+        expect((await request(app).get("/api/station")).body.nowPlaying.track.id).toBe("q1"); // device B
+        const ended = await request(app).post("/api/station/next").send({ fromTrackId: "c" }); // device A
+        expect(ended.status).toBe(200);
+        expect(ended.body.stale).toBe(true);
+        expect(ended.body.nowPlaying.track.id).toBe("q1"); // the queue head was not skipped
+        expect(ids(ended.body.queue)).toEqual(["q2"]);
+      });
+
+      it("race: ended → POST /next {fromTrackId} inside the grace advances exactly once", async () => {
+        await fx.tracks.add(track("c", { durationSec: 100 }));
+        for (const id of ["q1", "q2"]) await fx.tracks.add(track(id));
+        const { clock, opts } = fakeClock();
+        const app = appFor(fx, opts);
+        await request(app).post("/api/station/play-now").send({ trackId: "c" });
+        await request(app).post("/api/station/queue").send({ trackId: "q1" });
+        await request(app).post("/api/station/queue").send({ trackId: "q2" });
+        clock.t += 100_400;
+        // two devices both saw `ended` for c
+        const [a, b] = await Promise.all([
+          request(app).post("/api/station/next").send({ fromTrackId: "c" }),
+          request(app).post("/api/station/next").send({ fromTrackId: "c" }),
+        ]);
+        expect([a.body.stale, b.body.stale].sort()).toEqual([true, undefined]);
+        for (const r of [a, b]) expect(r.body.nowPlaying.track.id).toBe("q1");
+        expect(ids((await request(app).get("/api/station")).body.queue)).toEqual(["q2"]);
+      });
+
+      it("POST /next without fromTrackId always skips (explicit user skip)", async () => {
+        for (const id of ["a", "q1"]) await fx.tracks.add(track(id));
+        const app = appFor(fx);
+        await request(app).post("/api/station/play-now").send({ trackId: "a" });
+        await request(app).post("/api/station/queue").send({ trackId: "q1" });
+        const res = await request(app).post("/api/station/next").send();
+        expect(res.body.stale).toBeUndefined();
+        expect(res.body.nowPlaying.track.id).toBe("q1");
+      });
+
+      it("race: a stale position report after an advance doesn't revert the station", async () => {
+        await fx.tracks.add(track("c", { durationSec: 100 }));
+        await fx.tracks.add(track("q1"));
+        const { clock, opts } = fakeClock();
+        const app = appFor(fx, opts);
+        await request(app).post("/api/station/play-now").send({ trackId: "c" });
+        await request(app).post("/api/station/queue").send({ trackId: "q1" });
+        clock.t += 103_000;
+        expect((await request(app).get("/api/station")).body.nowPlaying.track.id).toBe("q1");
+        const late = await request(app)
+          .put("/api/station/now-playing")
+          .send({ trackId: "c", offsetSec: 99, playing: true });
+        expect(late.status).toBe(200);
+        expect(late.body.stale).toBe(true);
+        expect(late.body.nowPlaying).toMatchObject({ track: { id: "q1" }, offsetSec: 0, playing: true });
+        // also stale when fromTrackId names a track the station already left
+        const late2 = await request(app)
+          .put("/api/station/now-playing")
+          .send({ trackId: "q1", offsetSec: 5, playing: true, fromTrackId: "c" });
+        expect(late2.body.stale).toBe(true);
+        expect((await request(app).get("/api/station")).body.nowPlaying).toMatchObject({ track: { id: "q1" }, offsetSec: 0 });
+      });
+
+      it("PUT may switch tracks when it names the current track as fromTrackId, or the station is paused", async () => {
+        for (const id of ["a", "b", "c"]) await fx.tracks.add(track(id));
+        const app = appFor(fx);
+        await request(app).post("/api/station/play-now").send({ trackId: "a" });
+        const sw = await request(app)
+          .put("/api/station/now-playing")
+          .send({ trackId: "b", offsetSec: 3, playing: true, fromTrackId: "a" });
+        expect(sw.body.stale).toBeUndefined();
+        expect(sw.body.nowPlaying.track.id).toBe("b");
+        await request(app).put("/api/station/now-playing").send({ trackId: "b", offsetSec: 4, playing: false });
+        const fromPaused = await request(app)
+          .put("/api/station/now-playing")
+          .send({ trackId: "c", offsetSec: 0, playing: true });
+        expect(fromPaused.body.stale).toBeUndefined();
+        expect(fromPaused.body.nowPlaying.track.id).toBe("c");
+      });
+
+      it("a report past the end is clamped, and the station moves on once the grace is up", async () => {
+        await fx.tracks.add(track("c", { durationSec: 100 }));
+        await fx.tracks.add(track("q1"));
+        const { clock, opts } = fakeClock();
+        const app = appFor(fx, opts);
+        await request(app).post("/api/station/play-now").send({ trackId: "c" });
+        await request(app).post("/api/station/queue").send({ trackId: "q1" });
+        const past = await request(app)
+          .put("/api/station/now-playing")
+          .send({ trackId: "c", offsetSec: 150, playing: true });
+        expect(past.body.nowPlaying).toMatchObject({ track: { id: "c" }, offsetSec: 100 });
+        clock.t += 2_000;
+        expect((await request(app).get("/api/station")).body.nowPlaying.track.id).toBe("q1");
+      });
+
+      it("upNext: the queue head, else a pre-drawn pick that the station then actually plays", async () => {
+        for (const id of ["a", "b", "c", "d"]) await fx.tracks.add(track(id, { durationSec: 10 }));
+        const { clock, opts } = fakeClock();
+        const app = appFor(fx, opts);
+        const first = await request(app).post("/api/station/play-now").send({ trackId: "a" });
+        const drawn = first.body.upNext.id;
+        expect(["b", "c", "d"]).toContain(drawn);
+        // stable across reads and restarts
+        expect((await request(app).get("/api/station")).body.upNext.id).toBe(drawn);
+        expect((await request(appFor(await fx.reopen(), opts)).get("/api/station")).body.upNext.id).toBe(drawn);
+        // queue head takes precedence while there is one
+        const other = ["b", "c", "d"].find((id) => id !== drawn)!;
+        const queued = await request(app).post("/api/station/queue").send({ trackId: other });
+        expect(queued.body.upNext.id).toBe(other);
+        const afterQueue = await request(app).post("/api/station/next").send({ fromTrackId: "a" });
+        expect(afterQueue.body.nowPlaying.track.id).toBe(other);
+        expect(afterQueue.body.upNext.id).toBe(drawn);
+        // queue empty: the lazy advance plays the pick, and a new one is drawn
+        clock.t += 13_000;
+        const res = await request(app).get("/api/station");
+        expect(res.body.nowPlaying.track.id).toBe(drawn);
+        expect(res.body.upNext).not.toBeNull();
+        expect(res.body.upNext.id).not.toBe(drawn);
+      });
+
+      it("upNext is redrawn when its track is deleted", async () => {
+        for (const id of ["a", "b", "c"]) await fx.tracks.add(track(id));
+        const app = appFor(fx);
+        const first = await request(app).post("/api/station/play-now").send({ trackId: "a" });
+        const drawn = first.body.upNext.id;
+        expect((await request(app).delete(`/api/tracks/${drawn}`)).status).toBe(204);
+        const res = await request(app).get("/api/station");
+        const remaining = ["b", "c"].find((id) => id !== drawn);
+        expect(res.body.upNext.id).toBe(remaining);
+        expect((await fx.station.get()).upNext).toBe(remaining);
+      });
+
+      it("upNext is never the current track when there's a choice (play-now of the pick)", async () => {
+        for (const id of ["a", "b"]) await fx.tracks.add(track(id));
+        const app = appFor(fx);
+        await request(app).post("/api/station/play-now").send({ trackId: "a" });
+        const res = await request(app).post("/api/station/play-now").send({ trackId: "b" });
+        expect(res.body.upNext.id).toBe("a");
       });
 
       it("a one-track library replays that track", async () => {
@@ -296,7 +461,13 @@ export function stationContract(name: string, make: () => Promise<StationFixture
         expect((await request(app).delete("/api/station/queue/3")).status).toBe(404);
         expect((await request(app).delete("/api/station/queue/-1")).status).toBe(400);
         expect((await request(app).delete("/api/station/queue/x")).status).toBe(400);
-        expect(ids((await request(app).get("/api/station")).body.queue)).toEqual(["a", "b", "c"]);
+        // optional guard: only delete if the entry is still the expected track
+        const mismatch = await request(app).delete("/api/station/queue/0?trackId=b");
+        expect(mismatch.status).toBe(409);
+        expect(mismatch.body).toEqual({ error: "queue changed" });
+        expect((await request(app).delete("/api/station/queue/7?trackId=b")).status).toBe(409);
+        expect(ids((await request(app).delete("/api/station/queue/1?trackId=b")).body.queue)).toEqual(["a", "c"]);
+        expect(ids((await request(app).get("/api/station")).body.queue)).toEqual(["a", "c"]);
       });
 
       it("deleting tracks drops them from the queue and replaces a deleted now-playing", async () => {

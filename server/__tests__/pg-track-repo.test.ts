@@ -6,6 +6,8 @@ import { createPool } from "../db/pool.ts";
 import { createRepoFromEnv, createStationRepoFromEnv } from "../db/index.ts";
 import { PgStationRepo } from "../db/pg-station-repo.ts";
 import { stationContract } from "./station.contract.ts";
+import { StationConflictError, defaultStation } from "../station-repo.ts";
+import { StationService } from "../station.ts";
 import type { Track } from "../types.ts";
 import { trackRepoContract } from "./track-repo.contract.ts";
 
@@ -53,11 +55,11 @@ describe.skipIf(!url)("Postgres", () => {
   });
 
   describe("migrate", () => {
-    it("applies 001 to an empty database, then is a no-op", async () => {
-      expect(await migrate(pool)).toEqual(["001_init.sql"]);
+    it("applies every migration to an empty database, then is a no-op", async () => {
+      expect(await migrate(pool)).toEqual(["001_init.sql", "002_station_up_next.sql"]);
       expect(await migrate(pool)).toEqual([]);
       const { rows } = await pool.query("SELECT name FROM schema_migrations ORDER BY name");
-      expect(rows.map((r) => r.name)).toEqual(["001_init.sql"]);
+      expect(rows.map((r) => r.name)).toEqual(["001_init.sql", "002_station_up_next.sql"]);
     });
 
     it("is safe when two boots race", async () => {
@@ -76,7 +78,7 @@ describe.skipIf(!url)("Postgres", () => {
         const { rows } = await pool.query("SELECT to_regclass('should_not_exist') AS t");
         expect(rows[0].t).toBeNull();
         const names = await pool.query("SELECT name FROM schema_migrations");
-        expect(names.rows.map((r) => r.name)).toEqual(["001_init.sql"]);
+        expect(names.rows.map((r) => r.name)).toEqual(["001_init.sql", "002_station_up_next.sql"]);
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
@@ -145,6 +147,19 @@ describe.skipIf(!url)("Postgres", () => {
     };
   });
 
+  const pgTrack = (id: string): Track => ({
+    id,
+    title: id,
+    artist: "A",
+    album: null,
+    durationSec: 100,
+    bitrate: null,
+    format: null,
+    sizeBytes: 1,
+    storageKey: `${id}.mp3`,
+    createdAt: new Date(0).toISOString(),
+  });
+
   describe("PgStationRepo extras", () => {
     it("rewrites queue positions as 0..n-1, closing gaps left by cascades", async () => {
       await resetStation();
@@ -184,8 +199,49 @@ describe.skipIf(!url)("Postgres", () => {
     it("a failed write (unknown track) rolls back and leaves the pool usable", async () => {
       await resetStation();
       const station = new PgStationRepo(pool);
-      await expect(station.update((s) => ({ ...s, queue: ["ghost"] }))).rejects.toThrow(/foreign key/);
-      expect((await station.get()).queue).toEqual([]);
+      await expect(station.update((s) => ({ ...s, queue: ["ghost"] }))).rejects.toBeInstanceOf(StationConflictError);
+      await expect(station.update((s) => ({ ...s, upNext: "ghost" }))).rejects.toBeInstanceOf(StationConflictError);
+      expect(await station.get()).toEqual(defaultStation());
+    });
+
+    it("leaves station_queue rows alone when the queue didn't change", async () => {
+      await resetStation();
+      const tracks = new PgTrackRepo(pool);
+      await tracks.add(pgTrack("a"));
+      const station = new PgStationRepo(pool);
+      await station.update((s) => ({ ...s, queue: ["a", "a"] }));
+      const xmins = async () => (await pool.query("SELECT xmin::text FROM station_queue ORDER BY position")).rows;
+      const before = await xmins();
+      await station.update((s) => ({ ...s, upNext: "a" }));
+      expect(await xmins()).toEqual(before);
+    });
+
+    it("deleting the upNext track NULLs it (002 ON DELETE SET NULL)", async () => {
+      await resetStation();
+      const tracks = new PgTrackRepo(pool);
+      await tracks.add(pgTrack("u"));
+      const station = new PgStationRepo(pool);
+      await station.update((s) => ({ ...s, upNext: "u" }));
+      await tracks.remove("u");
+      expect((await station.get()).upNext).toBeNull();
+    });
+
+    it("the service retries when a track is deleted between its catalog read and its write", async () => {
+      await resetStation();
+      const real = new PgTrackRepo(pool);
+      await real.add(pgTrack("a"));
+      // First catalog read still lists "gone" (as if deleted right after the read).
+      let reads = 0;
+      const racy = {
+        all: async () => (++reads === 1 ? [...(await real.all()), pgTrack("gone")] : real.all()),
+        get: (id: string) => real.get(id),
+        add: (t: Track) => real.add(t),
+        remove: (id: string) => real.remove(id),
+      };
+      const service = new StationService(racy, new PgStationRepo(pool));
+      await expect(service.enqueue("gone")).rejects.toMatchObject({ status: 404 });
+      expect(reads).toBe(2);
+      expect((await service.get()).nowPlaying?.track.id).toBe("a");
     });
 
     it("createStationRepoFromEnv shares the catalog's pool", async () => {
@@ -206,6 +262,7 @@ describe.skipIf(!url)("Postgres", () => {
       );
 
     it("has exactly one station row defaulting to the whole library", async () => {
+      await resetStation(); // the station tests above leave state behind
       const { rows } = await pool.query("SELECT * FROM station");
       expect(rows).toHaveLength(1);
       expect(rows[0].active_pool).toEqual({ kind: "library" });
