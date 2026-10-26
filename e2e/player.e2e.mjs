@@ -28,7 +28,7 @@ const OFFSET = 7;
 const TRACK_SEC = 20;
 const TAP_TO_PLAY_MAX_MS = 1000;
 /** Every check() below; a run that stops early or skips one fails even if nothing FAILed. */
-const EXPECTED_CHECKS = 32;
+const EXPECTED_CHECKS = 33;
 
 const results = [];
 const check = (name, ok, detail) => {
@@ -688,6 +688,29 @@ async function main() {
       await p.locator(".hero__play").tap();
       await waitPlaying(p, A);
 
+      // One passing 500: the first request for Beta fails, the rest (probe, retry) are fine.
+      // The probe then sees 206, but Beta is a good file: it must be retried, not skipped.
+      let transient500 = 0;
+      await p.route(`**/audio/${Bt}`, async (route) => {
+        if (transient500++ === 0) {
+          await route.fulfill({ status: 500, contentType: "application/json", body: '{"error":"internal error"}' });
+        } else await route.continue();
+      });
+      await p.locator(".row", { hasText: "Beta Tone" }).locator(".row__play").tap();
+      const recovered = await waitPlaying(p, Bt, 8_000).then(() => true, () => false);
+      await sleep(500);
+      const sOnce = (await stationNow(p, web)).nowPlaying;
+      const lOnce = await audioState(p);
+      check(
+        "one passing 500 on /audio: the track is retried and plays, no skip",
+        recovered && transient500 >= 2 && nexts === 0 && sOnce.track.id === Bt && !lOnce.paused && lOnce.src === `/audio/${Bt}`,
+        `requests for Beta=${transient500} (first one 500); POST /next=${nexts}; station on ${sOnce.track.id === Bt ? "Beta" : sOnce.track.title}; local src=${lOnce.src} paused=${lOnce.paused} t=${lOnce.t.toFixed(2)}s`,
+      );
+      await p.unroute(`**/audio/${Bt}`);
+
+      // Then play Alpha again so Beta's play-now below is a fresh load that hits a steady 500.
+      await p.locator(".row", { hasText: "Alpha Tone" }).locator(".row__play").tap();
+      await waitPlaying(p, A);
       await p.route(`**/audio/${Bt}`, (route) => route.fulfill({ status: 500, contentType: "application/json", body: '{"error":"internal error"}' }));
       await p.locator(".row", { hasText: "Beta Tone" }).locator(".row__play").tap();
       await notice.filter({ hasText: "Couldn't load Beta Tone" }).waitFor({ timeout: 6_000 });

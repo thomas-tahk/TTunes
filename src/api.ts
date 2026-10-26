@@ -87,8 +87,9 @@ export async function probeAudio(id: string): Promise<AudioProbe> {
     return "unavailable";
   }
   void res.body?.cancel().catch(() => {});
-  if (res.status === 401) {
-    unauthorizedHandler();
+  try {
+    guard(res); // a 401 flips to the login screen, like every other api call
+  } catch {
     return "unauthorized";
   }
   if (res.status === 404) return "gone";

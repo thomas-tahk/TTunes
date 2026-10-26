@@ -114,6 +114,14 @@ export function usePlayer(): PlayerControls {
   const wantPlayRef = useRef(false);
   /** Bumped on every pause the user (or the OS) made, so async work can tell one happened. */
   const userPausesRef = useRef(0);
+  /**
+   * The track whose failed load was already retried once (a load can fail on a passing
+   * 500 that the probe after it no longer sees). Cleared by a load of another track or
+   * by loadeddata.
+   */
+  const retriedIdRef = useRef<string | null>(null);
+  /** Last known position in the loaded track (a failed load resets currentTime to 0). */
+  const positionRef = useRef(0);
 
   /** Show a message; a `sticky` one stays until the next message or the user acts. */
   const setNotice = useCallback((msg: string, sticky = false) => {
@@ -184,6 +192,8 @@ export function usePlayer(): PlayerControls {
       pendingSeekRef.current = offsetSec;
       audio.currentTime = offsetSec;
       loadSeqRef.current++;
+      positionRef.current = offsetSec;
+      if (retriedIdRef.current !== track.id) retriedIdRef.current = null;
       wantPlayRef.current = play;
       if (play) void audio.play().catch(onPlayRejected);
     },
@@ -360,6 +370,15 @@ export function usePlayer(): PlayerControls {
     [call, liveOffset, load, onPlayRejected, report, setNotice],
   );
 
+  /** Where to reload `track` after a failed load: the station's live position if it's still on it, else ours. */
+  const retryOffset = useCallback(
+    (track: Track): number => {
+      const np = stationRef.current?.nowPlaying;
+      return np && np.track.id === track.id ? liveOffset() : positionRef.current;
+    },
+    [liveOffset],
+  );
+
   /**
    * The main <audio> failed. Browsers report a 500, 404, 401 or dropped connection the
    * same way as an undecodable file, so ask the server for the file's first bytes first:
@@ -381,9 +400,17 @@ export function usePlayer(): PlayerControls {
         setNotice(`Couldn't load ${track.title}.`);
         return;
       }
+      if (probe === "served" && retriedIdRef.current !== track.id) {
+        // The server serves it now, but the failed load may have hit a passing 500 (the
+        // browser can't say which): reload it once, same place, same playing state.
+        // Only a second failure with the file served counts as undecodable.
+        retriedIdRef.current = track.id;
+        load(track, retryOffset(track), startedRef.current && wantPlayRef.current);
+        return;
+      }
       skipBroken(track);
     });
-  }, [setNotice, skipBroken]);
+  }, [load, retryOffset, setNotice, skipBroken]);
 
   /** `ended`: if the station already moved on while we finished this track, join it there; else advance. */
   const onTrackEnded = useCallback(() => {
@@ -435,7 +462,7 @@ export function usePlayer(): PlayerControls {
       if (audio.error && cur) {
         // The last load failed (e.g. a server hiccup): this tap retries it where it stopped.
         resetFailures();
-        load(cur, audio.currentTime, false);
+        load(cur, retryOffset(cur), false); // currentTime reads 0 after a failed load
         wantPlayRef.current = true;
         void audio.play().then(() => report(true), onPlayRejected);
         return;
@@ -464,7 +491,7 @@ export function usePlayer(): PlayerControls {
           if (audioRef.current && !audioRef.current.paused) report(true);
         });
     },
-    [call, liveOffset, load, onPlayRejected, report, resetFailures],
+    [call, liveOffset, load, onPlayRejected, report, resetFailures, retryOffset],
   );
 
   const toggle = useCallback(() => {
@@ -572,11 +599,15 @@ export function usePlayer(): PlayerControls {
       const want = pendingSeekRef.current;
       if (want !== null && Math.abs(audio.currentTime - want) > 0.25) audio.currentTime = want;
     };
-    const onTime = () => setPosition(audio.currentTime);
+    const onTime = () => {
+      if (!audio.error) positionRef.current = audio.currentTime;
+      setPosition(audio.currentTime);
+    };
     // This track's media decodes: the skip-loop guard starts over.
     const onLoadedData = () => {
       failedInARowRef.current = 0;
       failedIdsRef.current.clear();
+      retriedIdRef.current = null;
     };
     // A load failure may be a 401 (session gone): the auth gate checks first; a file
     // this browser can't play is then skipped (onMediaError).
