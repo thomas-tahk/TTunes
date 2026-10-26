@@ -152,6 +152,13 @@ export function createApp({ repo, storage, uploadDir }: AppDeps): Express {
       return;
     }
 
+    if (req.method === "HEAD") {
+      // headers only: don't pull the range from storage just to discard it
+      res.writeHead(range ? 206 : 200, headers);
+      res.end();
+      return;
+    }
+
     let stream: Readable;
     try {
       stream = await storage.readRange(track.storageKey, start, end);
@@ -167,7 +174,10 @@ export function createApp({ repo, storage, uploadDir }: AppDeps): Express {
     // pipeline destroys both sides on error, so a mid-stream failure (or a client
     // disconnect) ends this response instead of crashing the process
     pipeline(stream, res, (err) => {
-      if (err && err.code !== "ERR_STREAM_PREMATURE_CLOSE") {
+      // a listener seeking or closing the tab is routine; don't log it as a failure
+      const clientGone =
+        err?.code === "ERR_STREAM_PREMATURE_CLOSE" || err?.code === "ECONNRESET" || err?.message === "aborted";
+      if (err && !clientGone) {
         console.error(`stream error for ${track.storageKey}:`, err);
       }
     });

@@ -3,6 +3,7 @@ import type { Readable } from "node:stream";
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadBucketCommand,
   HeadObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -35,9 +36,11 @@ function isNotFound(err: unknown): boolean {
 export class S3Storage implements StorageAdapter {
   readonly client: S3Client;
   private readonly bucket: string;
+  private readonly endpoint: string;
 
   constructor(config: S3StorageConfig) {
     this.bucket = config.bucket;
+    this.endpoint = config.endpoint ?? "default AWS endpoint";
     this.client = new S3Client({
       endpoint: config.endpoint,
       region: config.region ?? "auto",
@@ -53,14 +56,39 @@ export class S3Storage implements StorageAdapter {
     });
   }
 
+  /**
+   * Confirms the bucket exists and the credentials can reach it. Call at startup:
+   * a missing bucket otherwise looks like "every object is missing" (silent 404s).
+   * The error message names bucket + endpoint only, never credentials.
+   */
+  async verify(): Promise<void> {
+    try {
+      await this.client.send(new HeadBucketCommand({ Bucket: this.bucket }));
+    } catch (err) {
+      const e = err as { name?: string; message?: string; $metadata?: { httpStatusCode?: number } };
+      const status = e.$metadata?.httpStatusCode;
+      const reason =
+        status === 404 ? "bucket does not exist"
+        : status === 403 ? "access denied (check S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY)"
+        : status !== undefined ? `HTTP ${status} ${e.name ?? ""}`.trim()
+        : `${e.name ?? "Error"}: ${e.message ?? "unreachable"}`;
+      throw new Error(`S3 storage check failed for bucket "${this.bucket}" at ${this.endpoint}: ${reason}`, {
+        cause: err,
+      });
+    }
+  }
+
   async stat(key: string): Promise<{ size: number }> {
+    let size: number | undefined;
     try {
       const head = await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }));
-      return { size: head.ContentLength ?? 0 };
+      size = head.ContentLength;
     } catch (err) {
       if (isNotFound(err)) throw new StorageNotFoundError(key);
       throw err;
     }
+    if (size === undefined) throw new Error(`HeadObject returned no ContentLength for ${key}`);
+    return { size };
   }
 
   async readRange(key: string, start: number, end: number): Promise<Readable> {
@@ -109,14 +137,25 @@ export function createStorageFromEnv(env: NodeJS.ProcessEnv = process.env): Stor
   if (Boolean(accessKeyId) !== Boolean(secretAccessKey)) {
     throw new Error("S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY must be set together");
   }
+  const endpoint = env.S3_ENDPOINT || undefined;
+  const region = env.S3_REGION || "auto";
+  if (!endpoint && region === "auto") {
+    // the SDK would silently target s3.auto.amazonaws.com
+    throw new Error('S3_BUCKET is set but S3_ENDPOINT is not; set S3_ENDPOINT (e.g. your R2 endpoint), or set a real S3_REGION for AWS S3');
+  }
   return new S3Storage({
     bucket,
-    endpoint: env.S3_ENDPOINT || undefined,
-    region: env.S3_REGION || "auto",
+    endpoint,
+    region,
     accessKeyId,
     secretAccessKey,
     forcePathStyle: parseBool(env.S3_FORCE_PATH_STYLE, true),
   });
+}
+
+/** Startup check: verifies S3 config (no-op for local disk). Rejects with a secret-free message. */
+export async function verifyStorage(storage: StorageAdapter): Promise<void> {
+  if (storage instanceof S3Storage) await storage.verify();
 }
 
 function parseBool(value: string | undefined, fallback: boolean): boolean {

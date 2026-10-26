@@ -1,5 +1,43 @@
+import { spawn } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { CreateBucketCommand, HeadBucketCommand, type S3Client } from "@aws-sdk/client-s3";
 import { S3Storage, type S3StorageConfig } from "../s3-storage.ts";
+
+const REPO_ROOT = resolve(import.meta.dirname, "../..");
+
+/**
+ * Runs server/index.ts with the given env (inherited S3_* vars stripped) in a temp
+ * cwd. Resolves when it exits, or after timeoutMs (killing it) with code null: it kept running.
+ */
+export function runServer(
+  env: Record<string, string>,
+  timeoutMs = 8000,
+): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  const cwd = mkdtempSync(join(tmpdir(), "ttunes-startup-"));
+  const base = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("S3_")));
+  const child = spawn(join(REPO_ROOT, "node_modules/.bin/tsx"), [join(REPO_ROOT, "server/index.ts")], {
+    cwd,
+    env: { ...base, PORT: "0", ...env },
+  });
+  let stdout = "";
+  let stderr = "";
+  child.stdout.on("data", (d) => (stdout += d));
+  child.stderr.on("data", (d) => (stderr += d));
+  let timedOut = false;
+  return new Promise((done) => {
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+    }, timeoutMs);
+    child.on("exit", (code) => {
+      clearTimeout(timer);
+      rmSync(cwd, { recursive: true, force: true });
+      done({ code: timedOut ? null : code, stdout, stderr });
+    });
+  });
+}
 
 /**
  * S3 config for integration tests, from TEST_S3_* env vars. Null when
