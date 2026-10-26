@@ -1,0 +1,101 @@
+<title>TTunes Build Plan</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: single reading column; milestones as a vertical "dial" track, M1 expanded into issue rows; decisions boxed at top */
+:root {
+  --bg: #f3f4f7; --surface: #ffffff; --fg: #1b2130; --muted: #5a6275;
+  --line: #d8dbe4; --accent: #b4540a; --accent-soft: #fbead9; --ok: #1f7a4d;
+  --display: "Bricolage Grotesque", "Helvetica Neue", Arial, sans-serif;
+  --body: "IBM Plex Sans", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #141824; --surface: #1c2232; --fg: #e7e9f0; --muted: #9aa2b6;
+  --line: #2e3549; --accent: #f29a4a; --accent-soft: #3a2a1c; --ok: #5fcf95; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #141824; --surface: #1c2232; --fg: #e7e9f0; --muted: #9aa2b6;
+  --line: #2e3549; --accent: #f29a4a; --accent-soft: #3a2a1c; --ok: #5fcf95; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font: 16px/1.6 var(--body); }
+.wrap { max-width: 760px; margin: 0 auto; padding-block: 32px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 32px; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; line-height: 1.15; }
+h1 { font-size: 2.2rem; font-weight: 800; }
+h2 { font-size: 1.4rem; font-weight: 600; }
+h3 { font-size: 1.05rem; font-weight: 600; }
+p { margin: 0; }
+.eyebrow { font: 500 .75rem var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.lede { color: var(--muted); max-width: 62ch; }
+.gate { border-left: 3px solid var(--accent); padding: 4px 0 4px 14px; font-style: italic; }
+section { display: flex; flex-direction: column; gap: 14px; }
+.decide { background: var(--accent-soft); border-radius: 10px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+.decide ol { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 10px; }
+.rec { font-weight: 600; }
+.track { display: flex; flex-direction: column; gap: 0; border-left: 2px solid var(--line); margin-left: 6px; }
+.ms { position: relative; padding: 0 0 22px 22px; display: flex; flex-direction: column; gap: 6px; }
+.ms::before { content: ""; position: absolute; left: -7px; top: 5px; width: 12px; height: 12px; border-radius: 50%; background: var(--bg); border: 2px solid var(--muted); }
+.ms.now::before { background: var(--accent); border-color: var(--accent); }
+.ms.done::before { background: var(--ok); border-color: var(--ok); }
+.tag { font: 500 .72rem var(--mono); color: var(--muted); letter-spacing: .04em; }
+.issues { display: flex; flex-direction: column; gap: 10px; }
+.issue { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px; display: grid; grid-template-columns: 2.2em 1fr; gap: 4px 10px; }
+.issue .n { font: 500 .85rem var(--mono); color: var(--accent); grid-row: span 4; }
+.issue .meta { font: 500 .78rem var(--mono); color: var(--muted); }
+.issue .check { font-size: .92rem; } .issue .check b { color: var(--ok); font-weight: 600; }
+.yours { font-size: .95rem; } .yours li { margin-bottom: 4px; }
+code { font: .88em var(--mono); }
+</style>
+
+<div class="wrap">
+  <header style="display:flex;flex-direction:column;gap:10px">
+    <span class="eyebrow">Chief · Plan for approval · 2026-10-25</span>
+    <h1>TTunes Build Plan</h1>
+    <p class="lede">Your personal always-on station, from the June spec you confirmed today. Four milestones, each something you can open and use. Only Milestone 1 is broken into issues; the rest get broken down when they're next.</p>
+    <p class="gate">Project done-gate: I open TTunes on my phone, music is already playing within a second, and I bulk-drop a folder that the AI librarian tags and files so I can play-now any track from it.</p>
+  </header>
+
+  <section class="decide">
+    <h2>Approve with these four calls</h2>
+    <ol>
+      <li><span class="rec">Phones block sound until you tap once.</span> Every mobile browser does this; no app can get around it. I'll read the gate as "one tap, music within a second, picking up where you left off." Say if that's not acceptable.</li>
+      <li><span class="rec">An always-on host costs about $5/month.</span> Free tiers sleep, and a sleeping server breaks "within a second." My pick is Railway or Fly.io; chief checks current pricing in M1 and picks the cheaper one that never sleeps. Audio sits on Cloudflare R2 (10 GB free) and data on Neon Postgres (free, wakes in under a second).</li>
+      <li><span class="rec">One owner password.</span> The URL is public, so a single password protects it. No accounts, because it's just for you.</li>
+      <li><span class="rec">You create three accounts when M1 gets to deploy:</span> Cloudflare R2 bucket, Neon database, host. Chief hands you a step-by-step wizard at that point; agents build everything before then without them.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Milestones</h2>
+    <div class="track">
+      <div class="ms done"><span class="tag">DONE · June</span><h3>M0 · Local MVP</h3><p>Upload, instant shuffle, next-track prefetch, play-now, queue, delete. Runs on your laptop only.</p></div>
+      <div class="ms now"><span class="tag">NEXT</span><h3>M1 · On my phone, from the cloud</h3><p>Same player, live on a URL, audio in R2, catalog in Postgres, and the station remembers what was playing so any device picks it up.</p><p class="gate">Gate: I upload a song on my laptop, close it, open TTunes on my phone, tap once, and the station resumes within a second.</p></div>
+      <div class="ms"><span class="tag">THEN</span><h3>M2 · Bulk add + AI librarian</h3><p>Drop a folder of hundreds. Each file is identified (embedded tags → AcoustID/MusicBrainz fingerprint → Claude), tagged and filed. Only strong "same song?" matches ask you, all in one pass. Every tag stays editable.</p><p class="gate">Gate: the project done-gate.</p></div>
+      <div class="ms"><span class="tag">THEN</span><h3>M3 · Versions, channels, playlists</h3><p>Group versions of a song under one primary so shuffle doesn't repeat them. Smart channels from tags ("90s", "live") and hand-built playlists you can switch the station to.</p><p class="gate">Gate: I switch the station to a "live recordings" channel and it never plays two versions of the same song in a row.</p></div>
+      <div class="ms"><span class="tag">LATER</span><h3>M4 · Acquire</h3><p>Ask for a track; the librarian finds a legit place to buy it, or extracts audio once from a web link into your library (personal use only, per spec §11).</p><p class="gate">Gate: I ask for a song I don't own and end up playing it from my library.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>M1 issues</h2>
+    <p class="lede">Built by agents in the cloud, in this order where arrows say so; anything else runs in parallel. Each has a check that decides "done" without you.</p>
+    <div class="issues">
+      <div class="issue"><span class="n">1</span><h3>Test harness</h3><span class="meta">qa-engineer · blocks everything</span><p class="check"><b>Done:</b> <code>npm test</code> runs Vitest with one passing test against the existing range-streaming endpoint.</p></div>
+      <div class="issue"><span class="n">2</span><h3>Postgres catalog</h3><span class="meta">database-engineer · after 1</span><p class="check"><b>Done:</b> one shared contract test passes against both the JSON store and a Postgres store (tracks + station tables, migrations in repo).</p></div>
+      <div class="issue"><span class="n">3</span><h3>R2 audio storage</h3><span class="meta">backend-engineer · after 1</span><p class="check"><b>Done:</b> storage contract test passes for local disk and an S3-compatible store (MinIO in CI); playback returns 206 range responses through it.</p></div>
+      <div class="issue"><span class="n">4</span><h3>Station state on the server</h3><span class="meta">backend-engineer · after 2</span><p class="check"><b>Done:</b> test: device A reports "track X at 1:12", device B asks the station and gets track X at ≥1:12; queue survives a restart.</p></div>
+      <div class="issue"><span class="n">5</span><h3>Player resumes + phone layout</h3><span class="meta">frontend-engineer · after 4</span><p class="check"><b>Done:</b> Playwright at phone size: open, tap play, audio starts from the station's track and offset; no horizontal scroll.</p></div>
+      <div class="issue"><span class="n">6</span><h3>Owner password</h3><span class="meta">backend-engineer · after 1</span><p class="check"><b>Done:</b> test: every API and audio route returns 401 without the session; the login page works.</p></div>
+      <div class="issue"><span class="n">7</span><h3>Container + deploy config + CI</h3><span class="meta">backend-engineer · after 2, 3, 6</span><p class="check"><b>Done:</b> Docker image builds and passes a <code>/health</code> + play smoke test locally; GitHub Actions runs typecheck + tests on every push. Live deploy waits for your three accounts.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>What you do</h2>
+    <ul class="yours">
+      <li>Now: approve this plan (or answer any of the four calls differently).</li>
+      <li>Mid-M1: create the three accounts using chief's wizard (~15 minutes).</li>
+      <li>End of M1: on your phone, run the gate above and answer the batched questions.</li>
+    </ul>
+  </section>
+</div>
