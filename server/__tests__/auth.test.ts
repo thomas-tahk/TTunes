@@ -21,6 +21,10 @@ describe("owner password auth", () => {
       ["post", "/api/tracks"],
       ["delete", `/api/tracks/${id}`],
       ["get", "/api/anything-else"],
+      ["get", "/api/station"],
+      ["post", "/api/station/next"],
+      ["put", "/api/station/now-playing"],
+      ["post", "/api/station/queue"],
       ["get", `/audio/${id}`],
       ["get", "/audio/nope"],
     ] as const;
@@ -156,7 +160,7 @@ describe("owner password auth", () => {
     t = await makeTestApp({ auth: AUTH });
     const login = await request(t.app).post("/api/login").send({ password: AUTH.password });
     const value = sessionCookie(login)!.split(";")[0];
-    const deps = { repo: t.repo, storage: t.storage, uploadDir: t.uploadDir };
+    const deps = { repo: t.repo, storage: t.storage, uploadDir: t.uploadDir, station: t.station };
     const newPw = createApp({ ...deps, auth: createAuth({ ...AUTH, password: "changed" }) });
     const newSecret = createApp({ ...deps, auth: createAuth({ ...AUTH, secret: "other" }) });
     const same = createApp({ ...deps, auth: createAuth(AUTH) });
@@ -292,7 +296,7 @@ describe("authFromEnv", () => {
     const secureOf = async (env: NodeJS.ProcessEnv) => {
       const t = await makeTestApp();
       try {
-        const app = createApp({ repo: t.repo, storage: t.storage, uploadDir: t.uploadDir, auth: authFromEnv(env) });
+        const app = createApp({ repo: t.repo, storage: t.storage, uploadDir: t.uploadDir, station: t.station, auth: authFromEnv(env) });
         const res = await request(app).post("/api/login").send({ password: "pw" });
         return /; Secure/i.test(sessionCookie(res) ?? "");
       } finally {

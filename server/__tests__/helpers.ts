@@ -5,6 +5,7 @@ import type { Express } from "express";
 import { nanoid } from "nanoid";
 import { createApp } from "../app.ts";
 import { JsonTrackRepo } from "../repo.ts";
+import { JsonStationRepo } from "../station-repo.ts";
 import { LocalDiskStorage, type StorageAdapter } from "../storage.ts";
 import { createAuth, type AuthOptions } from "../auth.ts";
 import type { Track } from "../types.ts";
@@ -13,6 +14,7 @@ export interface TestApp {
   app: Express;
   repo: JsonTrackRepo;
   storage: StorageAdapter;
+  station: JsonStationRepo;
   /** The seeded track (a fake audio file of `size` bytes). */
   track: Track;
   /** Exact bytes stored for the seeded track, for asserting response bodies. */
@@ -70,13 +72,20 @@ export async function makeTestApp(
   };
   await repo.add(track);
 
-  const app = createApp({ repo, storage, uploadDir, auth: opts.auth ? createAuth(opts.auth) : undefined,
+  const station = new JsonStationRepo(join(root, "data", "station.json"));
+  const app = createApp({
+    repo,
+    storage,
+    uploadDir,
+    station,
+    auth: opts.auth ? createAuth(opts.auth) : undefined,
     trustProxy: opts.trustProxy,
   });
   return {
     app,
     repo,
     storage,
+    station,
     track,
     bytes,
     root,

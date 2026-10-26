@@ -1,12 +1,13 @@
 import { createApp, parseTrustProxy } from "./app.ts";
 import { createStorageFromEnv, verifyStorage } from "./s3-storage.ts";
 import type { StorageAdapter } from "./storage.ts";
-import { createRepoFromEnv } from "./db/index.ts";
+import { createRepoFromEnv, createStationRepoFromEnv } from "./db/index.ts";
 import { authFromEnv } from "./auth.ts";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const INCOMING_DIR = "uploads/.incoming"; // multer scratch; same volume as local storage (uploads/) so put() is a rename
 const DATA_FILE = "data/tracks.json"; // JSON catalog, used only when DATABASE_URL is unset
+const STATION_FILE = "data/station.json"; // JSON station state, likewise
 
 let auth;
 try {
@@ -26,8 +27,10 @@ try {
   process.exit(1);
 }
 
+const repo = await createRepoFromEnv(DATA_FILE); // Postgres when DATABASE_URL is set
 const app = createApp({
-  repo: await createRepoFromEnv(DATA_FILE), // Postgres when DATABASE_URL is set
+  repo,
+  station: createStationRepoFromEnv(STATION_FILE, repo), // same pool as the catalog
   storage,
   uploadDir: INCOMING_DIR,
   auth,
