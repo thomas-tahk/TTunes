@@ -27,11 +27,39 @@ export async function fetchTracks(): Promise<Track[]> {
   return res.json();
 }
 
+/** An upload the server refused (or that never got there); `reason` is the server's `{error}` text, if any. */
+export class UploadError extends Error {
+  readonly fileName: string;
+  readonly reason: string | null;
+  constructor(fileName: string, reason: string | null) {
+    super(reason ? `upload failed: ${fileName}: ${reason}` : `upload failed: ${fileName}`);
+    this.fileName = fileName;
+    this.reason = reason;
+  }
+}
+
+/** The `error` field of a JSON error body, else null. */
+async function errorText(res: Response): Promise<string | null> {
+  try {
+    const body: unknown = await res.json();
+    const err = (body as { error?: unknown } | null)?.error;
+    return typeof err === "string" && err.trim() ? err.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function uploadTrack(file: File): Promise<Track> {
   const body = new FormData();
   body.append("file", file);
-  const res = guard(await fetch("/api/tracks", { method: "POST", body }));
-  if (!res.ok) throw new Error(`upload failed: ${file.name}`);
+  let res: Response;
+  try {
+    res = guard(await fetch("/api/tracks", { method: "POST", body }));
+  } catch (err) {
+    if (err instanceof UnauthorizedError) throw err;
+    throw new UploadError(file.name, "couldn't reach the server");
+  }
+  if (!res.ok) throw new UploadError(file.name, await errorText(res));
   return res.json();
 }
 
@@ -40,14 +68,33 @@ export async function deleteTrack(id: string): Promise<void> {
   if (!res.ok) throw new Error("delete failed");
 }
 
-/** An <audio> load failed: if it was because the session is gone, flip to login. */
-export function recheckSession(): void {
-  checkSession().then(
-    (ok) => {
-      if (!ok) unauthorizedHandler();
-    },
-    () => {},
-  );
+/**
+ * What GET /audio/<id> answers now, asked after an <audio> load failed. Browsers report a
+ * 500, 404, 401 or a dropped connection on load the same way as an undecodable file
+ * (MediaError code 4), so the player asks for the first two bytes to tell them apart:
+ * - "served": 200/206, the server has the file (so a decode failure really is the file);
+ * - "gone": 404, the track no longer exists;
+ * - "unauthorized": 401, the session is gone (the login screen is already showing);
+ * - "unavailable": 5xx, another status, or no answer: a server or network hiccup.
+ */
+export type AudioProbe = "served" | "gone" | "unauthorized" | "unavailable";
+
+export async function probeAudio(id: string): Promise<AudioProbe> {
+  let res: Response;
+  try {
+    res = await fetch(audioUrl(id), { headers: { Range: "bytes=0-1" }, cache: "no-store" });
+  } catch {
+    return "unavailable";
+  }
+  void res.body?.cancel().catch(() => {});
+  try {
+    guard(res); // a 401 flips to the login screen, like every other api call
+  } catch {
+    return "unauthorized";
+  }
+  if (res.status === 404) return "gone";
+  if (res.status === 200 || res.status === 206) return "served";
+  return "unavailable";
 }
 
 export function audioUrl(id: string): string {

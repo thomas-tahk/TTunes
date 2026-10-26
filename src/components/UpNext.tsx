@@ -44,6 +44,11 @@ export function UpNext({ player }: { player: PlayerControls }) {
           </span>
         </p>
       ) : null}
+      {queue.length >= queueCap && (
+        <p className="upnext__full" role="status">
+          Queue is full — remove one to add more.
+        </p>
+      )}
     </section>
   );
 }
