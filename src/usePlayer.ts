@@ -16,6 +16,14 @@ import {
 /** How often a playing device tells the station where it is. */
 const REPORT_EVERY_MS = 10_000;
 const NOTICE_MS = 4_000;
+/**
+ * When the station has moved to another track but this device is still playing the
+ * old one this close to its end, finish it and switch on `ended` instead of cutting
+ * the last seconds off (e.g. the server advanced while this device sat in a stall).
+ */
+const FINISH_TAIL_SEC = 5;
+/** Same, for a `stale` answer to this device's own report (it lagged behind the station). */
+const FINISH_STALE_SEC = 15;
 
 export type LoadState = "loading" | "error" | "ready";
 
@@ -43,6 +51,8 @@ export interface PlayerControls {
   enqueue: (trackId: string) => void;
   dequeue: (index: number, trackId: string) => void;
   refresh: () => Promise<void>;
+  /** The station's position in its now-playing track right now (moves while it plays). */
+  liveOffset: () => number;
 }
 
 /**
@@ -51,6 +61,13 @@ export interface PlayerControls {
  * station what's next. Every station response is adopted; the audio source only
  * changes when the station's track id differs from what's loaded.
  */
+/** This device is playing (or stalled mid-play) and within `withinSec` of the loaded track's end. */
+function finishingLocally(audio: HTMLAudioElement | null, withinSec: number): boolean {
+  if (!audio || audio.paused || audio.ended || !audio.getAttribute("src")) return false;
+  if (!Number.isFinite(audio.duration)) return false;
+  return audio.duration - audio.currentTime <= withinSec;
+}
+
 export function usePlayer(): PlayerControls {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const prefetchRef = useRef<HTMLAudioElement | null>(null);
@@ -145,7 +162,9 @@ export function usePlayer(): PlayerControls {
         currentRef.current = null;
         setCurrent(null);
       } else if (np.track.id !== currentRef.current?.id) {
-        load(np.track, np.offsetSec, startedRef.current);
+        if (!finishingLocally(audio, view.stale ? FINISH_STALE_SEC : FINISH_TAIL_SEC)) {
+          load(np.track, np.offsetSec, startedRef.current);
+        } // else: `ended` picks up the station's track (see onTrackEnded)
       } else {
         currentRef.current = np.track; // same track; pick up any metadata change
         setCurrent(np.track);
@@ -212,6 +231,17 @@ export function usePlayer(): PlayerControls {
     [call, load, setNotice],
   );
 
+  /** `ended`: if the station already moved on while we finished this track, join it there; else advance. */
+  const onTrackEnded = useCallback(() => {
+    const ended = currentRef.current?.id;
+    const np = stationRef.current?.nowPlaying;
+    if (np && ended && np.track.id !== ended && startedRef.current) {
+      load(np.track, liveOffset(), true);
+      return;
+    }
+    advance(ended);
+  }, [advance, liveOffset, load]);
+
   // The one tap: start the station's track where the station is now. No network
   // round-trip before play() — the track is already loaded and the offset is derived.
   const start = useCallback(() => {
@@ -231,9 +261,9 @@ export function usePlayer(): PlayerControls {
     pendingSeekRef.current = offset;
     audio.currentTime = offset;
     setPosition(offset);
-    void audio.play().catch(onPlayRejected);
-    report(true, offset);
-  }, [advance, liveOffset, load, markStarted, onPlayRejected, report]);
+    // Tell the station "playing" only once it really is (an autoplay block must not claim it).
+    void audio.play().then(() => report(true), onPlayRejected);
+  },[advance, liveOffset, load, markStarted, onPlayRejected, report]);
 
   const toggle = useCallback(() => {
     const audio = audioRef.current;
@@ -243,8 +273,7 @@ export function usePlayer(): PlayerControls {
       return;
     }
     if (audio.paused) {
-      void audio.play().catch(onPlayRejected);
-      report(true);
+      void audio.play().then(() => report(true), onPlayRejected);
     } else {
       audio.pause(); // the pause listener reports it
     }
@@ -305,10 +334,10 @@ export function usePlayer(): PlayerControls {
   }, [refresh]);
 
   // Audio element events. Handlers read refs, so they bind once.
-  const handlers = useRef({ advance, report });
+  const handlers = useRef({ onTrackEnded, report });
   useEffect(() => {
-    handlers.current = { advance, report };
-  }, [advance, report]);
+    handlers.current = { onTrackEnded, report };
+  }, [onTrackEnded, report]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -323,7 +352,7 @@ export function usePlayer(): PlayerControls {
       if (audio.ended || suppressPauseRef.current) return;
       handlers.current.report(false);
     };
-    const onEnded = () => handlers.current.advance(currentRef.current?.id);
+    const onEnded = () => handlers.current.onTrackEnded();
     const onSeeked = () => {
       const want = pendingSeekRef.current;
       pendingSeekRef.current = null;
@@ -425,5 +454,6 @@ export function usePlayer(): PlayerControls {
     enqueue,
     dequeue,
     refresh,
+    liveOffset,
   };
 }

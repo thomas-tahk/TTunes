@@ -80,7 +80,23 @@ describe("GET /audio/:id range streaming", () => {
     }
   });
 
-  it("returns 404 for an unknown track", async () => {
+  it("marks audio privately cacheable forever on 200, 206 and HEAD", async () => {
+    const want = "private, max-age=31536000, immutable";
+    const whole = await request(t.app).get(`/audio/${t.track.id}`);
+    expect(whole.status).toBe(200);
+    expect(whole.headers["cache-control"]).toBe(want);
+    const ranged = await request(t.app).get(`/audio/${t.track.id}`).set("Range", "bytes=0-99");
+    expect(ranged.status).toBe(206);
+    expect(ranged.headers["cache-control"]).toBe(want);
+    const head = await request(t.app).head(`/audio/${t.track.id}`);
+    expect(head.status).toBe(200);
+    expect(head.headers["cache-control"]).toBe(want);
+    const headRanged = await request(t.app).head(`/audio/${t.track.id}`).set("Range", "bytes=0-99");
+    expect(headRanged.status).toBe(206);
+    expect(headRanged.headers["cache-control"]).toBe(want);
+  });
+
+  it("returns 404 for an unknown track",async () => {
     const res = await request(t.app).get("/audio/nope").set("Range", "bytes=0-99");
     expect(res.status).toBe(404);
   });
