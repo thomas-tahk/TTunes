@@ -1,5 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import request from "supertest";
 import type pg from "pg";
+import { createApp } from "../app.ts";
+import { LocalDiskStorage } from "../storage.ts";
+import { fixture } from "./helpers.ts";
 import { migrate } from "../db/migrate.ts";
 import { PgTrackRepo } from "../db/pg-track-repo.ts";
 import { createPool } from "../db/pool.ts";
@@ -111,6 +118,31 @@ describe.skipIf(!url)("Postgres", () => {
       const repo = new PgTrackRepo(pool);
       await repo.add(t);
       await expect(repo.add({ ...t, storageKey: "other.mp3" })).rejects.toThrow(/duplicate key/);
+    });
+
+    it("POST /api/tracks stores a UTF-8-tagged WAV (no NUL reaches Postgres) and rejects non-audio", async () => {
+      await migrate(pool);
+      await pool.query("DELETE FROM tracks");
+      const root = mkdtempSync(join(tmpdir(), "ttunes-pg-upload-"));
+      try {
+        const tracks = new PgTrackRepo(pool);
+        const app = createApp({
+          repo: tracks,
+          station: new PgStationRepo(pool),
+          storage: new LocalDiskStorage(join(root, "storage")),
+          uploadDir: join(root, "incoming"),
+        });
+        const res = await request(app).post("/api/tracks").attach("file", fixture("uni.wav"), "uni.wav");
+        expect(res.status).toBe(201);
+        const { rows } = await pool.query("SELECT title, artist, duration_sec FROM tracks WHERE id = $1", [res.body.id]);
+        expect(rows).toEqual([{ title: "Ünïcødé — 日本語", artist: "Bjørk ✓", duration_sec: 1 }]);
+
+        const bad = await request(app).post("/api/tracks").attach("file", Buffer.from("not music"), "x.mp3");
+        expect(bad.status).toBe(415);
+        expect((await pool.query("SELECT count(*)::int AS n FROM tracks")).rows[0].n).toBe(1);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
     });
 
     it("createRepoFromEnv picks Postgres when DATABASE_URL is set", async () => {
