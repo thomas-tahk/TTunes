@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
-import { makeTestApp, type TestApp } from "./helpers.ts";
+import { makeTestApp, makeWav, type TestApp } from "./helpers.ts";
 import { authFromEnv, createAuth } from "../auth.ts";
 import { createApp, parseTrustProxy } from "../app.ts";
 
@@ -63,7 +63,7 @@ describe("owner password auth", () => {
     expect(list.body.map((x: { id: string }) => x.id)).toEqual([t.track.id]);
     const audio = await agent.get(`/audio/${t.track.id}`).set("Range", "bytes=0-99");
     expect(audio.status).toBe(206);
-    const up = await agent.post("/api/tracks").attach("file", Buffer.alloc(10, 1), "a.mp3");
+    const up = await agent.post("/api/tracks").attach("file", makeWav(1), "a.wav");
     expect(up.status).toBe(201);
     expect((await agent.delete(`/api/tracks/${t.track.id}`)).status).toBe(204);
   });

@@ -420,6 +420,27 @@ export function stationContract(name: string, make: () => Promise<StationFixture
         expect(res.body.nowPlaying).toMatchObject({ track: { id: "x" }, offsetSec: 3600 });
       });
 
+      it("a device's playback error → POST /next {fromTrackId, reason:'error'} advances like a normal next", async () => {
+        // the client's way out of a track that can't play (e.g. unknown duration, decode error)
+        await fx.tracks.add(track("x", { durationSec: null }));
+        for (const id of ["q1", "q2"]) await fx.tracks.add(track(id));
+        const { clock, opts } = fakeClock();
+        const app = appFor(fx, opts);
+        await request(app).post("/api/station/play-now").send({ trackId: "x" });
+        await request(app).post("/api/station/queue").send({ trackId: "q1" });
+        await request(app).post("/api/station/queue").send({ trackId: "q2" });
+        clock.t += 2_000;
+        const res = await request(app).post("/api/station/next").send({ fromTrackId: "x", reason: "error" });
+        expect(res.status).toBe(200);
+        expect(res.body.stale).toBeUndefined();
+        expect(res.body.nowPlaying).toMatchObject({ track: { id: "q1" }, offsetSec: 0, playing: true });
+        expect(ids(res.body.queue)).toEqual(["q2"]);
+        // a second device reporting the same error is stale and doesn't skip q1
+        const again = await request(app).post("/api/station/next").send({ fromTrackId: "x", reason: "error" });
+        expect(again.body.stale).toBe(true);
+        expect(again.body.nowPlaying.track.id).toBe("q1");
+      });
+
       it("POST /next takes the queue head, then shuffles, and starts playing", async () => {
         for (const id of ["a", "b", "q"]) await fx.tracks.add(track(id));
         const app = appFor(fx);
