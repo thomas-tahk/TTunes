@@ -42,6 +42,8 @@ export async function makeTestApp(
     auth?: AuthOptions;
     /** express "trust proxy" setting */
     trustProxy?: boolean | number | string;
+    /** built front end to serve (SPA) */
+    staticDir?: string;
   } = {},
 ): Promise<TestApp> {
   const size = opts.size ?? 1000;
@@ -80,6 +82,7 @@ export async function makeTestApp(
     station,
     auth: opts.auth ? createAuth(opts.auth) : undefined,
     trustProxy: opts.trustProxy,
+    staticDir: opts.staticDir,
   });
   return {
     app,

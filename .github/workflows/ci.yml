@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ttunes_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d ttunes_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      # The Pg suite wipes this DB; its name must contain "test".
+      TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ttunes_test
+      TEST_S3_ENDPOINT: http://127.0.0.1:9000
+      TEST_S3_BUCKET: ttunes-test
+      TEST_S3_ACCESS_KEY_ID: minioadmin
+      TEST_S3_SECRET_ACCESS_KEY: minioadmin
+    steps:
+      - uses: actions/checkout@v4
+
+      # Service containers can't take a command, and MinIO needs `server /data`.
+      - name: Start MinIO
+        run: |
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
+            chainguard/minio:latest server /data --address :9000
+          for _ in $(seq 1 60); do
+            curl -sf http://127.0.0.1:9000/minio/health/live && exit 0
+            sleep 1
+          done
+          docker logs minio
+          exit 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx vite build
+
+      - name: Tests (Postgres + S3 suites included)
+        run: npx vitest run --reporter=default --reporter=json --outputFile=vitest-results.json
+
+      - name: Fail if any test was skipped
+        run: node scripts/assert-no-skipped-tests.mjs vitest-results.json
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t ttunes:local .
+      - name: Smoke test (compose app + Postgres + MinIO)
+        run: SMOKE_BUILD=0 scripts/smoke.sh
