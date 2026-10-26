@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type pg from "pg";
 import { migrate } from "../db/migrate.ts";
 import { PgTrackRepo } from "../db/pg-track-repo.ts";
@@ -15,8 +15,36 @@ describe.skipIf(!url)("Postgres", () => {
   let pool: pg.Pool;
 
   beforeAll(async () => {
+    const dbName = decodeURIComponent(new URL(url!).pathname.slice(1));
+    if (!/test|_t\d|rev/.test(dbName)) {
+      throw new Error(
+        `Refusing to wipe database "${dbName}": TEST_DATABASE_URL must name a throwaway DB ` +
+          `(name containing "test", "_t<digit>" or "rev").`,
+      );
+    }
     pool = createPool(url!);
     await pool.query("DROP SCHEMA public CASCADE; CREATE SCHEMA public;");
+  });
+
+  describe("pool", () => {
+    it("survives an idle client being terminated server-side", async () => {
+      // No listener added here: createPool's own 'error' handler must absorb it, or
+      // the emit throws as an uncaught exception and vitest fails the run.
+      const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+      const p = createPool(url!);
+      try {
+        const { rows } = await p.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+        expect(p.idleCount).toBe(1);
+        await pool.query("SELECT pg_terminate_backend($1)", [rows[0].pid]);
+        await vi.waitFor(() => expect(logged).toHaveBeenCalledOnce());
+        expect(String(logged.mock.calls[0][0])).toMatch(/idle client error/);
+        const after = await p.query<{ one: number }>("SELECT 1 AS one");
+        expect(after.rows[0].one).toBe(1);
+      } finally {
+        logged.mockRestore();
+        await p.end();
+      }
+    });
   });
   afterAll(async () => {
     await pool?.end();
@@ -100,6 +128,7 @@ describe.skipIf(!url)("Postgres", () => {
       expect(rows).toHaveLength(1);
       expect(rows[0].active_pool).toEqual({ kind: "library" });
       expect(rows[0].now_playing_track_id).toBeNull();
+      expect(rows[0].now_playing_playing).toBe(false);
       await expect(pool.query("INSERT INTO station (id) VALUES (false)")).rejects.toThrow();
       await expect(pool.query("INSERT INTO station DEFAULT VALUES")).rejects.toThrow(/duplicate key/);
     });
@@ -117,6 +146,32 @@ describe.skipIf(!url)("Postgres", () => {
       expect(st.rows[0].now_playing_track_id).toBeNull();
       const q = await pool.query("SELECT position, track_id FROM station_queue ORDER BY position");
       expect(q.rows).toEqual([{ position: 1, track_id: "keep" }]);
+    });
+
+    it("allows shifting and swapping queue positions in one statement", async () => {
+      await pool.query("DELETE FROM tracks");
+      await add("a");
+      await add("b");
+      await add("c");
+      await pool.query("INSERT INTO station_queue (position, track_id) VALUES (0, 'a'), (1, 'b'), (2, 'c')");
+      await pool.query("UPDATE station_queue SET position = position + 1");
+      const queue = async () =>
+        (await pool.query("SELECT position, track_id FROM station_queue ORDER BY position")).rows;
+      expect(await queue()).toEqual([
+        { position: 1, track_id: "a" },
+        { position: 2, track_id: "b" },
+        { position: 3, track_id: "c" },
+      ]);
+      await pool.query(
+        "UPDATE station_queue SET position = CASE position WHEN 1 THEN 3 WHEN 3 THEN 1 END WHERE position IN (1, 3)",
+      );
+      expect(await queue()).toEqual([
+        { position: 1, track_id: "c" },
+        { position: 2, track_id: "b" },
+        { position: 3, track_id: "a" },
+      ]);
+      // Still unique at statement end.
+      await expect(pool.query("UPDATE station_queue SET position = 0")).rejects.toThrow(/duplicate key/);
     });
 
     it("caps the queue at positions 0..5 and rejects unknown tracks", async () => {

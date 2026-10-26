@@ -37,12 +37,17 @@ export async function migrate(pool: pg.Pool, dir = MIGRATIONS_DIR): Promise<stri
       applied.push(file);
     }
     await client.query("COMMIT");
+    client.release();
     return applied;
   } catch (err) {
-    await client.query("ROLLBACK");
+    try {
+      await client.query("ROLLBACK");
+    } catch {
+      // Connection is likely broken; the original error is the one worth surfacing.
+    }
+    // Passing the error destroys the client instead of returning it to the pool.
+    client.release(err instanceof Error ? err : new Error(String(err)));
     throw err;
-  } finally {
-    client.release();
   }
 }
 

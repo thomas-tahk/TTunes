@@ -33,21 +33,30 @@ CREATE TABLE tracks (
 --                           the track clears it (ON DELETE SET NULL).
 --   now_playing_offset_sec  playback position (seconds, fractional) as last reported.
 --   now_playing_reported_at when that offset was reported; resume position is
---                           offset + (now() - reported_at) while playing.
+--                           offset + (now() - reported_at) while playing, else offset.
+--   now_playing_playing     true = playing, false = paused / stopped.
+--   NOTE for #7: deleting the now-playing track only NULLs now_playing_track_id;
+--   offset, reported_at and playing keep their old values. Treat them as meaningless
+--   when the track id is NULL, and reset all three whenever a new track is set.
 CREATE TABLE station (
   id                      boolean PRIMARY KEY DEFAULT true CHECK (id),
   active_pool             jsonb NOT NULL DEFAULT '{"kind": "library"}'::jsonb,
   now_playing_track_id    text REFERENCES tracks (id) ON DELETE SET NULL,
   now_playing_offset_sec  double precision NOT NULL DEFAULT 0 CHECK (now_playing_offset_sec >= 0),
-  now_playing_reported_at timestamptz
+  now_playing_reported_at timestamptz,
+  now_playing_playing     boolean NOT NULL DEFAULT false
 );
 INSERT INTO station DEFAULT VALUES;
 
 -- station_queue: the manual "play next" queue, at most 6 entries (positions 0..5,
 --   0 plays first). The same track may be queued twice. Deleting a track removes its
 --   queue entries (ON DELETE CASCADE); #7 should compact positions after that.
+--   The primary key is DEFERRABLE so uniqueness is checked at statement end, not per
+--   row: `UPDATE station_queue SET position = position + 1` and swaps work in one
+--   statement (or SET CONSTRAINTS station_queue_pkey DEFERRED for multi-statement moves).
 CREATE TABLE station_queue (
-  position integer PRIMARY KEY CHECK (position >= 0 AND position < 6),
-  track_id text NOT NULL REFERENCES tracks (id) ON DELETE CASCADE
+  position integer NOT NULL CHECK (position >= 0 AND position < 6),
+  track_id text NOT NULL REFERENCES tracks (id) ON DELETE CASCADE,
+  CONSTRAINT station_queue_pkey PRIMARY KEY (position) DEFERRABLE INITIALLY IMMEDIATE
 );
 CREATE INDEX station_queue_track_id_idx ON station_queue (track_id);
