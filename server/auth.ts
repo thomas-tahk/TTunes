@@ -1,5 +1,6 @@
 import express, { type NextFunction, type Request, type RequestHandler, type Response, type Router } from "express";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { parseBool } from "./env.ts";
 
 /**
  * Single-owner password gate (issue #9). No accounts, no session store:
@@ -174,6 +175,6 @@ export function authFromEnv(env: NodeJS.ProcessEnv = process.env): Auth | undefi
   if (!secret) {
     throw new Error("SESSION_SECRET must be set when OWNER_PASSWORD is set; refusing to start.");
   }
-  const secure = env.COOKIE_SECURE !== undefined ? env.COOKIE_SECURE === "true" : production;
+  const secure = parseBool(env.COOKIE_SECURE, production, "COOKIE_SECURE");
   return createAuth({ password, secret, secure });
 }

@@ -2,7 +2,7 @@
 
 A personal, always-on music station. Curate your own library, shuffle 24/7, and ask an AI to fetch specific tracks on request.
 
-**Status:** building M1 ("on my phone, from the cloud"): upload, streaming, owner password, Postgres + R2 storage, the server-owned station, and a Docker image with CI are in; the phone player is in progress. Not deployed yet.
+**Status:** M1 ("on my phone, from the cloud") is built: upload, streaming, owner password, Postgres + R2 storage, the server-owned station, the phone player, and a Docker image with CI are all in. Not deployed yet: waiting on the owner's accounts (see [docs/deploy.md](docs/deploy.md)).
 
 ## Run it
 
