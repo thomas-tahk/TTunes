@@ -8,7 +8,7 @@ import { S3Storage, type S3StorageConfig } from "../s3-storage.ts";
 const REPO_ROOT = resolve(import.meta.dirname, "../..");
 
 /**
- * Runs server/index.ts with the given env (inherited S3_* vars stripped) in a temp
+ * Runs server/index.ts with the given env (inherited S3_/DB/auth vars stripped) in a temp
  * cwd. Resolves when it exits, or after timeoutMs (killing it) with code null: it kept running.
  */
 export function runServer(
@@ -16,7 +16,11 @@ export function runServer(
   timeoutMs = 8000,
 ): Promise<{ code: number | null; stdout: string; stderr: string }> {
   const cwd = mkdtempSync(join(tmpdir(), "ttunes-startup-"));
-  const base = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("S3_")));
+  // strip inherited config so only `env` decides storage (and the JSON repo + no auth are used)
+  const inherited = ["DATABASE_URL", "OWNER_PASSWORD", "SESSION_SECRET", "TRUST_PROXY"];
+  const base = Object.fromEntries(
+    Object.entries(process.env).filter(([k]) => !k.startsWith("S3_") && !inherited.includes(k)),
+  );
   const child = spawn(join(REPO_ROOT, "node_modules/.bin/tsx"), [join(REPO_ROOT, "server/index.ts")], {
     cwd,
     env: { ...base, PORT: "0", ...env },

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Track } from "./types.ts";
-import { audioUrl } from "./api.ts";
+import { audioUrl, recheckSession } from "./api.ts";
 
 export const QUEUE_CAP = 6; // manual queue stays a "next few", distinct from playlists (spec §5)
 
@@ -97,10 +97,14 @@ export function usePlayer(tracks: Track[]): PlayerControls {
     audio.addEventListener("ended", onEnded);
     audio.addEventListener("play", onPlay);
     audio.addEventListener("pause", onPause);
+    // A load failure may be a 401 (session gone) — let the auth gate check.
+    audio.addEventListener("error", recheckSession);
     return () => {
       audio.removeEventListener("ended", onEnded);
       audio.removeEventListener("play", onPlay);
       audio.removeEventListener("pause", onPause);
+      audio.removeEventListener("error", recheckSession);
+      audio.pause(); // player unmounted (e.g. back to the login screen): stop playback
     };
   }, []);
 
