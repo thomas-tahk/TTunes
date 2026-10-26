@@ -6,12 +6,14 @@ import { createApp } from "../app.ts";
 import { JsonTrackRepo } from "../repo.ts";
 import { JsonStationRepo } from "../station-repo.ts";
 import { LocalDiskStorage } from "../storage.ts";
+import { createAuth, type AuthOptions } from "../auth.ts";
 import type { Track } from "../types.ts";
 
 export interface TestApp {
   app: Express;
   repo: JsonTrackRepo;
   storage: LocalDiskStorage;
+  station: JsonStationRepo;
   /** The seeded track (a fake audio file of `size` bytes). */
   track: Track;
   /** Exact bytes stored for the seeded track, for asserting response bodies. */
@@ -26,9 +28,19 @@ export interface TestApp {
 /**
  * Builds an app against throwaway temp dirs (JsonTrackRepo + LocalDiskStorage)
  * with one seeded track whose file is `size` deterministic bytes (default 1000, `.mp3`).
+ * Pass `auth` to put /api and /audio behind the owner password.
  * Call cleanup() in afterEach.
  */
-export async function makeTestApp(opts: { size?: number; ext?: string } = {}): Promise<TestApp> {
+export async function makeTestApp(
+  opts: {
+    size?: number;
+    ext?: string;
+    /** enable the owner-password gate */
+    auth?: AuthOptions;
+    /** express "trust proxy" setting */
+    trustProxy?: boolean | number | string;
+  } = {},
+): Promise<TestApp> {
   const size = opts.size ?? 1000;
   const ext = opts.ext ?? ".mp3";
   const root = mkdtempSync(join(tmpdir(), "ttunes-test-"));
@@ -58,11 +70,19 @@ export async function makeTestApp(opts: { size?: number; ext?: string } = {}): P
   await repo.add(track);
 
   const station = new JsonStationRepo(join(root, "data", "station.json"));
-  const app = createApp({ repo, storage, uploadDir, station });
+  const app = createApp({
+    repo,
+    storage,
+    uploadDir,
+    station,
+    auth: opts.auth ? createAuth(opts.auth) : undefined,
+    trustProxy: opts.trustProxy,
+  });
   return {
     app,
     repo,
     storage,
+    station,
     track,
     bytes,
     root,

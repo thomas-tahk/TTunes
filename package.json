@@ -14,7 +14,6 @@
     "migrate": "tsx server/db/migrate.ts"
   },
   "dependencies": {
-    "cors": "^2.8.6",
     "express": "^5.2.1",
     "multer": "^2.2.0",
     "music-metadata": "^11.13.0",
@@ -22,7 +21,6 @@
     "pg": "^8.23.1"
   },
   "devDependencies": {
-    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/multer": "^2.1.0",
     "@types/pg": "^8.23.1",
