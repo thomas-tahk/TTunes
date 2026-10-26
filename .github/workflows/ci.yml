@@ -67,6 +67,45 @@ jobs:
       - name: Fail if any test was skipped
         run: node scripts/assert-no-skipped-tests.mjs vitest-results.json
 
+  # The M1 UI gate: real server serving dist/, Chromium on a phone and a desktop viewport.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      E2E_SHOTS: ${{ github.workspace }}/e2e-shots
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Playwright version
+        id: pw
+        run: echo "version=$(node -p 'require("playwright/package.json").version')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
+      # --with-deps also installs the system libraries, which aren't cached, so run it every time.
+      - run: npx playwright install --with-deps chromium
+
+      - run: npm run test:e2e
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: e2e-shots/
+          if-no-files-found: warn
+
   docker:
     runs-on: ubuntu-latest
     timeout-minutes: 20

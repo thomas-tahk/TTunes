@@ -2,26 +2,33 @@
 // tap picks up the server station's track at its offset.
 //
 // Run with `npm run test:e2e` (builds first). Starts the real server with auth on,
-// JSON repos and local-disk storage in a temp dir, serves the built front end with
-// `vite preview` (proxying /api and /audio to that server), drives Chromium, tears down.
-// Screenshots land in docs/milestones/m1-shots/.
+// JSON repos and local-disk storage in a temp dir, serving the built front end itself
+// (STATIC_DIR=dist, the production path), drives Chromium against it, tears down.
 //
-// Env: PLAYWRIGHT_CHROMIUM_PATH to use a specific Chromium binary (otherwise Playwright's own).
+// Env:
+//   E2E_SHOTS                 where screenshots go (default: a fresh temp dir). The committed
+//                             milestone shots are refreshed with E2E_SHOTS=docs/milestones/m1-shots.
+//   PLAYWRIGHT_CHROMIUM_PATH  a specific Chromium binary (otherwise Playwright's own).
+//   E2E_VERBOSE               echo the server's stdout.
 
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const SHOTS = join(ROOT, "docs/milestones/m1-shots");
+const DIST = join(ROOT, "dist");
 const BIN = (name) => join(ROOT, "node_modules/.bin", process.platform === "win32" ? `${name}.cmd` : name);
 const PASSWORD = "e2e-owner-password";
 const OFFSET = 7;
+const TRACK_SEC = 20;
 const TAP_TO_PLAY_MAX_MS = 1000;
+/** Every check() below; a run that stops early or skips one fails even if nothing FAILed. */
+const EXPECTED_CHECKS = 19;
 
 const results = [];
 const check = (name, ok, detail) => {
@@ -140,23 +147,41 @@ async function tapAndMeasure(page, tap, minOffset = OFFSET) {
   });
 }
 
-async function main() {
-  const work = await mkdtemp(join(tmpdir(), "ttunes-e2e-"));
-  await mkdir(SHOTS, { recursive: true });
-  const apiPort = await freePort();
-  const webPort = await freePort();
-  const web = `http://127.0.0.1:${webPort}`;
+/** The station's position in its now-playing track as of now (GET /api/station computes it). */
+async function stationNow(page, web) {
+  const res = await page.request.get(`${web}/api/station`);
+  if (!res.ok()) throw new Error(`GET /api/station: ${res.status()}`);
+  return res.json();
+}
 
-  // Real server, auth on, JSON catalog + station and local-disk audio under the temp dir.
-  const serverEnv = { ...process.env, PORT: String(apiPort), OWNER_PASSWORD: PASSWORD, SESSION_SECRET: "e2e-session-secret" };
+const audioState = (page) =>
+  page.evaluate(() => {
+    const a = document.querySelector('audio[data-role="main"]');
+    return { src: a.getAttribute("src"), t: a.currentTime, paused: a.paused, ended: a.ended };
+  });
+
+let SHOTS;
+
+async function main() {
+  if (!existsSync(join(DIST, "index.html"))) throw new Error("dist/ not built: run `npm run test:e2e` (it builds first)");
+  const work = await mkdtemp(join(tmpdir(), "ttunes-e2e-"));
+  SHOTS = process.env.E2E_SHOTS ? resolve(process.env.E2E_SHOTS) : await mkdtemp(join(tmpdir(), "ttunes-e2e-shots-"));
+  await mkdir(SHOTS, { recursive: true });
+  const port = await freePort();
+  const web = `http://127.0.0.1:${port}`;
+
+  // Real server, auth on, JSON catalog + station and local-disk audio under the temp dir,
+  // serving the built front end like production does.
+  const serverEnv = {
+    ...process.env,
+    PORT: String(port),
+    OWNER_PASSWORD: PASSWORD,
+    SESSION_SECRET: "e2e-session-secret",
+    STATIC_DIR: DIST,
+  };
   for (const k of ["DATABASE_URL", "S3_BUCKET", "NODE_ENV", "COOKIE_SECURE"]) delete serverEnv[k];
   start("server", BIN("tsx"), [join(ROOT, "server/index.ts")], { cwd: work, env: serverEnv });
-  start("web", BIN("vite"), ["preview", "--host", "127.0.0.1", "--port", String(webPort), "--strictPort"], {
-    cwd: ROOT,
-    env: { ...process.env, TTUNES_API_TARGET: `http://127.0.0.1:${apiPort}` },
-  });
-  await waitFor(`http://127.0.0.1:${apiPort}/health`);
-  await waitFor(web);
+  await waitFor(`${web}/health`);
 
   const browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined });
   const consoleErrors = [];
@@ -184,11 +209,11 @@ async function main() {
     const longName = "Beta Tone (an extraordinarily long extended-remix-version-title that has to wrap on a phone).wav";
     for (const [name, freq] of [["Alpha Tone.wav", 440], [longName, 554]]) {
       const res = await page.request.post(`${web}/api/tracks`, {
-        multipart: { file: { name, mimeType: "audio/wav", buffer: sineWav(20, freq) } },
+        multipart: { file: { name, mimeType: "audio/wav", buffer: sineWav(TRACK_SEC, freq) } },
       });
       if (res.status() !== 201) throw new Error(`upload ${name}: ${res.status()} ${await res.text()}`);
       const track = await res.json();
-      check(`upload ${name} reads a duration`, track.durationSec === 20, `durationSec=${track.durationSec}`);
+      check(`upload ${name} reads a duration`, track.durationSec === TRACK_SEC, `durationSec=${track.durationSec}`);
       ids.push(track.id);
     }
     const X = ids[0];
@@ -204,9 +229,27 @@ async function main() {
     await page.waitForFunction(() => document.querySelector('audio[data-role="main"]')?.getAttribute("src"));
     await page.screenshot({ path: join(SHOTS, "tap-to-play-390x844.png") });
 
-    const m = await tapAndMeasure(page, () => playBtn.tap());
+    // The "pick up at m:ss" hint follows the station while it plays.
+    const hint = page.locator(".hero__hint");
+    const hint1 = await hint.textContent();
+    await page.waitForTimeout(2100);
+    const hint2 = await hint.textContent();
+    const secs = (s) => {
+      const m = /(\d+):(\d\d)/.exec(s ?? "");
+      return m ? Number(m[1]) * 60 + Number(m[2]) : NaN;
+    };
+    check("tap hint ticks forward while the station plays", secs(hint2) > secs(hint1), `"${hint1}" -> "${hint2}"`);
+
+    // Where the station is right before the tap: the player must start at least there.
+    const before = await stationNow(page, web);
+    const liveOffset = before.nowPlaying.offsetSec;
+    const m = await tapAndMeasure(page, () => playBtn.tap(), liveOffset);
     check("audio src is the station's track", m.src === `/audio/${X}`, `src=${m.src}`);
-    check(`currentTime >= offset ${OFFSET}`, m.currentTime >= OFFSET, `currentTime=${m.currentTime.toFixed(2)}`);
+    check(
+      "currentTime >= the station's live offset",
+      m.currentTime >= liveOffset,
+      `currentTime=${m.currentTime.toFixed(2)} live offset=${liveOffset.toFixed(2)}`,
+    );
     check(
       `tap to playing within ${TAP_TO_PLAY_MAX_MS}ms`,
       m.tapToPlayingMs <= TAP_TO_PLAY_MAX_MS,
@@ -262,6 +305,72 @@ async function main() {
       advanced.nowPlaying?.track.id === upNextId && advanced.nowPlaying.playing,
       `station now=${advanced.nowPlaying?.track.id}`,
     );
+
+    // The station moves on while this device still has the last seconds of its track
+    // (as after a buffering stall): the device finishes them, then joins the station.
+    const B = upNextId;
+    const moveTo = advanced.upNext?.id ?? X;
+    const moved = await page.request.put(`${web}/api/station/now-playing`, {
+      data: { trackId: moveTo, offsetSec: 0, playing: true, fromTrackId: B },
+    });
+    if (!moved.ok()) throw new Error(`PUT now-playing (move on): ${moved.status()} ${await moved.text()}`);
+    // Seeking near the end makes the page report its (now stale) position and adopt the answer.
+    const reported = page.waitForResponse((r) => r.url().endsWith("/api/station/now-playing") && r.request().method() === "PUT");
+    await page.evaluate((t) => {
+      document.querySelector('audio[data-role="main"]').currentTime = t;
+    }, TRACK_SEC - 3.5);
+    const staleAnswer = await (await reported).json();
+    await page.waitForTimeout(800);
+    const tail = await audioState(page);
+    check(
+      "station moves on near the end: the device finishes its track first",
+      staleAnswer.stale === true &&
+        staleAnswer.nowPlaying?.track.id === moveTo &&
+        tail.src === `/audio/${B}` &&
+        !tail.paused &&
+        tail.t >= TRACK_SEC - 3,
+      `answer stale=${staleAnswer.stale} now=${staleAnswer.nowPlaying?.track.id}; local src=${tail.src} t=${tail.t.toFixed(2)}`,
+    );
+    await page.waitForFunction(
+      (id) => {
+        const a = document.querySelector('audio[data-role="main"]');
+        return a.getAttribute("src") === `/audio/${id}` && !a.paused && a.currentTime > 0;
+      },
+      moveTo,
+      { timeout: 8_000 },
+    );
+    const joined = await audioState(page);
+    check(
+      "...then joins the station's track on ended",
+      joined.src === `/audio/${moveTo}` && !joined.paused,
+      `src=${joined.src} t=${joined.t.toFixed(2)}`,
+    );
+
+    // Same again, but the listener pauses during those last seconds: the device must stay
+    // paused (on either track), not start the station's next one by itself.
+    const P = moveTo;
+    const pauseTo = (await stationNow(page, web)).upNext?.id;
+    const moved2 = await page.request.put(`${web}/api/station/now-playing`, {
+      data: { trackId: pauseTo, offsetSec: 0, playing: true, fromTrackId: P },
+    });
+    if (!moved2.ok()) throw new Error(`PUT now-playing (move on 2): ${moved2.status()} ${await moved2.text()}`);
+    const reported2 = page.waitForResponse((r) => r.url().endsWith("/api/station/now-playing") && r.request().method() === "PUT");
+    await page.evaluate((t) => {
+      document.querySelector('audio[data-role="main"]').currentTime = t;
+    }, TRACK_SEC - 3.5);
+    await reported2;
+    await page.waitForTimeout(300);
+    const deferred2 = await audioState(page);
+    await page.evaluate(() => document.querySelector('audio[data-role="main"]').pause());
+    await page.waitForTimeout(800);
+    const paused1 = await audioState(page);
+    await page.waitForTimeout(5000); // past the local track's end + the deferral deadline
+    const paused2 = await audioState(page);
+    check(
+      "pause during the finish-the-tail window stays paused",
+      deferred2.src === `/audio/${P}` && paused1.paused && paused2.paused,
+      `before pause src=${deferred2.src}; +0.8s src=${paused1.src} paused=${paused1.paused}; +5.8s src=${paused2.src} paused=${paused2.paused}`,
+    );
     await phone.close();
 
     // ---- desktop ----
@@ -278,9 +387,15 @@ async function main() {
     await dpage.goto(web);
     const dbtn = dpage.locator(".hero__play");
     await dbtn.waitFor();
-    // The phone left the station on upNext, ~1s in: the desktop picks that up.
-    const dm = await tapAndMeasure(dpage, () => dbtn.click(), 0.5);
-    check("desktop: one click picks up the station's track", !dm.paused && dm.src === `/audio/${upNextId}`, `src=${dm.src} currentTime=${dm.currentTime.toFixed(2)} tap->playing=${dm.tapToPlayingMs.toFixed(0)}ms`);
+    // The phone left the station a few seconds into its latest track: the desktop picks that up.
+    const dStation = await stationNow(dpage, web);
+    const dTrack = dStation.nowPlaying?.track.id;
+    const dm = await tapAndMeasure(dpage, () => dbtn.click(), dStation.nowPlaying?.offsetSec ?? 0);
+    check(
+      "desktop: one click picks up the station's track at its live offset",
+      !dm.paused && dm.src === `/audio/${dTrack}` && dm.currentTime >= dStation.nowPlaying.offsetSec,
+      `src=${dm.src} currentTime=${dm.currentTime.toFixed(2)} live offset=${dStation.nowPlaying?.offsetSec.toFixed(2)} tap->playing=${dm.tapToPlayingMs.toFixed(0)}ms`,
+    );
     const dw = await dpage.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, innerWidth: window.innerWidth }));
     check("no horizontal scroll at 1280", dw.scrollWidth <= dw.innerWidth, `scrollWidth=${dw.scrollWidth} innerWidth=${dw.innerWidth}`);
     await dpage.screenshot({ path: join(SHOTS, "playing-1280x800.png") });
@@ -294,12 +409,17 @@ async function main() {
   }
 
   const failed = results.filter((r) => !r.ok);
-  console.log(`\n${results.length - failed.length}/${results.length} checks passed. Screenshots: ${SHOTS}`);
+  console.log(`\n${results.length - failed.length}/${results.length} checks passed (expected ${EXPECTED_CHECKS}). Screenshots: ${SHOTS}`);
   if (failed.length) process.exitCode = 1;
+  if (results.length !== EXPECTED_CHECKS) {
+    console.error(`FAIL  ran ${results.length} checks, expected ${EXPECTED_CHECKS}`);
+    process.exitCode = 1;
+  }
 }
 
 main().catch((err) => {
   console.error(err);
+  console.error(`\n${results.filter((r) => r.ok).length}/${EXPECTED_CHECKS} checks passed before the run stopped. Screenshots: ${SHOTS}`);
   stopAll();
   process.exitCode = 1;
 });

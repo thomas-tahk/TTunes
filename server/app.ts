@@ -58,6 +58,13 @@ function contentTypeFor(key: string): string {
   return CONTENT_TYPES[extname(key).toLowerCase()] ?? "application/octet-stream";
 }
 
+/**
+ * A track id's bytes never change (a new upload gets a new id), so the browser may keep
+ * what it fetched: the prefetched upNext isn't downloaded again when it starts playing.
+ * `private` because audio is behind the owner cookie, so no shared cache may store it.
+ */
+export const AUDIO_CACHE_CONTROL = "private, max-age=31536000, immutable";
+
 export type ByteRange = { start: number; end: number } | "unsatisfiable" | null;
 
 /**
@@ -191,6 +198,7 @@ export function createApp({ repo, storage, uploadDir, station, stationOptions, a
       "Accept-Ranges": "bytes",
       "Content-Length": end - start + 1,
       "Content-Type": contentType,
+      "Cache-Control": AUDIO_CACHE_CONTROL,
     };
     if (range) headers["Content-Range"] = `bytes ${start}-${end}/${size}`;
 
