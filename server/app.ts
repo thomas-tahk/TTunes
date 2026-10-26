@@ -1,7 +1,7 @@
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import multer from "multer";
 import { nanoid } from "nanoid";
-import { extname } from "node:path";
+import { extname, resolve } from "node:path";
 import { rm } from "node:fs/promises";
 import { pipeline, type Readable } from "node:stream";
 import { parseFile } from "music-metadata";
@@ -23,6 +23,8 @@ export interface AppDeps {
    * Unset = trust nothing (req.ip is the direct peer).
    */
   trustProxy?: boolean | number | string;
+  /** Built front end (vite `dist/`) to serve publicly, with SPA fallback to index.html. Unset = API only. */
+  staticDir?: string;
 }
 
 /** Parses TRUST_PROXY per the express docs: "true"/"false", a hop count, or an IP/subnet list. */
@@ -72,7 +74,7 @@ export function parseRange(header: string | undefined, size: number): ByteRange 
   return { start, end };
 }
 
-export function createApp({ repo, storage, uploadDir, auth, trustProxy }: AppDeps): Express {
+export function createApp({ repo, storage, uploadDir, auth, trustProxy, staticDir }: AppDeps): Express {
   const upload = multer({
     storage: multer.diskStorage({
       destination: uploadDir,
@@ -229,6 +231,21 @@ export function createApp({ repo, storage, uploadDir, auth, trustProxy }: AppDep
       }
     });
   });
+
+  // Built front end, public (the login screen is part of it). Mounted after every
+  // route, so /api and /audio keep their auth and their own 404s.
+  if (staticDir) {
+    app.use(express.static(staticDir, { index: "index.html" }));
+    const indexFile = resolve(staticDir, "index.html");
+    app.use((req: Request, res: Response, next: NextFunction) => {
+      const apiPath = /^\/(api|audio)(\/|$)/.test(req.path);
+      if ((req.method !== "GET" && req.method !== "HEAD") || apiPath) {
+        next();
+        return;
+      }
+      res.sendFile(indexFile);
+    });
+  }
 
   // Rejected async handlers land here (express 5) — answer 500 instead of hanging.
   app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
