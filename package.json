@@ -9,7 +9,8 @@
     "dev:web": "vite",
     "build": "vite build",
     "start": "tsx server/index.ts",
-    "typecheck": "tsc -b --noEmit"
+    "typecheck": "tsc -b --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "cors": "^2.8.6",
@@ -24,12 +25,15 @@
     "@types/multer": "^2.1.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
+    "@types/supertest": "^7.2.1",
     "@vitejs/plugin-react": "^6.0.3",
     "concurrently": "^10.0.3",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "supertest": "^7.3.1",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",
-    "vite": "^8.1.2"
+    "vite": "^8.1.2",
+    "vitest": "^5.0.5"
   }
 }
