@@ -4,7 +4,7 @@ import { nanoid } from "nanoid";
 import { extname, resolve } from "node:path";
 import { rm } from "node:fs/promises";
 import { pipeline, type Readable } from "node:stream";
-import { parseFile } from "music-metadata";
+import { UnplayableAudioError, cleanText, readAudioMetadata } from "./audio-metadata.ts";
 import { StorageNotFoundError, type StorageAdapter } from "./storage.ts";
 import type { TrackRepo } from "./repo.ts";
 import type { StationRepo } from "./station-repo.ts";
@@ -90,6 +90,8 @@ export function parseRange(header: string | undefined, size: number): ByteRange 
 
 export function createApp({ repo, storage, uploadDir, station, stationOptions, auth, trustProxy, staticDir }: AppDeps): Express {
   const upload = multer({
+    // browsers send the multipart filename as raw UTF-8; multer's default (latin1) garbles it
+    defParamCharset: "utf8",
     storage: multer.diskStorage({
       destination: uploadDir,
       // temp name differs from the final storage key, so even if uploadDir is the
@@ -133,7 +135,14 @@ export function createApp({ repo, storage, uploadDir, station, stationOptions, a
     try {
       const ext = extname(file.originalname).toLowerCase();
       const storageKey = nanoid() + ext;
-      const track = await buildTrack(file, storageKey);
+      // Only files the player can play enter the library: a known extension, and
+      // music-metadata finds an audio stream with a duration. Nothing is stored otherwise.
+      const track = Object.hasOwn(CONTENT_TYPES, ext) ? await buildPlayableTrack(file, storageKey) : null;
+      if (!track) {
+        await rm(file.path, { force: true });
+        res.status(415).json({ error: "not a playable audio file" });
+        return;
+      }
       await storage.put(storageKey, file.path, contentTypeFor(storageKey));
       try {
         await repo.add(track);
@@ -281,43 +290,35 @@ export function createApp({ repo, storage, uploadDir, station, stationOptions, a
   return app;
 }
 
+/** buildTrack, or null when the upload isn't audio the player can play. */
+async function buildPlayableTrack(file: Express.Multer.File, storageKey: string): Promise<Track | null> {
+  try {
+    return await buildTrack(file, storageKey);
+  } catch (err) {
+    if (err instanceof UnplayableAudioError) return null;
+    throw err;
+  }
+}
+
+/**
+ * Builds the catalog entry for an upload. Throws UnplayableAudioError when the file
+ * isn't audio the player can play. Every string field goes through cleanText here,
+ * so no control character (e.g. a NUL, which Postgres rejects) reaches a repo.
+ */
 async function buildTrack(file: Express.Multer.File, storageKey: string): Promise<Track> {
-  const meta = await readMetadata(file.path);
+  const meta = await readAudioMetadata(file.path);
+  const ext = extname(file.originalname);
+  const baseName = ext ? file.originalname.slice(0, -ext.length) : file.originalname;
   return {
     id: nanoid(),
-    title: meta.title ?? file.originalname.replace(extname(file.originalname), ""),
-    artist: meta.artist ?? "Unknown Artist",
-    album: meta.album,
+    title: cleanText(meta.title) ?? cleanText(baseName) ?? "Untitled",
+    artist: cleanText(meta.artist) ?? "Unknown Artist",
+    album: cleanText(meta.album),
     durationSec: meta.durationSec,
     bitrate: meta.bitrate,
-    format: meta.format,
+    format: cleanText(meta.format),
     sizeBytes: file.size,
     storageKey,
     createdAt: new Date().toISOString(),
   };
-}
-
-interface ParsedMetadata {
-  title: string | null;
-  artist: string | null;
-  album: string | null;
-  durationSec: number | null;
-  bitrate: number | null;
-  format: string | null;
-}
-
-async function readMetadata(path: string): Promise<ParsedMetadata> {
-  try {
-    const { common, format } = await parseFile(path);
-    return {
-      title: common.title ?? null,
-      artist: common.artist ?? null,
-      album: common.album ?? null,
-      durationSec: format.duration ? Math.round(format.duration) : null,
-      bitrate: format.bitrate ? Math.round(format.bitrate) : null,
-      format: format.container ?? format.codec ?? null,
-    };
-  } catch {
-    return { title: null, artist: null, album: null, durationSec: null, bitrate: null, format: null };
-  }
 }

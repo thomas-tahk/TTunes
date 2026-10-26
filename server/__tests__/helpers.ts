@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Express } from "express";
@@ -9,6 +9,48 @@ import { JsonStationRepo } from "../station-repo.ts";
 import { LocalDiskStorage, type StorageAdapter } from "../storage.ts";
 import { createAuth, type AuthOptions } from "../auth.ts";
 import type { Track } from "../types.ts";
+
+/**
+ * A valid 16-bit mono PCM WAV of a 440 Hz tone (8 kHz, so 16 KB per second), which
+ * music-metadata reads with a real duration. Size = 44 + 16000 * seconds bytes.
+ */
+export function makeWav(seconds: number, rate = 8000): Buffer {
+  const samples = Math.round(seconds * rate);
+  const buf = Buffer.alloc(44 + samples * 2);
+  buf.write("RIFF", 0, "latin1");
+  buf.writeUInt32LE(36 + samples * 2, 4);
+  buf.write("WAVE", 8, "latin1");
+  buf.write("fmt ", 12, "latin1");
+  buf.writeUInt32LE(16, 16); // fmt chunk size
+  buf.writeUInt16LE(1, 20); // PCM
+  buf.writeUInt16LE(1, 22); // mono
+  buf.writeUInt32LE(rate, 24);
+  buf.writeUInt32LE(rate * 2, 28); // byte rate
+  buf.writeUInt16LE(2, 32); // block align
+  buf.writeUInt16LE(16, 34); // bits per sample
+  buf.write("data", 36, "latin1");
+  buf.writeUInt32LE(samples * 2, 40);
+  for (let i = 0; i < samples; i++) {
+    buf.writeInt16LE(Math.round(12000 * Math.sin((2 * Math.PI * 440 * i) / rate)), 44 + i * 2);
+  }
+  return buf;
+}
+
+/** Bytes of a committed fixture under server/__tests__/fixtures/ (tiny ffmpeg-made 1 s tones). */
+export function fixture(name: string): Buffer {
+  return readFileSync(join(import.meta.dirname, "fixtures", name));
+}
+
+/** Deterministic pseudo-random bytes (LCG), for "corrupt file" uploads that never flake. */
+export function noiseBytes(size: number, seed = 1): Buffer {
+  const buf = Buffer.alloc(size);
+  let x = seed >>> 0;
+  for (let i = 0; i < size; i++) {
+    x = (Math.imul(x, 1664525) + 1013904223) >>> 0;
+    buf[i] = x >>> 24;
+  }
+  return buf;
+}
 
 export interface TestApp {
   app: Express;
