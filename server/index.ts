@@ -1,135 +1,78 @@
-import express, { type Request, type Response } from "express";
-import cors from "cors";
-import multer from "multer";
-import { nanoid } from "nanoid";
-import { extname } from "node:path";
-import { parseFile } from "music-metadata";
-import { LocalDiskStorage } from "./storage.ts";
-import { JsonTrackRepo } from "./repo.ts";
-import type { Track } from "./types.ts";
+import { existsSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { createApp, parseTrustProxy } from "./app.ts";
+import { createStorageFromEnv, verifyStorage } from "./s3-storage.ts";
+import type { StorageAdapter } from "./storage.ts";
+import { createRepoFromEnv, createStationRepoFromEnv } from "./db/index.ts";
+import { dbErrorMessage } from "./db/pool.ts";
+import type { TrackRepo } from "./repo.ts";
+import type { StationRepo } from "./station-repo.ts";
+import { authFromEnv } from "./auth.ts";
 
-const PORT = 8787;
-const UPLOAD_DIR = "uploads"; // local adapter; swaps to R2 later (design spec §9)
-const DATA_FILE = "data/tracks.json"; // local adapter; swaps to Postgres later
+const PORT = Number(process.env.PORT ?? 8787);
+const INCOMING_DIR = "uploads/.incoming"; // multer scratch; same volume as local storage (uploads/) so put() is a rename
+const DATA_FILE = "data/tracks.json"; // JSON catalog, used only when DATABASE_URL is unset
+const STATION_FILE = "data/station.json"; // JSON station state, likewise
+// Built front end: STATIC_DIR if set, else the repo's dist/ when `vite build` has run.
+const BUILT_DIST = resolve(import.meta.dirname, "../dist");
+const STATIC_DIR = process.env.STATIC_DIR
+  ? resolve(process.env.STATIC_DIR)
+  : existsSync(join(BUILT_DIST, "index.html"))
+    ? BUILT_DIST
+    : undefined;
 
-const storage = new LocalDiskStorage(UPLOAD_DIR);
-const repo = new JsonTrackRepo(DATA_FILE);
+let auth;
+try {
+  auth = authFromEnv();
+} catch (err) {
+  console.error((err as Error).message);
+  process.exit(1);
+}
 
-const CONTENT_TYPES: Record<string, string> = {
-  ".mp3": "audio/mpeg",
-  ".m4a": "audio/mp4",
-  ".aac": "audio/aac",
-  ".flac": "audio/flac",
-  ".ogg": "audio/ogg",
-  ".opus": "audio/opus",
-  ".wav": "audio/wav",
-};
+// S3/R2 when S3_BUCKET is set, else local uploads/. Misconfig fails startup, not every request.
+let storage: StorageAdapter;
+try {
+  storage = createStorageFromEnv();
+  await verifyStorage(storage);
+} catch (err) {
+  console.error(`TTunes: storage misconfigured: ${(err as Error).message}`);
+  process.exit(1);
+}
 
-const upload = multer({
-  storage: multer.diskStorage({
-    destination: UPLOAD_DIR,
-    filename: (_req, file, cb) => cb(null, nanoid() + extname(file.originalname).toLowerCase()),
-  }),
+// Postgres when DATABASE_URL is set (migrations run here, so a bad URL fails now, in one line).
+let repo: TrackRepo;
+let station: StationRepo;
+try {
+  repo = await createRepoFromEnv(DATA_FILE);
+  station = createStationRepoFromEnv(STATION_FILE, repo); // same pool as the catalog
+} catch (err) {
+  console.error(`TTunes: database unreachable: ${dbErrorMessage(err, process.env.DATABASE_URL ?? "")}`);
+  process.exit(1);
+}
+
+const app = createApp({
+  repo,
+  station,
+  storage,
+  uploadDir: INCOMING_DIR,
+  auth,
+  // Fly.io (or any single reverse proxy in front): set TRUST_PROXY=1, otherwise
+  // every client shares the proxy's IP and one stranger can trip the login lockout.
+  trustProxy: parseTrustProxy(process.env.TRUST_PROXY),
+  staticDir: STATIC_DIR,
 });
 
-const app = express();
-app.use(cors());
-
-app.get("/api/tracks", (_req: Request, res: Response) => {
-  res.json(repo.all());
+const server = app.listen(PORT, () => {
+  console.log(`TTunes server on http://localhost:${PORT}${STATIC_DIR ? ` (serving ${STATIC_DIR})` : " (API only)"}`);
 });
 
-app.post("/api/tracks", upload.single("file"), async (req: Request, res: Response) => {
-  if (!req.file) {
-    res.status(400).json({ error: "no file uploaded" });
-    return;
-  }
-  const track = await buildTrack(req.file);
-  repo.add(track);
-  res.status(201).json(track);
-});
-
-app.delete("/api/tracks/:id", (req: Request, res: Response) => {
-  const removed = repo.remove(String(req.params.id));
-  if (!removed) {
-    res.status(404).json({ error: "not found" });
-    return;
-  }
-  storage.delete(removed.storageKey); // Delete = purge from library AND storage (spec §6)
-  res.status(204).end();
-});
-
-// Range-aware streaming so the browser can seek instantly and start playback
-// before the full file arrives — the "no buffering" requirement (design spec §5).
-app.get("/audio/:id", (req: Request, res: Response) => {
-  const track = repo.get(String(req.params.id));
-  if (!track) {
-    res.status(404).end();
-    return;
-  }
-  const { size } = storage.stat(track.storageKey);
-  const contentType = CONTENT_TYPES[extname(track.storageKey)] ?? "application/octet-stream";
-  const range = req.headers.range;
-
-  if (!range) {
-    res.writeHead(200, { "Content-Length": size, "Content-Type": contentType, "Accept-Ranges": "bytes" });
-    storage.readRange(track.storageKey, 0, size - 1).pipe(res);
-    return;
-  }
-
-  const [startRaw, endRaw] = range.replace(/bytes=/, "").split("-");
-  const start = Number(startRaw);
-  const end = endRaw ? Number(endRaw) : size - 1;
-  res.writeHead(206, {
-    "Content-Range": `bytes ${start}-${end}/${size}`,
-    "Accept-Ranges": "bytes",
-    "Content-Length": end - start + 1,
-    "Content-Type": contentType,
+// As a container's PID 1, node gets no default SIGTERM/SIGINT handling, so `docker stop`
+// and Fly deploys would wait out the kill timeout. Stop accepting, give streams 5s, exit.
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.once(signal, () => {
+    console.log(`${signal}: shutting down`);
+    server.close(() => process.exit(0));
+    server.closeIdleConnections();
+    setTimeout(() => process.exit(0), 5000).unref();
   });
-  storage.readRange(track.storageKey, start, end).pipe(res);
-});
-
-async function buildTrack(file: Express.Multer.File): Promise<Track> {
-  const meta = await readMetadata(file.path);
-  return {
-    id: nanoid(),
-    title: meta.title ?? file.originalname.replace(extname(file.originalname), ""),
-    artist: meta.artist ?? "Unknown Artist",
-    album: meta.album,
-    durationSec: meta.durationSec,
-    bitrate: meta.bitrate,
-    format: meta.format,
-    sizeBytes: file.size,
-    storageKey: file.filename,
-    createdAt: new Date().toISOString(),
-  };
 }
-
-interface ParsedMetadata {
-  title: string | null;
-  artist: string | null;
-  album: string | null;
-  durationSec: number | null;
-  bitrate: number | null;
-  format: string | null;
-}
-
-async function readMetadata(path: string): Promise<ParsedMetadata> {
-  try {
-    const { common, format } = await parseFile(path);
-    return {
-      title: common.title ?? null,
-      artist: common.artist ?? null,
-      album: common.album ?? null,
-      durationSec: format.duration ? Math.round(format.duration) : null,
-      bitrate: format.bitrate ? Math.round(format.bitrate) : null,
-      format: format.container ?? format.codec ?? null,
-    };
-  } catch {
-    return { title: null, artist: null, album: null, durationSec: null, bitrate: null, format: null };
-  }
-}
-
-app.listen(PORT, () => {
-  console.log(`TTunes server on http://localhost:${PORT}`);
-});

@@ -1,0 +1,33 @@
+# Fly.io config for TTunes. The only host-specific file: the image itself is plain Docker.
+# Secrets (OWNER_PASSWORD, SESSION_SECRET, DATABASE_URL, S3_*) are set with `fly secrets set`,
+# never here. See docs/deploy.md.
+
+app = "ttunes" # placeholder: Fly app names are global, pick your own unique one
+primary_region = "iad" # Ashburn, Virginia (US East)
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "8080"
+  TRUST_PROXY = "1" # Fly's edge is one proxy hop; keeps the login lockout per real client IP
+  COOKIE_SECURE = "true"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off" # always-on station
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/health"
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "20s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

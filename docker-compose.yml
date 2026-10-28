@@ -1,0 +1,72 @@
+# TTunes self-hosted: app + Postgres + MinIO (S3-compatible), everything on one box.
+# Used by scripts/smoke.sh and CI, and later by the home-lab server:
+#   OWNER_PASSWORD=... SESSION_SECRET=... docker compose up -d --build
+# (or put those in a .env file next to this one). Only the app's port is published.
+# Behind your own HTTPS reverse proxy, also set COOKIE_SECURE=true and TRUST_PROXY=1.
+
+x-s3-env: &s3-env
+  S3_ENDPOINT: http://minio:9000
+  S3_BUCKET: ${S3_BUCKET:-ttunes}
+  S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-ttunes}
+  S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-ttunes-minio-secret}
+  S3_REGION: us-east-1
+  S3_FORCE_PATH_STYLE: "true"
+
+services:
+  app:
+    build: .
+    image: ${TTUNES_IMAGE:-ttunes:local}
+    restart: unless-stopped
+    ports:
+      - "${TTUNES_PORT:-18080}:8080"
+    environment:
+      <<: *s3-env
+      OWNER_PASSWORD: ${OWNER_PASSWORD:?set OWNER_PASSWORD}
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET (openssl rand -hex 32)}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      TRUST_PROXY: ${TRUST_PROXY:-}
+      DATABASE_URL: postgres://ttunes:${POSTGRES_PASSWORD:-ttunes-pg-secret}@postgres:5432/ttunes
+    depends_on:
+      postgres:
+        condition: service_healthy
+      create-bucket:
+        condition: service_completed_successfully
+
+  # One-shot: creates the bucket in MinIO (retries until MinIO is up), then exits.
+  create-bucket:
+    build: .
+    image: ${TTUNES_IMAGE:-ttunes:local}
+    command: ["node", "scripts/ensure-bucket.mjs"]
+    environment: *s3-env
+    depends_on:
+      - minio
+    restart: "no"
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ttunes
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ttunes-pg-secret}
+      POSTGRES_DB: ttunes
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ttunes -d ttunes"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  minio:
+    image: chainguard/minio:latest
+    restart: unless-stopped
+    command: ["server", "/data", "--address", ":9000"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-ttunes}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-ttunes-minio-secret}
+    volumes:
+      - s3data:/data
+
+volumes:
+  pgdata:
+  s3data:

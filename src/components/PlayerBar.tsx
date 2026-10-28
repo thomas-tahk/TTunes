@@ -1,44 +1,60 @@
-import type { Track } from "../types.ts";
 import type { PlayerControls } from "../usePlayer.ts";
+import { formatTime } from "./NowPlaying.tsx";
 
-interface PlayerBarProps {
-  tracks: Track[];
-  controls: PlayerControls;
-}
-
-export function PlayerBar({ tracks, controls }: PlayerBarProps) {
-  const current = tracks.find((t) => t.id === controls.currentId) ?? null;
+export function PlayerBar({ player }: { player: PlayerControls }) {
+  const { current, isPlaying, position, duration, notice } = player;
+  const max = duration ?? current?.durationSec ?? 0;
 
   return (
     <footer className="playerbar">
-      <div className="playerbar__now">
-        {current ? (
-          <>
-            <span className="playerbar__title">{current.title}</span>
-            <span className="playerbar__artist">{current.artist}</span>
-          </>
-        ) : (
-          <span className="playerbar__idle">Nothing playing</span>
-        )}
-      </div>
+      {notice && (
+        <p className="playerbar__notice" role="status">
+          {notice}
+        </p>
+      )}
+      <input
+        className="playerbar__seek"
+        type="range"
+        min={0}
+        max={max || 1}
+        step={1}
+        value={Math.min(position, max || 1)}
+        disabled={!current || !max || !player.started}
+        onChange={(e) => player.seek(Number(e.target.value))}
+        aria-label="Seek"
+        aria-valuetext={`${formatTime(position)} of ${formatTime(max)}`}
+      />
+      <div className="playerbar__row">
+        <div className="playerbar__now">
+          {current ? (
+            <>
+              <span className="playerbar__title">{current.title}</span>
+              {/* The artist ellipsizes; the time never shrinks off the edge. */}
+              <span className="playerbar__sub">
+                <span className="playerbar__artist">{current.artist}</span>
+                <span className="playerbar__time">
+                  {formatTime(position)} / {formatTime(max)}
+                </span>
+              </span>
+            </>
+          ) : (
+            <span className="playerbar__idle">Nothing playing</span>
+          )}
+        </div>
 
-      <div className="playerbar__controls">
-        {controls.currentId ? (
-          <button onClick={controls.toggle} className="ctrl">
-            {controls.isPlaying ? "❚❚" : "▶"}
+        <div className="playerbar__controls">
+          <button
+            onClick={player.toggle}
+            className="ctrl ctrl--round ctrl--primary"
+            disabled={!current}
+            aria-label={isPlaying ? "Pause" : "Play"}
+          >
+            <span aria-hidden="true">{isPlaying ? "❚❚" : "▶"}</span>
           </button>
-        ) : (
-          <button onClick={controls.startShuffle} className="ctrl ctrl--primary" disabled={!tracks.length}>
-            Shuffle & Play
+          <button onClick={player.next} className="ctrl ctrl--round" disabled={!current} aria-label="Next track">
+            <span aria-hidden="true">⏭</span>
           </button>
-        )}
-        <button onClick={controls.next} className="ctrl" disabled={!controls.currentId} title="Next">
-          ⏭
-        </button>
-      </div>
-
-      <div className="playerbar__queue" title="Manual queue">
-        {controls.queue.length > 0 ? `${controls.queue.length} queued` : "queue empty"}
+        </div>
       </div>
     </footer>
   );

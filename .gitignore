@@ -7,3 +7,5 @@ uploads/
 .env
 .env.local
 .DS_Store
+*.tsbuildinfo
+vitest-results.json

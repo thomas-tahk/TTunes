@@ -1,6 +1,8 @@
 # TTunes — Design Spec
 
-_Date: 2026-06-30 · Status: design, pending user review_
+_Date: 2026-06-30 · Status: confirmed by owner 2026-10-25_
+
+**Done-gate:** I open TTunes on my phone, music is already playing within a second, and I bulk-drop a folder that the AI librarian tags and files so I can play-now any track from it.
 
 > Source of decisions: `docs/brainstorm/2026-06-24-ttunes-decisions.md`. This spec
 > consolidates those decisions into an implementation-ready design.

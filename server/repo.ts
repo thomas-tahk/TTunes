@@ -5,10 +5,10 @@ import type { Track } from "./types.ts";
 // Catalog repository (design spec §7): metadata behind an interface so the local
 // JSON store below can later be swapped for managed Postgres with no caller changes.
 export interface TrackRepo {
-  all(): Track[];
-  get(id: string): Track | undefined;
-  add(track: Track): void;
-  remove(id: string): Track | undefined;
+  all(): Promise<Track[]>;
+  get(id: string): Promise<Track | undefined>;
+  add(track: Track): Promise<void>;
+  remove(id: string): Promise<Track | undefined>;
 }
 
 export class JsonTrackRepo implements TrackRepo {
@@ -30,20 +30,20 @@ export class JsonTrackRepo implements TrackRepo {
     writeFileSync(this.file, JSON.stringify(this.tracks, null, 2));
   }
 
-  all(): Track[] {
+  async all(): Promise<Track[]> {
     return [...this.tracks];
   }
 
-  get(id: string): Track | undefined {
+  async get(id: string): Promise<Track | undefined> {
     return this.tracks.find((t) => t.id === id);
   }
 
-  add(track: Track): void {
+  async add(track: Track): Promise<void> {
     this.tracks.push(track);
     this.persist();
   }
 
-  remove(id: string): Track | undefined {
+  async remove(id: string): Promise<Track | undefined> {
     const index = this.tracks.findIndex((t) => t.id === id);
     if (index === -1) return undefined;
     const [removed] = this.tracks.splice(index, 1);

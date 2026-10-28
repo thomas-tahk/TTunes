@@ -1,0 +1,12 @@
+node_modules
+uploads
+data
+dist
+.claude
+.git
+.github
+.env
+.env.*
+*.log
+docs
+server/__tests__
