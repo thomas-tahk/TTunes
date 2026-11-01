@@ -1,5 +1,6 @@
 // Browser check for #16. Needs a running app: API_URL (e2e server) and APP_URL (vite proxied to it).
-//   PORT=8798 npx tsx test/e2e-station-server.ts   (+ vite whose proxy targets that port)
+//   PORT=8798 npx tsx test/e2e-server.ts
+//   TTUNES_API_PORT=8798 npx vite --port 5188
 //   API_URL=http://localhost:8798 APP_URL=http://localhost:5188 node test/e2e/never-silent.cjs
 const { chromium } = require("playwright");
 const fs = require("node:fs");
@@ -41,7 +42,8 @@ async function upload(title) {
 
   // Queue one track that is not the one playing; it must be next.
   const queuedTitle = await page.locator(".row:not(.row--playing) .row__title").first().textContent();
-  await page.locator(".row", { hasText: queuedTitle }).locator(".row__queue").click();
+  const exactTitle = page.locator(".row__title", { hasText: new RegExp(`^${queuedTitle}$`) });
+  await page.locator(".row").filter({ has: exactTitle }).locator(".row__queue").click();
 
   await page.waitForFunction(() => window.__played.length >= 6, null, { timeout: 30000 });
   const order = (await page.evaluate(() => window.__played)).map(titleOf);
