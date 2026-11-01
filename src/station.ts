@@ -54,6 +54,27 @@ export function enqueue(station: Station, id: string, choice: Exclude<AddChoice,
   return { ...station, queue: queueWith(station.queue, id, choice) };
 }
 
+/**
+ * Add a batch the user just chose a placement for. Nothing playing: the first id plays and the
+ * rest queue at the head in drop order. Otherwise "now" plays the first and queues the rest next;
+ * "next"/"last" put every id at the head/tail in drop order. The current track is never re-queued.
+ */
+export function addMany(station: Station, ids: string[], choice: AddChoice): Station {
+  const startsNow = choice === "now" || !station.current;
+  const [first, ...rest] = ids;
+  if (startsNow && first !== undefined) {
+    const playing = markPlaying(station, first);
+    return { ...playing, queue: placed(playing, rest, "next") };
+  }
+  return { ...station, queue: placed(station, ids, choice === "last" ? "last" : "next") };
+}
+
+function placed(station: Station, ids: string[], where: "next" | "last"): string[] {
+  const fresh = ids.filter((id) => id !== station.current);
+  const others = station.queue.filter((q) => !fresh.includes(q));
+  return where === "next" ? [...fresh, ...others] : [...others, ...fresh];
+}
+
 // Whole library reshuffled; if the just-played track landed first, swap it away.
 function startNewCycle(station: Station, library: string[], random: Random): Station {
   const order = shuffle(library, random);

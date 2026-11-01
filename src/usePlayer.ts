@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Track } from "./types.ts";
 import { audioUrl } from "./api.ts";
 import type { AddChoice } from "./addChoice.ts";
-import { advance as advanceStation, emptyStation, enqueue as enqueueStation, peekNext, playNow as playNowStation, sync, type Station } from "./station.ts";
+import { addMany as addManyStation, advance as advanceStation, emptyStation, peekNext, playNow as playNowStation, sync, type Station } from "./station.ts";
 
 export interface PlayerControls {
   currentId: string | null;
@@ -10,7 +10,9 @@ export interface PlayerControls {
   queue: string[];
   playNow: (id: string) => void;
   enqueue: (id: string) => void;
-  /** Play or queue a track the user just added. */
+  /** Play or queue tracks the user just added, in drop order. */
+  addMany: (ids: string[], choice: AddChoice) => void;
+  /** Play or queue one track the user just added. */
   add: (id: string, choice: AddChoice) => void;
   startShuffle: () => void;
   toggle: () => void;
@@ -113,16 +115,17 @@ export function usePlayer(tracks: Track[]): PlayerControls {
     [play, commit],
   );
 
-  const add = useCallback(
-    (id: string, choice: AddChoice) => {
-      if (choice === "now" || !stationRef.current.current) {
-        playNow(id);
-        return;
-      }
-      commit(enqueueStation(stationRef.current, id, choice));
+  const addMany = useCallback(
+    (ids: string[], choice: AddChoice) => {
+      const before = stationRef.current.current;
+      const after = addManyStation(stationRef.current, ids, choice);
+      commit(after);
+      if (after.current && after.current !== before) play(after.current);
     },
-    [playNow, commit],
+    [play, commit],
   );
+
+  const add = useCallback((id: string, choice: AddChoice) => addMany([id], choice), [addMany]);
 
   const enqueue = useCallback((id: string) => add(id, "last"), [add]);
 
@@ -138,6 +141,7 @@ export function usePlayer(tracks: Track[]): PlayerControls {
     queue,
     playNow,
     enqueue,
+    addMany,
     add,
     startShuffle: advance,
     toggle,
