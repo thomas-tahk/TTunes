@@ -1,8 +1,8 @@
-import express, { type Express, type Request, type Response } from "express";
+import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
 import multer from "multer";
 import { nanoid } from "nanoid";
-import { basename, extname } from "node:path";
+import { basename, extname, join, resolve } from "node:path";
 import { renameSync, rmSync, statSync } from "node:fs";
 import type { LocalDiskStorage } from "./storage.ts";
 import type { TrackRepo } from "./repo.ts";
@@ -18,11 +18,12 @@ export interface AppDeps {
   ingest: YouTubeIngest;
   search: YtSearchRunner;
   uploadDir: string;
+  staticDir?: string; // built UI (dist/); when set, the same server serves it
 }
 
 // Builds the HTTP app from its collaborators so tests can inject temp dirs and a
 // fake yt-dlp runner; server/index.ts wires the real ones and listens.
-export function createApp({ storage, repo, ingest, search, uploadDir }: AppDeps): Express {
+export function createApp({ storage, repo, ingest, search, uploadDir, staticDir }: AppDeps): Express {
   const upload = multer({
     storage: multer.diskStorage({
       destination: uploadDir,
@@ -164,7 +165,19 @@ export function createApp({ storage, repo, ingest, search, uploadDir }: AppDeps)
     res.status(204).end();
   });
 
+  if (staticDir) serveBuiltUi(app, staticDir);
+
   return app;
+}
+
+// Registered last so API/audio routes win; unknown GETs get index.html (SPA fallback).
+function serveBuiltUi(app: Express, staticDir: string): void {
+  app.use(express.static(staticDir));
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const isApiOrAudio = /^\/(api|audio)(\/|$)/.test(req.path);
+    if (req.method !== "GET" || isApiOrAudio) return next();
+    res.sendFile(join(resolve(staticDir), "index.html"));
+  });
 }
 
 function cleanField(value: unknown): string | null {
