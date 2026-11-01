@@ -3,6 +3,7 @@ import type { Track } from "./types.ts";
 import { fetchTracks, deleteTrack } from "./api.ts";
 import { usePlayer } from "./usePlayer.ts";
 import { Uploader } from "./components/Uploader.tsx";
+import { YouTubeAdd } from "./components/YouTubeAdd.tsx";
 import { Library } from "./components/Library.tsx";
 import { PlayerBar } from "./components/PlayerBar.tsx";
 
@@ -48,6 +49,7 @@ export default function App() {
 
       <main className="content">
         <Uploader onAdded={refresh} />
+        <YouTubeAdd onAdded={refresh} />
         <Library tracks={tracks} controls={controls} onDelete={handleDelete} />
       </main>
 
