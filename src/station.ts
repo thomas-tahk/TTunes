@@ -1,4 +1,4 @@
-import { queueWith, type AddChoice } from "./addChoice.ts";
+import type { AddChoice } from "./addChoice.ts";
 
 // Pure "never silent" decisions: manual queue first, then a shuffle cycle over the
 // whole library. Tracks added mid-cycle jump to the front of the cycle; deleted
@@ -50,8 +50,9 @@ export function playNow(station: Station, id: string): Station {
   return markPlaying(station, id);
 }
 
-export function enqueue(station: Station, id: string, choice: Exclude<AddChoice, "now">): Station {
-  return { ...station, queue: queueWith(station.queue, id, choice) };
+/** Explicit "+ Queue" on a library row: id goes to the tail (moved if queued), even if it is the current track. */
+export function queueLast(station: Station, id: string): Station {
+  return { ...station, queue: [...station.queue.filter((q) => q !== id), id] };
 }
 
 /**
