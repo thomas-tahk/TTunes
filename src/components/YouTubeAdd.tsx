@@ -1,4 +1,7 @@
 import { useState } from "react";
+import type { AddChoice } from "../addChoice.ts";
+import type { Track } from "../types.ts";
+import { AddChoiceButtons } from "./AddChoiceButtons.tsx";
 import {
   ingestYouTube,
   commitIngest,
@@ -7,7 +10,7 @@ import {
   type StagedIngest,
 } from "../api.ts";
 
-export function YouTubeAdd({ onAdded }: { onAdded: () => void }) {
+export function YouTubeAdd({ onAdded }: { onAdded: (track: Track, choice: AddChoice) => Promise<void> }) {
   const [url, setUrl] = useState("");
   const [staged, setStaged] = useState<StagedIngest | null>(null);
   const [busy, setBusy] = useState(false);
@@ -27,14 +30,14 @@ export function YouTubeAdd({ onAdded }: { onAdded: () => void }) {
     }
   }
 
-  async function handleAdd(edits: { title: string; artist: string; album: string }) {
+  async function handleAdd(edits: { title: string; artist: string; album: string }, choice: AddChoice) {
     if (!staged) return;
     setBusy(true);
     try {
-      await commitIngest(staged.id, edits);
+      const track = await commitIngest(staged.id, edits);
       setStaged(null);
       setUrl("");
-      onAdded();
+      await onAdded(track, choice);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't add that track.");
     } finally {
@@ -83,7 +86,7 @@ function ConfirmCard({
   staged: StagedIngest;
   busy: boolean;
   error: string | null;
-  onAdd: (edits: { title: string; artist: string; album: string }) => void;
+  onAdd: (edits: { title: string; artist: string; album: string }, choice: AddChoice) => void;
   onDiscard: () => void;
 }) {
   const [title, setTitle] = useState(staged.title);
@@ -127,9 +130,7 @@ function ConfirmCard({
         <button className="ctrl" disabled={busy} onClick={onDiscard}>
           Discard
         </button>
-        <button className="ctrl ctrl--primary" disabled={busy} onClick={() => onAdd({ title, artist, album })}>
-          {busy ? "Adding…" : "Add to Library"}
-        </button>
+        <AddChoiceButtons busy={busy} onChoose={(choice) => onAdd({ title, artist, album }, choice)} />
       </div>
     </div>
   );
