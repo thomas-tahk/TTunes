@@ -16,15 +16,23 @@ const DATA_FILE = join(DATA_ROOT, "data", "tracks.json");
 const STAGING_DIR = join(DATA_ROOT, "staging"); // holds extracted audio until the user confirms
 const DIST_DIR = join(REPO_ROOT, "dist");
 
+const ingest = new YouTubeIngest(STAGING_DIR);
 const app = createApp({
   storage: new LocalDiskStorage(UPLOAD_DIR),
   repo: new JsonTrackRepo(DATA_FILE),
-  ingest: new YouTubeIngest(STAGING_DIR),
+  ingest,
   search: runRealYtSearch,
   uploadDir: UPLOAD_DIR,
   staticDir: existsSync(DIST_DIR) ? DIST_DIR : undefined,
 });
 
-app.listen(PORT, HOST, () => {
+const server = app.listen(PORT, HOST, () => {
+  ingest.clearStaging(); // only after we own the port, so a second instance can't wipe a live one's files
   console.log(`TTunes server on http://localhost:${PORT}`);
+});
+
+server.on("error", (err: NodeJS.ErrnoException) => {
+  if (err.code !== "EADDRINUSE") throw err;
+  console.error(`TTunes is already running on port ${PORT}.`);
+  process.exit(1);
 });

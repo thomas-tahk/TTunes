@@ -23,10 +23,12 @@ export class JsonTrackRepo implements TrackRepo {
   private load(): Track[] {
     if (!existsSync(this.file)) return [];
     try {
-      return JSON.parse(readFileSync(this.file, "utf8")) as Track[];
+      const parsed: unknown = JSON.parse(readFileSync(this.file, "utf8"));
+      if (Array.isArray(parsed)) return parsed as Track[];
     } catch {
-      return this.quarantineCorrupt();
+      // unparseable: fall through to quarantine
     }
+    return this.quarantineCorrupt();
   }
 
   private quarantineCorrupt(): Track[] {

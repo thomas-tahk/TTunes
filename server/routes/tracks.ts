@@ -1,4 +1,4 @@
-import type { Express, Request, Response } from "express";
+import type { Express, Request, RequestHandler, Response } from "express";
 import multer from "multer";
 import { nanoid } from "nanoid";
 import { basename, extname } from "node:path";
@@ -15,19 +15,25 @@ interface TrackRoutesDeps {
   uploadDir: string;
 }
 
-export function registerTrackRoutes(app: Express, { storage, repo, uploadDir }: TrackRoutesDeps): void {
-  const upload = multer({
+export function registerTrackRoutes(app: Express, deps: TrackRoutesDeps): void {
+  app.get("/api/tracks", (_req: Request, res: Response) => {
+    res.json(deps.repo.all());
+  });
+  app.post("/api/tracks", uploader(deps.uploadDir).single("file"), addTrackHandler(deps.repo));
+  app.delete("/api/tracks/:id", deleteTrackHandler(deps));
+}
+
+function uploader(uploadDir: string): multer.Multer {
+  return multer({
     storage: multer.diskStorage({
       destination: uploadDir,
       filename: (_req, file, cb) => cb(null, nanoid() + extname(file.originalname).toLowerCase()),
     }),
   });
+}
 
-  app.get("/api/tracks", (_req: Request, res: Response) => {
-    res.json(repo.all());
-  });
-
-  app.post("/api/tracks", upload.single("file"), async (req: Request, res: Response) => {
+function addTrackHandler(repo: TrackRepo): RequestHandler {
+  return async (req: Request, res: Response) => {
     if (!req.file) {
       res.status(400).json({ error: "no file uploaded" });
       return;
@@ -40,9 +46,11 @@ export function registerTrackRoutes(app: Express, { storage, repo, uploadDir }: 
       const failure = err instanceof MediaError ? err : new MediaError("Couldn't add that file.", 500);
       res.status(failure.status).json({ error: failure.message });
     }
-  });
+  };
+}
 
-  app.delete("/api/tracks/:id", (req: Request, res: Response) => {
+function deleteTrackHandler({ storage, repo }: TrackRoutesDeps): RequestHandler {
+  return (req: Request, res: Response) => {
     const removed = repo.remove(String(req.params.id));
     if (!removed) {
       res.status(404).json({ error: "not found" });
@@ -50,7 +58,7 @@ export function registerTrackRoutes(app: Express, { storage, repo, uploadDir }: 
     }
     storage.delete(removed.storageKey); // Delete = purge from library AND storage (spec §6)
     res.status(204).end();
-  });
+  };
 }
 
 // Always leaves the upload dir clean on failure: no original, no partial output.

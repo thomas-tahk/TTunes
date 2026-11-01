@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readdirSync, statSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { nanoid } from "nanoid";
 import { readAudioMeta } from "./metadata.ts";
+import { YTDLP_MISSING, explainYtDlpFailure } from "./ytdlp-errors.ts";
 
 // One-time YouTube audio extraction into a staging area (design spec §6). Audio
 // is pulled to a staging dir first; nothing enters the library until the user
@@ -24,8 +25,6 @@ export interface StagedIngest {
 const YTDLP_TIMEOUT_MS = 120_000;
 const MAX_FILESIZE = "80M";
 const LONG_TRACK_SEC = 12 * 60;
-const YTDLP_MISSING = "yt-dlp isn't installed — run: brew install yt-dlp";
-const YTDLP_UPGRADE_HINT = " (if this keeps happening, run: brew upgrade yt-dlp)";
 const ALLOWED_HOSTS = ["youtube.com", "youtu.be", "music.youtube.com", "m.youtube.com", "www.youtube.com"];
 const VERSION_FLAGS = ["live", "cover", "remix", "acoustic", "sped up", "nightcore", "reaction", "1 hour", "full album", "hour loop"];
 
@@ -44,7 +43,12 @@ export class YouTubeIngest {
   constructor(stagingDir: string, runYtDlp: YtDlpRunner = runRealYtDlp) {
     this.stagingDir = resolve(stagingDir);
     this.runYtDlp = runYtDlp;
-    rmSync(this.stagingDir, { recursive: true, force: true }); // leftovers from a previous run
+    mkdirSync(this.stagingDir, { recursive: true });
+  }
+
+  /** Drop leftovers from a previous run. Call only once this process owns the port, so a second instance can't wipe a live one's files. */
+  clearStaging(): void {
+    rmSync(this.stagingDir, { recursive: true, force: true });
     mkdirSync(this.stagingDir, { recursive: true });
   }
 
@@ -77,23 +81,7 @@ export class YouTubeIngest {
       throw new IngestError("Couldn't get clean audio from that link — it may be too large, region-locked, or not a single track.");
     }
 
-    const audio = await readAudioMeta(filePath);
-    const identity = parseIdentity(info);
-    const durationSec = audio.durationSec ?? (typeof info.duration === "number" ? Math.round(info.duration) : null);
-
-    const entry: StagedEntry = {
-      id,
-      title: identity.title,
-      artist: identity.artist,
-      album: identity.album,
-      uploader: info.uploader ?? info.channel ?? null,
-      durationSec,
-      bitrate: audio.bitrate,
-      format: audio.format,
-      sizeBytes: statSync(filePath).size,
-      warnings: warningsFor(info, durationSec),
-      filePath,
-    };
+    const entry = await describeEntry(id, filePath, info);
     this.entries.set(id, entry);
     return toStaged(entry);
   }
@@ -120,6 +108,26 @@ export class YouTubeIngest {
 }
 
 export class IngestError extends Error {}
+
+async function describeEntry(id: string, filePath: string, info: YtInfo): Promise<StagedEntry> {
+  const audio = await readAudioMeta(filePath);
+  const identity = parseIdentity(info);
+  const durationSec = audio.durationSec ?? (typeof info.duration === "number" ? Math.round(info.duration) : null);
+
+  return {
+    id,
+    title: identity.title,
+    artist: identity.artist,
+    album: identity.album,
+    uploader: info.uploader ?? info.channel ?? null,
+    durationSec,
+    bitrate: audio.bitrate,
+    format: audio.format,
+    sizeBytes: statSync(filePath).size,
+    warnings: warningsFor(info, durationSec),
+    filePath,
+  };
+}
 
 function toStaged(entry: StagedEntry): StagedIngest {
   const { filePath: _filePath, ...staged } = entry;
@@ -165,7 +173,7 @@ function runRealYtDlp(url: string, outputTemplate: string): Promise<YtInfo> {
     proc.on("error", () => rejectPromise(new IngestError(YTDLP_MISSING)));
     proc.on("close", (code) => {
       if (code !== 0) {
-        rejectPromise(new IngestError((lastLine(stderr) || "yt-dlp failed to fetch that link.") + YTDLP_UPGRADE_HINT));
+        rejectPromise(new IngestError(explainYtDlpFailure(stderr, "yt-dlp failed to fetch that link.")));
         return;
       }
       try {
@@ -216,9 +224,4 @@ function formatDuration(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
   return `${m}:${String(s).padStart(2, "0")}`;
-}
-
-function lastLine(text: string): string {
-  const lines = text.trim().split("\n").filter(Boolean);
-  return lines.length ? lines[lines.length - 1].replace(/^ERROR:\s*/i, "").trim() : "";
 }
