@@ -1,13 +1,19 @@
+import { existsSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { LocalDiskStorage } from "./storage.ts";
 import { JsonTrackRepo } from "./repo.ts";
 import { YouTubeIngest } from "./ingest.ts";
 import { runRealYtSearch } from "./search.ts";
 import { createApp } from "./app.ts";
 
+const REPO_ROOT = resolve(import.meta.dirname, ".."); // so double-click works from any cwd
 const PORT = Number(process.env.PORT) || 8787;
-const UPLOAD_DIR = "uploads";
-const DATA_FILE = "data/tracks.json";
-const STAGING_DIR = "staging"; // holds extracted audio until the user confirms
+// TTUNES_DATA_DIR lets tests keep music/data out of the repo; default is the repo root.
+const DATA_ROOT = process.env.TTUNES_DATA_DIR ? resolve(process.env.TTUNES_DATA_DIR) : REPO_ROOT;
+const UPLOAD_DIR = join(DATA_ROOT, "uploads");
+const DATA_FILE = join(DATA_ROOT, "data", "tracks.json");
+const STAGING_DIR = join(DATA_ROOT, "staging"); // holds extracted audio until the user confirms
+const DIST_DIR = join(REPO_ROOT, "dist");
 
 const app = createApp({
   storage: new LocalDiskStorage(UPLOAD_DIR),
@@ -15,6 +21,7 @@ const app = createApp({
   ingest: new YouTubeIngest(STAGING_DIR),
   search: runRealYtSearch,
   uploadDir: UPLOAD_DIR,
+  staticDir: existsSync(DIST_DIR) ? DIST_DIR : undefined,
 });
 
 app.listen(PORT, () => {

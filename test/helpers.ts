@@ -20,12 +20,12 @@ export function fakeYtDlp(info: YtInfo): YtDlpRunner {
 /** A fully wired app on fresh temp dirs. */
 export function makeTestApp(
   runner: YtDlpRunner = fakeYtDlp({ title: "Fixture" }),
-  { search = runRealYtSearch }: { search?: YtSearchRunner } = {},
+  { search = runRealYtSearch, staticDir }: { search?: YtSearchRunner; staticDir?: string } = {},
 ) {
   const root = mkdtempSync(join(tmpdir(), "ttunes-test-"));
   const uploadDir = join(root, "uploads");
   const storage = new LocalDiskStorage(uploadDir);
   const repo = new JsonTrackRepo(join(root, "data", "tracks.json"));
   const ingest = new YouTubeIngest(join(root, "staging"), runner);
-  return { app: createApp({ storage, repo, ingest, search, uploadDir }), repo, root };
+  return { app: createApp({ storage, repo, ingest, search, uploadDir, staticDir }), repo, root };
 }
