@@ -10,7 +10,10 @@ export async function uploadTrack(file: File): Promise<Track> {
   const body = new FormData();
   body.append("file", file);
   const res = await fetch("/api/tracks", { method: "POST", body });
-  if (!res.ok) throw new Error(`upload failed: ${file.name}`);
+  if (!res.ok) {
+    const reason = (await res.json().catch(() => ({}))).error ?? "upload failed";
+    throw new Error(`${file.name}: ${reason}`);
+  }
   return res.json();
 }
 
