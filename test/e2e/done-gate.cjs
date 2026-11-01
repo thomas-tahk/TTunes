@@ -1,7 +1,8 @@
 // M1 done-gate, one session from an EMPTY library: paste YouTube link, drop MP3, search + pick -> all "Queue last";
 // they must play in that order, then >=3 more tracks must start with no clicks.
-//   APP_URL=http://localhost:5251 API_URL=http://localhost:8951 [WIDTH=375] [SHOT=docs/milestones/M1-shots/gate] node test/e2e/done-gate.cjs
-// Run via `npm run e2e`. Env: APP_URL, API_URL (required), WIDTH (default 1280), SHOT (screenshot prefix).
+// First time on a new machine: npx playwright install chromium
+//   APP_URL=http://localhost:5251 API_URL=http://localhost:8951 [WIDTH=375] [SHOT=docs/milestones/M1-shots/gate] npm run e2e
+// Env: APP_URL, API_URL (required), WIDTH (default 1280), SHOT (screenshot prefix; writes <SHOT>-<step>-<WIDTH>.png).
 // Needs test/e2e-server.ts on API_URL (fake yt-dlp/search keyed by video id) and the UI on APP_URL. Restart the API for a fresh library.
 const { chromium } = require("playwright");
 const assert = require("node:assert/strict");

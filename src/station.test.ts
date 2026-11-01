@@ -139,8 +139,13 @@ describe("addMany", () => {
   });
 
   it("queueLast queues the current track again behind the queue", () => {
-    const playing = addMany(playNow(emptyStation(), "a"), ["b"], "last");
-    expect(queueLast(playing, "a").queue).toEqual(["b", "a"]);
+    const withQueue = addMany(playNow(emptyStation(), "a"), ["b"], "last");
+    expect(queueLast(withQueue, "a").queue).toEqual(["b", "a"]);
+  });
+
+  it("next/last move an id already in the queue instead of duplicating it", () => {
+    expect(addMany(playing, ["x"], "next").queue).toEqual(["x"]);
+    expect(addMany({ ...playing, queue: ["x", "y"] }, ["x"], "last").queue).toEqual(["y", "x"]);
   });
 
   it("queueLast moves an already-queued id to the tail instead of duplicating", () => {
