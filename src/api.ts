@@ -71,3 +71,16 @@ export async function discardIngest(id: string): Promise<void> {
 export function stagedAudioUrl(id: string): string {
   return `/api/ingest/youtube/${id}/audio`;
 }
+
+export interface SearchHit {
+  url: string;
+  title: string;
+  channel: string | null;
+  durationSec: number | null;
+}
+
+export async function searchYouTube(query: string): Promise<SearchHit[]> {
+  const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Search failed.");
+  return res.json();
+}

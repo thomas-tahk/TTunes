@@ -7,6 +7,7 @@ import { renameSync } from "node:fs";
 import type { LocalDiskStorage } from "./storage.ts";
 import type { TrackRepo } from "./repo.ts";
 import { type YouTubeIngest, IngestError } from "./ingest.ts";
+import { SearchError, type YtSearchRunner } from "./search.ts";
 import { readAudioMeta } from "./metadata.ts";
 import type { Track } from "./types.ts";
 
@@ -24,12 +25,13 @@ export interface AppDeps {
   storage: LocalDiskStorage;
   repo: TrackRepo;
   ingest: YouTubeIngest;
+  search: YtSearchRunner;
   uploadDir: string;
 }
 
 // Builds the HTTP app from its collaborators so tests can inject temp dirs and a
 // fake yt-dlp runner; server/index.ts wires the real ones and listens.
-export function createApp({ storage, repo, ingest, uploadDir }: AppDeps): Express {
+export function createApp({ storage, repo, ingest, search, uploadDir }: AppDeps): Express {
   const upload = multer({
     storage: multer.diskStorage({
       destination: uploadDir,
@@ -108,6 +110,20 @@ export function createApp({ storage, repo, ingest, uploadDir }: AppDeps): Expres
     } catch (err) {
       const message = err instanceof IngestError ? err.message : "Failed to fetch that link.";
       res.status(422).json({ error: message });
+    }
+  });
+
+  // Candidate videos for "artist – song"; the user picks one and it is staged like a pasted link.
+  app.get("/api/search", async (req: Request, res: Response) => {
+    const query = String(req.query.q ?? "").trim();
+    if (!query) {
+      res.status(400).json({ error: "no query provided" });
+      return;
+    }
+    try {
+      res.json(await search(query));
+    } catch (err) {
+      res.status(422).json({ error: err instanceof SearchError ? err.message : "Search failed." });
     }
   });
 

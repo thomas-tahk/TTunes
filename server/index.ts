@@ -1,6 +1,7 @@
 import { LocalDiskStorage } from "./storage.ts";
 import { JsonTrackRepo } from "./repo.ts";
 import { YouTubeIngest } from "./ingest.ts";
+import { runRealYtSearch } from "./search.ts";
 import { createApp } from "./app.ts";
 
 const PORT = Number(process.env.PORT) || 8787;
@@ -12,6 +13,7 @@ const app = createApp({
   storage: new LocalDiskStorage(UPLOAD_DIR),
   repo: new JsonTrackRepo(DATA_FILE),
   ingest: new YouTubeIngest(STAGING_DIR),
+  search: runRealYtSearch,
   uploadDir: UPLOAD_DIR,
 });
 
