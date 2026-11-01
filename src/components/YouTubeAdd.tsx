@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { AddChoice } from "../addChoice.ts";
 import type { Track } from "../types.ts";
 import { AddChoiceButtons } from "./AddChoiceButtons.tsx";
+import { formatDuration } from "../format.ts";
 import { SearchResults } from "./SearchResults.tsx";
 import {
   ingestYouTube,
@@ -36,11 +37,11 @@ export function YouTubeAdd({ onAdded }: { onAdded: (track: Track, choice: AddCho
   const stage = (link: string) =>
     run(async () => {
       setStaged(await ingestYouTube(link));
-      setHits([]);
     }, "Couldn't fetch that link.");
 
   const search = (query: string) =>
     run(async () => {
+      setHits([]);
       const found = await searchYouTube(query);
       setHits(found);
       if (!found.length) setError("No results found.");
@@ -49,7 +50,12 @@ export function YouTubeAdd({ onAdded }: { onAdded: (track: Track, choice: AddCho
   function handleSubmit() {
     const text = url.trim();
     if (!text || busy) return;
-    void (/^https?:\/\//i.test(text) ? stage(text) : search(text));
+    if (!/^https?:\/\//i.test(text)) {
+      void search(text);
+      return;
+    }
+    setHits([]);
+    void stage(text);
   }
 
   async function handleAdd(edits: { title: string; artist: string; album: string }, choice: AddChoice) {
@@ -59,6 +65,7 @@ export function YouTubeAdd({ onAdded }: { onAdded: (track: Track, choice: AddCho
     try {
       const track = await commitIngest(staged.id, edits);
       setStaged(null);
+      setHits([]);
       setUrl("");
       await onAdded(track, choice);
     } catch (e) {
@@ -158,10 +165,4 @@ function ConfirmCard({
       </div>
     </div>
   );
-}
-
-function formatDuration(sec: number): string {
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
 }

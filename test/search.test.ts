@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import request from "supertest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { FIXTURES, makeTestApp } from "./helpers.ts";
+import { FIXTURES, fakeYtDlp, makeTestApp } from "./helpers.ts";
+import type { YtDlpRunner } from "../server/ingest.ts";
 import { parseSearchLines, SearchError, type YtSearchRunner } from "../server/search.ts";
 
 // ytsearch5.jsonl is hand-written, NOT recorded from real YouTube (see README-ytsearch5.txt).
@@ -64,6 +65,23 @@ describe("GET /api/search", () => {
 
     expect(res.status).toBe(422);
     expect(res.body.error).toBe("Search failed.");
+  });
+});
+
+describe("picking a search hit", () => {
+  it("stages the hit's url exactly like a pasted link", async () => {
+    const hit = parseSearchLines(fixtureLines)[1];
+    const received: string[] = [];
+    const runner: YtDlpRunner = async (url, outputTemplate) => {
+      received.push(url);
+      return fakeYtDlp({ title: "Fixture" })(url, outputTemplate);
+    };
+    const { app } = makeTestApp(runner, { search: fixtureSearch });
+
+    const res = await request(app).post("/api/ingest/youtube").send({ url: hit.url });
+
+    expect(res.status).toBe(201);
+    expect(received).toEqual([hit.url]);
   });
 });
 

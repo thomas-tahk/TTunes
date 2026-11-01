@@ -1,4 +1,5 @@
 import type { SearchHit } from "../api.ts";
+import { formatDuration } from "../format.ts";
 
 export function SearchResults({
   hits,
@@ -25,10 +26,4 @@ export function SearchResults({
       ))}
     </ul>
   );
-}
-
-function formatDuration(sec: number): string {
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
 }
