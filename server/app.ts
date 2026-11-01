@@ -8,18 +8,8 @@ import type { LocalDiskStorage } from "./storage.ts";
 import type { TrackRepo } from "./repo.ts";
 import { type YouTubeIngest, IngestError } from "./ingest.ts";
 import { readAudioMeta } from "./metadata.ts";
-import { keepAudioOnly, NotMediaError } from "./extract.ts";
+import { CONTENT_TYPES, keepAudioOnly, MediaError } from "./extract.ts";
 import type { Track } from "./types.ts";
-
-const CONTENT_TYPES: Record<string, string> = {
-  ".mp3": "audio/mpeg",
-  ".m4a": "audio/mp4",
-  ".aac": "audio/aac",
-  ".flac": "audio/flac",
-  ".ogg": "audio/ogg",
-  ".opus": "audio/opus",
-  ".wav": "audio/wav",
-};
 
 export interface AppDeps {
   storage: LocalDiskStorage;
@@ -52,14 +42,12 @@ export function createApp({ storage, repo, ingest, uploadDir }: AppDeps): Expres
       return;
     }
     try {
-      const audioPath = await keepAudioOnly(req.file.path);
-      const track = await buildTrack(req.file, audioPath);
+      const track = await buildTrack(req.file);
       repo.add(track);
       res.status(201).json(track);
     } catch (err) {
-      rmSync(req.file.path, { force: true });
-      if (!(err instanceof NotMediaError)) throw err;
-      res.status(415).json({ error: err.message });
+      const failure = err instanceof MediaError ? err : new MediaError("Couldn't add that file.", 500);
+      res.status(failure.status).json({ error: failure.message });
     }
   });
 
@@ -168,7 +156,20 @@ function cleanField(value: unknown): string | null {
   return trimmed.length ? trimmed : null;
 }
 
-async function buildTrack(file: Express.Multer.File, audioPath: string): Promise<Track> {
+// Always leaves the upload dir clean on failure: no original, no partial output.
+async function buildTrack(file: Express.Multer.File): Promise<Track> {
+  let audioPath = file.path;
+  try {
+    audioPath = await keepAudioOnly(file.path);
+    return await describeTrack(file, audioPath);
+  } catch (err) {
+    rmSync(file.path, { force: true });
+    rmSync(audioPath, { force: true });
+    throw err;
+  }
+}
+
+async function describeTrack(file: Express.Multer.File, audioPath: string): Promise<Track> {
   const meta = await readAudioMeta(audioPath);
   return {
     id: nanoid(),

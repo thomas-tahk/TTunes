@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { uploadTrack } from "../api.ts";
 import type { AddChoice } from "../addChoice.ts";
-import { AddChoiceButtons } from "./AddChoiceButtons.tsx";
+import { useWindowDrop } from "../useWindowDrop.ts";
+import { BatchChoice } from "./BatchChoice.tsx";
 
 interface UploaderProps {
   onAdded: () => Promise<void>;
@@ -28,7 +29,6 @@ export function Uploader({ onAdded, onChoose }: UploaderProps) {
   const [status, setStatus] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [addedIds, setAddedIds] = useState<string[]>([]);
-  const [dragging, setDragging] = useState(false);
 
   async function handleFiles(files: File[]) {
     if (!files.length || busy) return;
@@ -42,29 +42,7 @@ export function Uploader({ onAdded, onChoose }: UploaderProps) {
     setAddedIds(result.ids);
   }
 
-  // Whole page is the drop zone.
-  useEffect(() => {
-    const over = (e: DragEvent) => {
-      e.preventDefault();
-      setDragging(true);
-    };
-    const leave = (e: DragEvent) => {
-      if (!e.relatedTarget) setDragging(false);
-    };
-    const drop = (e: DragEvent) => {
-      e.preventDefault();
-      setDragging(false);
-      void handleFiles(Array.from(e.dataTransfer?.files ?? []));
-    };
-    window.addEventListener("dragover", over);
-    window.addEventListener("dragleave", leave);
-    window.addEventListener("drop", drop);
-    return () => {
-      window.removeEventListener("dragover", over);
-      window.removeEventListener("dragleave", leave);
-      window.removeEventListener("drop", drop);
-    };
-  });
+  const dragging = useWindowDrop((files) => void handleFiles(files));
 
   function choose(choice: AddChoice) {
     onChoose(addedIds, choice);
@@ -91,14 +69,7 @@ export function Uploader({ onAdded, onChoose }: UploaderProps) {
           {msg}
         </p>
       ))}
-      {addedIds.length > 0 && (
-        <div className="uploader__choice">
-          <span>
-            Added {addedIds.length} {addedIds.length === 1 ? "track" : "tracks"}
-          </span>
-          <AddChoiceButtons busy={false} onChoose={choose} />
-        </div>
-      )}
+      {addedIds.length > 0 && <BatchChoice count={addedIds.length} onChoose={choose} />}
     </>
   );
 }

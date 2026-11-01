@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Track } from "./types.ts";
+import type { AddChoice } from "./addChoice.ts";
 import { fetchTracks, deleteTrack } from "./api.ts";
 import { addBatch } from "./addChoice.ts";
 import { usePlayer } from "./usePlayer.ts";
@@ -17,6 +18,10 @@ export default function App() {
     setTracks(await fetchTracks());
   }, []);
 
+  // Latest controls for async callbacks that outlive the render they were created in.
+  const controlsRef = useRef(controls);
+  controlsRef.current = controls;
+
   useEffect(() => {
     void refresh();
   }, [refresh]);
@@ -28,6 +33,17 @@ export default function App() {
     autoStarted.current = true;
     controls.startShuffle();
   }, [tracks, controls]);
+
+  const handleYouTubeAdded = useCallback(
+    async (track: Track, choice: AddChoice) => {
+      try {
+        await refresh();
+      } finally {
+        controlsRef.current.add(track.id, choice); // track is saved; play/queue it even if the reload failed
+      }
+    },
+    [refresh],
+  );
 
   const handleDelete = useCallback(
     async (id: string) => {
@@ -50,7 +66,7 @@ export default function App() {
 
       <main className="content">
         <Uploader onAdded={refresh} onChoose={(ids, choice) => addBatch(ids, choice, controls.add)} />
-        <YouTubeAdd onAdded={refresh} />
+        <YouTubeAdd onAdded={handleYouTubeAdded} />
         <Library tracks={tracks} controls={controls} onDelete={handleDelete} />
       </main>
 
