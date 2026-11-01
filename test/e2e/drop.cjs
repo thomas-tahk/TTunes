@@ -9,7 +9,7 @@ const APP_URL = process.env.APP_URL;
 const API_URL = process.env.API_URL;
 if (!APP_URL || !API_URL) throw new Error("set APP_URL and API_URL");
 const FIXTURES = join(__dirname, "..", "fixtures");
-const SHOT = join(__dirname, "..", "..", "docs", "milestones", "M1-shots", "14-drop.png");
+const SHOT = process.env.SHOT; // optional screenshot path
 
 const load = (fixture, name, type) => ({ name, type, base64: readFileSync(join(FIXTURES, fixture)).toString("base64") });
 
@@ -45,7 +45,7 @@ const nowPlaying = (page) => page.locator(".playerbar__title").innerText();
   ]);
   await page.getByText("Added 3 tracks").waitFor();
   assert.deepEqual(await page.locator("[role=alert]").allTextContents(), ["notes.txt: That file isn't audio or video."]);
-  await page.screenshot({ path: SHOT });
+  if (SHOT) await page.screenshot({ path: SHOT });
   await page.getByText("Queue next").click();
 
   const order = [];

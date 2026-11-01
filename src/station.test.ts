@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { advance, sync, emptyStation, enqueue, peekNext, playNow, type Station } from "./station.ts";
+import { addMany, advance, sync, emptyStation, enqueue, peekNext, playNow, type Station } from "./station.ts";
 
 const noShuffle = () => 0.999; // Fisher-Yates with this keeps order unchanged
 
@@ -103,3 +103,34 @@ function takeWith(start: Station, library: string[], count: number, random: () =
   }
   return { ids, station };
 }
+
+describe("addMany", () => {
+  const idle = { ...emptyStation(), queue: ["x"] };
+  const playing = { ...playNow(emptyStation(), "p"), queue: ["x"] };
+
+  it.each(["now", "next", "last"] as const)("idle + %s: first plays, rest queue in order", (choice) => {
+    const out = addMany(idle, ["a", "b", "c"], choice);
+    expect(out.current).toBe("a");
+    expect(out.queue).toEqual(["b", "c", "x"]);
+  });
+
+  it("playing + now: first plays, rest queue next in order", () => {
+    const out = addMany(playing, ["a", "b", "c"], "now");
+    expect(out.current).toBe("a");
+    expect(out.queue).toEqual(["b", "c", "x"]);
+  });
+
+  it("playing + next: all at queue head in drop order", () => {
+    const out = addMany(playing, ["a", "b", "c"], "next");
+    expect(out.current).toBe("p");
+    expect(out.queue).toEqual(["a", "b", "c", "x"]);
+  });
+
+  it("playing + last: all at tail in drop order", () => {
+    expect(addMany(playing, ["a", "b", "c"], "last").queue).toEqual(["x", "a", "b", "c"]);
+  });
+
+  it("does not queue the id that is already current", () => {
+    expect(addMany(playing, ["p", "a"], "next").queue).toEqual(["a", "x"]);
+  });
+});

@@ -35,11 +35,14 @@ export function Uploader({ onAdded, onChoose }: UploaderProps) {
     setBusy(true);
     setAddedIds([]);
     const result = await uploadAll(files, setStatus);
-    await onAdded();
-    setBusy(false);
-    setStatus(null);
-    setErrors(result.errors);
-    setAddedIds(result.ids);
+    try {
+      await onAdded();
+    } finally {
+      setBusy(false);
+      setStatus(null);
+      setErrors(result.errors);
+      setAddedIds(result.ids);
+    }
   }
 
   const dragging = useWindowDrop((files) => void handleFiles(files));
