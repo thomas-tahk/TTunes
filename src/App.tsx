@@ -28,6 +28,7 @@ export default function App() {
   // "Open it and it's playing" — auto-start once tracks first load. Browser
   // autoplay policy may defer this until the first click; the Play control covers that.
   useEffect(() => {
+    if (!tracks.length) autoStarted.current = false; // library emptied: auto-start again when re-filled
     if (autoStarted.current || !tracks.length || controls.currentId) return;
     autoStarted.current = true;
     controls.startShuffle();
