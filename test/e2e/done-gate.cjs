@@ -1,28 +1,20 @@
 // M1 done-gate, one session from an EMPTY library: paste YouTube link, drop MP3, search + pick -> all "Queue last";
 // they must play in that order, then >=3 more tracks must start with no clicks.
 //   APP_URL=http://localhost:5251 API_URL=http://localhost:8951 [WIDTH=375] [SHOT=docs/milestones/M1-shots/gate] node test/e2e/done-gate.cjs
+// Run via `npm run e2e`. Env: APP_URL, API_URL (required), WIDTH (default 1280), SHOT (screenshot prefix).
 // Needs test/e2e-server.ts on API_URL (fake yt-dlp/search keyed by video id) and the UI on APP_URL. Restart the API for a fresh library.
 const { chromium } = require("playwright");
-const { readFileSync } = require("node:fs");
-const { join } = require("node:path");
 const assert = require("node:assert/strict");
+const { load, dropFiles } = require("./lib.cjs");
 
 const APP_URL = process.env.APP_URL;
 const API_URL = process.env.API_URL;
 if (!APP_URL || !API_URL) throw new Error("set APP_URL and API_URL");
 const WIDTH = Number(process.env.WIDTH) || 1280;
 const SHOT = process.env.SHOT; // optional screenshot prefix; writes <SHOT>-<step>-<WIDTH>.png
-const FIXTURES = join(__dirname, "..", "fixtures");
 const shot = (page, step) => SHOT && page.screenshot({ path: `${SHOT}-${step}-${WIDTH}.png` });
 
-async function dropMp3(page, name) {
-  const base64 = readFileSync(join(FIXTURES, "tone.mp3")).toString("base64");
-  await page.evaluate(({ name, base64 }) => {
-    const dt = new DataTransfer();
-    dt.items.add(new File([Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))], name, { type: "audio/mpeg" }));
-    window.dispatchEvent(new DragEvent("drop", { dataTransfer: dt, bubbles: true, cancelable: true }));
-  }, { name, base64 });
-}
+const dropMp3 = (page, name) => dropFiles(page, [load("tone.mp3", name, "audio/mpeg")]);
 
 const tracks = async () => (await fetch(`${API_URL}/api/tracks`)).json();
 

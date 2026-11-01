@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Track } from "./types.ts";
 import { audioUrl } from "./api.ts";
 import type { AddChoice } from "./addChoice.ts";
-import { addMany as addManyStation, advance as advanceStation, emptyStation, peekNext, playNow as playNowStation, sync, type Station } from "./station.ts";
+import { addMany as addManyStation, advance as advanceStation, emptyStation, peekNext, playNow as playNowStation, queueLast, sync, type Station } from "./station.ts";
 
 export interface PlayerControls {
   currentId: string | null;
@@ -127,7 +127,13 @@ export function usePlayer(tracks: Track[]): PlayerControls {
 
   const add = useCallback((id: string, choice: AddChoice) => addMany([id], choice), [addMany]);
 
-  const enqueue = useCallback((id: string) => add(id, "last"), [add]);
+  const enqueue = useCallback(
+    (id: string) => {
+      if (!stationRef.current.current) return add(id, "last");
+      commit(queueLast(stationRef.current, id));
+    },
+    [add, commit],
+  );
 
   const toggle = useCallback(() => {
     const audio = audioRef.current!;
