@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Track } from "./types.ts";
 import { fetchTracks, deleteTrack } from "./api.ts";
+import { addBatch } from "./addChoice.ts";
 import { usePlayer } from "./usePlayer.ts";
 import { Uploader } from "./components/Uploader.tsx";
 import { YouTubeAdd } from "./components/YouTubeAdd.tsx";
@@ -48,7 +49,7 @@ export default function App() {
       </header>
 
       <main className="content">
-        <Uploader onAdded={refresh} />
+        <Uploader onAdded={refresh} onChoose={(ids, choice) => addBatch(ids, choice, controls.add)} />
         <YouTubeAdd onAdded={refresh} />
         <Library tracks={tracks} controls={controls} onDelete={handleDelete} />
       </main>

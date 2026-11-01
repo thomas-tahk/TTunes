@@ -372,3 +372,21 @@ body {
   gap: 8px;
   flex-wrap: wrap;
 }
+
+.uploader--drag {
+  background: var(--panel);
+  color: var(--text);
+  border-style: solid;
+}
+
+.uploader__error {
+  color: #ff8a8a;
+  margin: -14px 0 14px;
+}
+
+.uploader__choice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: -10px 0 22px;
+}

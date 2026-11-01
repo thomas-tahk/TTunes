@@ -2,12 +2,13 @@ import express, { type Express, type Request, type Response } from "express";
 import cors from "cors";
 import multer from "multer";
 import { nanoid } from "nanoid";
-import { extname } from "node:path";
-import { renameSync } from "node:fs";
+import { basename, extname } from "node:path";
+import { renameSync, rmSync, statSync } from "node:fs";
 import type { LocalDiskStorage } from "./storage.ts";
 import type { TrackRepo } from "./repo.ts";
 import { type YouTubeIngest, IngestError } from "./ingest.ts";
 import { readAudioMeta } from "./metadata.ts";
+import { keepAudioOnly, NotMediaError } from "./extract.ts";
 import type { Track } from "./types.ts";
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -50,9 +51,16 @@ export function createApp({ storage, repo, ingest, uploadDir }: AppDeps): Expres
       res.status(400).json({ error: "no file uploaded" });
       return;
     }
-    const track = await buildTrack(req.file);
-    repo.add(track);
-    res.status(201).json(track);
+    try {
+      const audioPath = await keepAudioOnly(req.file.path);
+      const track = await buildTrack(req.file, audioPath);
+      repo.add(track);
+      res.status(201).json(track);
+    } catch (err) {
+      rmSync(req.file.path, { force: true });
+      if (!(err instanceof NotMediaError)) throw err;
+      res.status(415).json({ error: err.message });
+    }
   });
 
   app.delete("/api/tracks/:id", (req: Request, res: Response) => {
@@ -160,8 +168,8 @@ function cleanField(value: unknown): string | null {
   return trimmed.length ? trimmed : null;
 }
 
-async function buildTrack(file: Express.Multer.File): Promise<Track> {
-  const meta = await readAudioMeta(file.path);
+async function buildTrack(file: Express.Multer.File, audioPath: string): Promise<Track> {
+  const meta = await readAudioMeta(audioPath);
   return {
     id: nanoid(),
     title: meta.title ?? file.originalname.replace(extname(file.originalname), ""),
@@ -170,8 +178,8 @@ async function buildTrack(file: Express.Multer.File): Promise<Track> {
     durationSec: meta.durationSec,
     bitrate: meta.bitrate,
     format: meta.format,
-    sizeBytes: file.size,
-    storageKey: file.filename,
+    sizeBytes: statSync(audioPath).size,
+    storageKey: basename(audioPath),
     createdAt: new Date().toISOString(),
   };
 }
