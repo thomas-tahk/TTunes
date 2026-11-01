@@ -33,6 +33,7 @@ export function YouTubeAdd({ onAdded }: { onAdded: (track: Track, choice: AddCho
   async function handleAdd(edits: { title: string; artist: string; album: string }, choice: AddChoice) {
     if (!staged) return;
     setBusy(true);
+    setError(null);
     try {
       const track = await commitIngest(staged.id, edits);
       setStaged(null);

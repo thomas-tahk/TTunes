@@ -41,7 +41,7 @@ describe("YouTube ingest", () => {
     expect(res.body.error).toMatch(/YouTube link/);
   });
 
-  it("surfaces the runner's IngestError message", async () => {
+  it("returns 422 with the message when the runner throws an IngestError", async () => {
     const { app } = makeTestApp(async () => {
       throw new IngestError("yt-dlp isn't installed or couldn't run.");
     });

@@ -35,8 +35,11 @@ export default function App() {
 
   const handleYouTubeAdded = useCallback(
     async (track: Track, choice: AddChoice) => {
-      await refresh();
-      controlsRef.current.add(track.id, choice);
+      try {
+        await refresh();
+      } finally {
+        controlsRef.current.add(track.id, choice); // track is saved; play/queue it even if the reload failed
+      }
     },
     [refresh],
   );
