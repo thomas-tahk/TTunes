@@ -16,7 +16,10 @@ When it finishes, it prints "Next steps" with some commands. Paste every command
 
 ```
 brew install node yt-dlp ffmpeg
+brew upgrade yt-dlp
 ```
+
+`brew upgrade yt-dlp` matters even if it's already installed: YouTube regularly breaks old versions (the July 2026 one gets `HTTP Error 403: Forbidden`).
 
 ## 3. Download TTunes
 
@@ -55,4 +58,10 @@ The Start window prints a warning if `yt-dlp` or `ffmpeg` is missing (adding fro
 
 ```
 brew install yt-dlp ffmpeg
+```
+
+If adding from YouTube fails with `403: Forbidden`, your yt-dlp is out of date:
+
+```
+brew upgrade yt-dlp
 ```
