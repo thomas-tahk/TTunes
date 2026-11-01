@@ -366,3 +366,9 @@ body {
   color: var(--muted);
   font-size: 12px;
 }
+
+.add-choice {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}

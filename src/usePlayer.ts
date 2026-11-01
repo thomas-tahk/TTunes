@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Track } from "./types.ts";
 import { audioUrl } from "./api.ts";
+import { queueWith, type AddChoice } from "./addChoice.ts";
 
 export const QUEUE_CAP = 6; // manual queue stays a "next few", distinct from playlists (spec §5)
 
@@ -20,6 +21,8 @@ export interface PlayerControls {
   canQueue: boolean;
   playNow: (id: string) => void;
   enqueue: (id: string) => void;
+  /** Play or queue a track the user just added. */
+  add: (id: string, choice: AddChoice) => void;
   startShuffle: () => void;
   toggle: () => void;
   next: () => void;
@@ -128,6 +131,17 @@ export function usePlayer(tracks: Track[]): PlayerControls {
     [currentId, play, setQueue],
   );
 
+  const add = useCallback(
+    (id: string, choice: AddChoice) => {
+      if (choice === "now" || !currentId) {
+        play(id);
+        return;
+      }
+      setQueue(queueWith(queueRef.current, id, choice));
+    },
+    [currentId, play, setQueue],
+  );
+
   const startShuffle = useCallback(() => {
     const order = orderRef.current;
     if (!order.length) return;
@@ -148,6 +162,7 @@ export function usePlayer(tracks: Track[]): PlayerControls {
     canQueue: queue.length < QUEUE_CAP,
     playNow,
     enqueue,
+    add,
     startShuffle,
     toggle,
     next: advance,

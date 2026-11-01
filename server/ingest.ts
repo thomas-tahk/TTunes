@@ -31,12 +31,17 @@ interface StagedEntry extends StagedIngest {
   filePath: string;
 }
 
+/** Runs yt-dlp for one URL, writing audio to outputTemplate and returning its info JSON. Tests inject a fake. */
+export type YtDlpRunner = (url: string, outputTemplate: string) => Promise<YtInfo>;
+
 export class YouTubeIngest {
   private readonly stagingDir: string;
+  private readonly runYtDlp: YtDlpRunner;
   private readonly entries = new Map<string, StagedEntry>();
 
-  constructor(stagingDir: string) {
+  constructor(stagingDir: string, runYtDlp: YtDlpRunner = runRealYtDlp) {
     this.stagingDir = resolve(stagingDir);
+    this.runYtDlp = runYtDlp;
     if (!existsSync(this.stagingDir)) mkdirSync(this.stagingDir, { recursive: true });
   }
 
@@ -45,7 +50,7 @@ export class YouTubeIngest {
       throw new IngestError("That doesn't look like a YouTube link. Paste a youtube.com or youtu.be URL.");
     }
     const id = nanoid();
-    const info = await runYtDlp(url, join(this.stagingDir, `${id}.%(ext)s`));
+    const info = await this.runYtDlp(url, join(this.stagingDir, `${id}.%(ext)s`));
     const filePath = join(this.stagingDir, `${id}.mp3`);
     if (!existsSync(filePath)) {
       throw new IngestError("Couldn't get clean audio from that link — it may be too large, region-locked, or not a single track.");
@@ -106,7 +111,7 @@ function toStaged(entry: StagedEntry): StagedIngest {
   return staged;
 }
 
-interface YtInfo {
+export interface YtInfo {
   title?: string;
   uploader?: string;
   channel?: string;
@@ -124,7 +129,7 @@ function isSupportedUrl(url: string): boolean {
   }
 }
 
-function runYtDlp(url: string, outputTemplate: string): Promise<YtInfo> {
+function runRealYtDlp(url: string, outputTemplate: string): Promise<YtInfo> {
   const args = [
     "-x", "--audio-format", "mp3", "--audio-quality", "0",
     "--no-playlist", "--no-simulate", "--socket-timeout", "30",
