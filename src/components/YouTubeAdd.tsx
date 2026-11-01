@@ -2,32 +2,54 @@ import { useState } from "react";
 import type { AddChoice } from "../addChoice.ts";
 import type { Track } from "../types.ts";
 import { AddChoiceButtons } from "./AddChoiceButtons.tsx";
+import { SearchResults } from "./SearchResults.tsx";
 import {
   ingestYouTube,
+  searchYouTube,
   commitIngest,
   discardIngest,
   stagedAudioUrl,
+  type SearchHit,
   type StagedIngest,
 } from "../api.ts";
 
 export function YouTubeAdd({ onAdded }: { onAdded: (track: Track, choice: AddChoice) => Promise<void> }) {
   const [url, setUrl] = useState("");
   const [staged, setStaged] = useState<StagedIngest | null>(null);
+  const [hits, setHits] = useState<SearchHit[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleFetch() {
-    const trimmed = url.trim();
-    if (!trimmed || busy) return;
+  async function run(action: () => Promise<void>, fallback: string) {
     setBusy(true);
     setError(null);
     try {
-      setStaged(await ingestYouTube(trimmed));
+      await action();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't fetch that link.");
+      setError(e instanceof Error ? e.message : fallback);
     } finally {
       setBusy(false);
     }
+  }
+
+  // Same staging path for a pasted link and a clicked search result.
+  const stage = (link: string) =>
+    run(async () => {
+      setStaged(await ingestYouTube(link));
+      setHits([]);
+    }, "Couldn't fetch that link.");
+
+  const search = (query: string) =>
+    run(async () => {
+      const found = await searchYouTube(query);
+      setHits(found);
+      if (!found.length) setError("No results found.");
+    }, "Search failed.");
+
+  function handleSubmit() {
+    const text = url.trim();
+    if (!text || busy) return;
+    void (/^https?:\/\//i.test(text) ? stage(text) : search(text));
   }
 
   async function handleAdd(edits: { title: string; artist: string; album: string }, choice: AddChoice) {
@@ -61,18 +83,19 @@ export function YouTubeAdd({ onAdded }: { onAdded: (track: Track, choice: AddCho
       <div className="yt__row">
         <input
           className="yt__input"
-          type="url"
-          placeholder="Paste a YouTube link to add a song…"
+          type="text"
+          placeholder="Paste a YouTube link, or search “artist – song”…"
           value={url}
           disabled={busy}
           onChange={(e) => setUrl(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleFetch()}
+          onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
         />
-        <button className="ctrl ctrl--primary" disabled={busy || !url.trim()} onClick={handleFetch}>
-          {busy ? "Fetching…" : "Fetch"}
+        <button className="ctrl ctrl--primary" disabled={busy || !url.trim()} onClick={handleSubmit}>
+          {busy ? "Working…" : "Go"}
         </button>
       </div>
       {error && <p className="yt__error">{error}</p>}
+      <SearchResults hits={hits} disabled={busy} onPick={(hit) => stage(hit.url)} />
     </div>
   );
 }

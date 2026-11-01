@@ -372,3 +372,8 @@ body {
   gap: 8px;
   flex-wrap: wrap;
 }
+
+.yt__results { list-style: none; margin: 0.5rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; }
+.yt__result { width: 100%; display: flex; justify-content: space-between; gap: 1rem; text-align: left; padding: 0.5rem 0.75rem; border: 1px solid #333; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
+.yt__result:hover:not(:disabled) { background: rgba(255, 255, 255, 0.06); }
+.yt__result-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
