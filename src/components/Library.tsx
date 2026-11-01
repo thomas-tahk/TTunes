@@ -44,8 +44,7 @@ export function Library({ tracks, controls, onDelete }: LibraryProps) {
           <button
             className="row__queue"
             onClick={() => controls.enqueue(track.id)}
-            disabled={!controls.canQueue}
-            title={controls.canQueue ? "Add to queue" : "Queue full"}
+            title="Add to queue"
           >
             + Queue
           </button>
