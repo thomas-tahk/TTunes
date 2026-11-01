@@ -47,4 +47,12 @@ describe("static UI serving", () => {
     const res = await request(app).get("/api/nope");
     expect(res.status).toBe(404);
   });
+
+  it("treats bare /api and /audio like their subpaths, not the SPA", async () => {
+    const { app } = makeTestApp(undefined, { staticDir });
+    const api = await request(app).get("/api");
+    const audio = await request(app).get("/audio");
+    expect(api.text).not.toContain("TTunes test");
+    expect(audio.text).not.toContain("TTunes test");
+  });
 });

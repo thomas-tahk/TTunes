@@ -377,3 +377,21 @@ body {
 .yt__result { width: 100%; display: flex; justify-content: space-between; gap: 1rem; text-align: left; padding: 0.5rem 0.75rem; border: 1px solid #333; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
 .yt__result:hover:not(:disabled) { background: rgba(255, 255, 255, 0.06); }
 .yt__result-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.uploader--drag {
+  background: var(--panel);
+  color: var(--text);
+  border-style: solid;
+}
+
+.uploader__error {
+  color: #ff8a8a;
+  margin: -14px 0 14px;
+}
+
+.uploader__choice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: -10px 0 22px;
+}

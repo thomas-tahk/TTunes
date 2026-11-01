@@ -2,24 +2,15 @@ import express, { type Express, type NextFunction, type Request, type Response }
 import cors from "cors";
 import multer from "multer";
 import { nanoid } from "nanoid";
-import { extname, join, resolve } from "node:path";
-import { renameSync } from "node:fs";
+import { basename, extname, join, resolve } from "node:path";
+import { renameSync, rmSync, statSync } from "node:fs";
 import type { LocalDiskStorage } from "./storage.ts";
 import type { TrackRepo } from "./repo.ts";
 import { type YouTubeIngest, IngestError } from "./ingest.ts";
 import { SearchError, type YtSearchRunner } from "./search.ts";
 import { readAudioMeta } from "./metadata.ts";
+import { CONTENT_TYPES, keepAudioOnly, MediaError } from "./extract.ts";
 import type { Track } from "./types.ts";
-
-const CONTENT_TYPES: Record<string, string> = {
-  ".mp3": "audio/mpeg",
-  ".m4a": "audio/mp4",
-  ".aac": "audio/aac",
-  ".flac": "audio/flac",
-  ".ogg": "audio/ogg",
-  ".opus": "audio/opus",
-  ".wav": "audio/wav",
-};
 
 export interface AppDeps {
   storage: LocalDiskStorage;
@@ -53,9 +44,14 @@ export function createApp({ storage, repo, ingest, search, uploadDir, staticDir 
       res.status(400).json({ error: "no file uploaded" });
       return;
     }
-    const track = await buildTrack(req.file);
-    repo.add(track);
-    res.status(201).json(track);
+    try {
+      const track = await buildTrack(req.file);
+      repo.add(track);
+      res.status(201).json(track);
+    } catch (err) {
+      const failure = err instanceof MediaError ? err : new MediaError("Couldn't add that file.", 500);
+      res.status(failure.status).json({ error: failure.message });
+    }
   });
 
   app.delete("/api/tracks/:id", (req: Request, res: Response) => {
@@ -178,7 +174,7 @@ export function createApp({ storage, repo, ingest, search, uploadDir, staticDir 
 function serveBuiltUi(app: Express, staticDir: string): void {
   app.use(express.static(staticDir));
   app.use((req: Request, res: Response, next: NextFunction) => {
-    const isApiOrAudio = req.path.startsWith("/api/") || req.path.startsWith("/audio/");
+    const isApiOrAudio = /^\/(api|audio)(\/|$)/.test(req.path);
     if (req.method !== "GET" || isApiOrAudio) return next();
     res.sendFile(join(resolve(staticDir), "index.html"));
   });
@@ -189,8 +185,21 @@ function cleanField(value: unknown): string | null {
   return trimmed.length ? trimmed : null;
 }
 
+// Always leaves the upload dir clean on failure: no original, no partial output.
 async function buildTrack(file: Express.Multer.File): Promise<Track> {
-  const meta = await readAudioMeta(file.path);
+  let audioPath = file.path;
+  try {
+    audioPath = await keepAudioOnly(file.path);
+    return await describeTrack(file, audioPath);
+  } catch (err) {
+    rmSync(file.path, { force: true });
+    rmSync(audioPath, { force: true });
+    throw err;
+  }
+}
+
+async function describeTrack(file: Express.Multer.File, audioPath: string): Promise<Track> {
+  const meta = await readAudioMeta(audioPath);
   return {
     id: nanoid(),
     title: meta.title ?? file.originalname.replace(extname(file.originalname), ""),
@@ -199,8 +208,8 @@ async function buildTrack(file: Express.Multer.File): Promise<Track> {
     durationSec: meta.durationSec,
     bitrate: meta.bitrate,
     format: meta.format,
-    sizeBytes: file.size,
-    storageKey: file.filename,
+    sizeBytes: statSync(audioPath).size,
+    storageKey: basename(audioPath),
     createdAt: new Date().toISOString(),
   };
 }

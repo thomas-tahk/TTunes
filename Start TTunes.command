@@ -2,6 +2,10 @@
 # Double-click launcher: builds if needed, starts the server, opens the browser.
 cd "$(dirname "$0")" || exit 1
 
+# Finder launches don't load the shell profile, so find Homebrew ourselves.
+[ -x /opt/homebrew/bin/brew ] && eval "$(/opt/homebrew/bin/brew shellenv)"
+[ -x /usr/local/bin/brew ] && eval "$(/usr/local/bin/brew shellenv)"
+
 PORT="${PORT:-8787}"
 URL="http://localhost:$PORT"
 
@@ -29,9 +33,18 @@ wait_then_open() {
   done
 }
 
+node_is_new_enough() {
+  node -e 'const [a,b]=process.versions.node.split(".").map(Number);process.exit(a>22||(a===22&&b>=12)?0:1)'
+}
+
+needs_install() {
+  [ ! -d node_modules ] && return 0
+  [ package-lock.json -nt node_modules/.package-lock.json ]
+}
+
 needs_build() {
   [ ! -f dist/index.html ] && return 0
-  [ -n "$(find src index.html vite.config.ts -newer dist/index.html 2>/dev/null | head -1)" ]
+  [ -n "$(find src index.html vite.config.ts package-lock.json -newer dist/index.html 2>/dev/null | head -1)" ]
 }
 
 if ttunes_is_running; then
@@ -46,8 +59,14 @@ if ! command -v node >/dev/null 2>&1; then
   pause_and_exit 1
 fi
 
-if [ ! -d node_modules ]; then
-  echo "First run: installing TTunes (takes a minute)..."
+if ! node_is_new_enough; then
+  echo "Your Node is too old (TTunes needs version 22.12 or newer). Update it by pasting this into Terminal, then double-click again:"
+  echo "  brew install node"
+  pause_and_exit 1
+fi
+
+if needs_install; then
+  echo "Installing TTunes (takes a minute)..."
   npm ci || { echo "Install failed."; pause_and_exit 1; }
 fi
 

@@ -10,7 +10,7 @@ Paste this, press Enter, and follow the prompts (it asks for your Mac password):
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 ```
 
-When it finishes, it prints "Next steps" with two commands. Paste those too, then close and reopen Terminal.
+When it finishes, it prints "Next steps" with some commands. Paste every command listed under Next steps, then close and reopen Terminal.
 
 ## 2. Install the tools TTunes needs
 
@@ -30,13 +30,7 @@ git clone https://github.com/thomas-tahk/TTunes.git
 
 Open the new `TTunes` folder in Finder (it is in your home folder) and double-click **Start TTunes**.
 
-The first time, macOS may say it is from an "unidentified developer" or cannot be opened. That is expected:
-
-1. Right-click (or Control-click) **Start TTunes**.
-2. Choose **Open**.
-3. Click **Open** in the box that appears.
-
-You only do this once. If Terminal says "permission denied" instead, paste: `chmod +x ~/TTunes/"Start TTunes.command"`
+If macOS blocks it, open System Settings → Privacy & Security → Open Anyway.
 
 The first start takes a minute or two (it sets itself up). Then your browser opens TTunes at http://localhost:8787.
 
