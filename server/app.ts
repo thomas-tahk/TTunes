@@ -1,16 +1,13 @@
-import express, { type Express, type NextFunction, type Request, type Response } from "express";
-import cors from "cors";
-import multer from "multer";
-import { nanoid } from "nanoid";
-import { basename, extname, join, resolve } from "node:path";
-import { renameSync, rmSync, statSync } from "node:fs";
+import express, { type Express } from "express";
 import type { LocalDiskStorage } from "./storage.ts";
 import type { TrackRepo } from "./repo.ts";
-import { type YouTubeIngest, IngestError } from "./ingest.ts";
-import { SearchError, type YtSearchRunner } from "./search.ts";
-import { readAudioMeta } from "./metadata.ts";
-import { CONTENT_TYPES, keepAudioOnly, MediaError } from "./extract.ts";
-import type { Track } from "./types.ts";
+import type { YouTubeIngest } from "./ingest.ts";
+import type { YtSearchRunner } from "./search.ts";
+import { registerTrackRoutes } from "./routes/tracks.ts";
+import { registerAudioRoutes } from "./routes/audio.ts";
+import { registerIngestRoutes } from "./routes/ingest.ts";
+import { registerSearchRoutes } from "./routes/search.ts";
+import { registerStaticRoutes } from "./routes/static.ts";
 
 export interface AppDeps {
   storage: LocalDiskStorage;
@@ -23,194 +20,14 @@ export interface AppDeps {
 
 // Builds the HTTP app from its collaborators so tests can inject temp dirs and a
 // fake yt-dlp runner; server/index.ts wires the real ones and listens.
+// No CORS on purpose: the UI is same-origin, so foreign sites must not reach the API.
 export function createApp({ storage, repo, ingest, search, uploadDir, staticDir }: AppDeps): Express {
-  const upload = multer({
-    storage: multer.diskStorage({
-      destination: uploadDir,
-      filename: (_req, file, cb) => cb(null, nanoid() + extname(file.originalname).toLowerCase()),
-    }),
-  });
-
   const app = express();
-  app.use(cors());
   app.use(express.json());
-
-  app.get("/api/tracks", (_req: Request, res: Response) => {
-    res.json(repo.all());
-  });
-
-  app.post("/api/tracks", upload.single("file"), async (req: Request, res: Response) => {
-    if (!req.file) {
-      res.status(400).json({ error: "no file uploaded" });
-      return;
-    }
-    try {
-      const track = await buildTrack(req.file);
-      repo.add(track);
-      res.status(201).json(track);
-    } catch (err) {
-      const failure = err instanceof MediaError ? err : new MediaError("Couldn't add that file.", 500);
-      res.status(failure.status).json({ error: failure.message });
-    }
-  });
-
-  app.delete("/api/tracks/:id", (req: Request, res: Response) => {
-    const removed = repo.remove(String(req.params.id));
-    if (!removed) {
-      res.status(404).json({ error: "not found" });
-      return;
-    }
-    storage.delete(removed.storageKey); // Delete = purge from library AND storage (spec §6)
-    res.status(204).end();
-  });
-
-  // Range-aware streaming so the browser can seek instantly and start playback
-  // before the full file arrives — the "no buffering" requirement (design spec §5).
-  app.get("/audio/:id", (req: Request, res: Response) => {
-    const track = repo.get(String(req.params.id));
-    if (!track) {
-      res.status(404).end();
-      return;
-    }
-    const { size } = storage.stat(track.storageKey);
-    const contentType = CONTENT_TYPES[extname(track.storageKey)] ?? "application/octet-stream";
-    const range = req.headers.range;
-
-    if (!range) {
-      res.writeHead(200, { "Content-Length": size, "Content-Type": contentType, "Accept-Ranges": "bytes" });
-      storage.readRange(track.storageKey, 0, size - 1).pipe(res);
-      return;
-    }
-
-    const [startRaw, endRaw] = range.replace(/bytes=/, "").split("-");
-    const start = Number(startRaw);
-    const end = endRaw ? Number(endRaw) : size - 1;
-    res.writeHead(206, {
-      "Content-Range": `bytes ${start}-${end}/${size}`,
-      "Accept-Ranges": "bytes",
-      "Content-Length": end - start + 1,
-      "Content-Type": contentType,
-    });
-    storage.readRange(track.storageKey, start, end).pipe(res);
-  });
-
-  // --- YouTube ingest (design spec §6): stage -> preview -> commit/discard ---
-
-  app.post("/api/ingest/youtube", async (req: Request, res: Response) => {
-    const url = String(req.body?.url ?? "").trim();
-    if (!url) {
-      res.status(400).json({ error: "no url provided" });
-      return;
-    }
-    try {
-      res.status(201).json(await ingest.stage(url));
-    } catch (err) {
-      const message = err instanceof IngestError ? err.message : "Failed to fetch that link.";
-      res.status(422).json({ error: message });
-    }
-  });
-
-  // Candidate videos for "artist – song"; the user picks one and it is staged like a pasted link.
-  app.get("/api/search", async (req: Request, res: Response) => {
-    const query = String(req.query.q ?? "").trim();
-    if (!query) {
-      res.status(400).json({ error: "no query provided" });
-      return;
-    }
-    try {
-      res.json(await search(query));
-    } catch (err) {
-      res.status(422).json({ error: err instanceof SearchError ? err.message : "Search failed." });
-    }
-  });
-
-  // Preview the staged audio before committing — the user's "is this the song?" check.
-  app.get("/api/ingest/youtube/:id/audio", (req: Request, res: Response) => {
-    const stream = ingest.stream(String(req.params.id));
-    if (!stream) {
-      res.status(404).end();
-      return;
-    }
-    res.setHeader("Content-Type", "audio/mpeg");
-    stream.pipe(res);
-  });
-
-  app.post("/api/ingest/youtube/:id/commit", (req: Request, res: Response) => {
-    const staged = ingest.get(String(req.params.id));
-    if (!staged) {
-      res.status(404).json({ error: "staged track not found" });
-      return;
-    }
-    const storageKey = nanoid() + ".mp3";
-    renameSync(staged.filePath, storage.destinationFor(storageKey));
-    ingest.take(staged.id); // forget staging entry; file now lives in the library
-    const track: Track = {
-      id: nanoid(),
-      title: cleanField(req.body?.title) ?? staged.title,
-      artist: cleanField(req.body?.artist) ?? staged.artist,
-      album: cleanField(req.body?.album) ?? staged.album,
-      durationSec: staged.durationSec,
-      bitrate: staged.bitrate,
-      format: staged.format,
-      sizeBytes: staged.sizeBytes,
-      storageKey,
-      createdAt: new Date().toISOString(),
-    };
-    repo.add(track);
-    res.status(201).json(track);
-  });
-
-  app.delete("/api/ingest/youtube/:id", (req: Request, res: Response) => {
-    ingest.discard(String(req.params.id));
-    res.status(204).end();
-  });
-
-  if (staticDir) serveBuiltUi(app, staticDir);
-
+  registerTrackRoutes(app, { storage, repo, uploadDir });
+  registerAudioRoutes(app, storage, repo);
+  registerIngestRoutes(app, { storage, repo, ingest });
+  registerSearchRoutes(app, search);
+  if (staticDir) registerStaticRoutes(app, staticDir);
   return app;
 }
-
-// Registered last so API/audio routes win; unknown GETs get index.html (SPA fallback).
-function serveBuiltUi(app: Express, staticDir: string): void {
-  app.use(express.static(staticDir));
-  app.use((req: Request, res: Response, next: NextFunction) => {
-    const isApiOrAudio = /^\/(api|audio)(\/|$)/.test(req.path);
-    if (req.method !== "GET" || isApiOrAudio) return next();
-    res.sendFile(join(resolve(staticDir), "index.html"));
-  });
-}
-
-function cleanField(value: unknown): string | null {
-  const trimmed = typeof value === "string" ? value.trim() : "";
-  return trimmed.length ? trimmed : null;
-}
-
-// Always leaves the upload dir clean on failure: no original, no partial output.
-async function buildTrack(file: Express.Multer.File): Promise<Track> {
-  let audioPath = file.path;
-  try {
-    audioPath = await keepAudioOnly(file.path);
-    return await describeTrack(file, audioPath);
-  } catch (err) {
-    rmSync(file.path, { force: true });
-    rmSync(audioPath, { force: true });
-    throw err;
-  }
-}
-
-async function describeTrack(file: Express.Multer.File, audioPath: string): Promise<Track> {
-  const meta = await readAudioMeta(audioPath);
-  return {
-    id: nanoid(),
-    title: meta.title ?? file.originalname.replace(extname(file.originalname), ""),
-    artist: meta.artist ?? "Unknown Artist",
-    album: meta.album,
-    durationSec: meta.durationSec,
-    bitrate: meta.bitrate,
-    format: meta.format,
-    sizeBytes: statSync(audioPath).size,
-    storageKey: basename(audioPath),
-    createdAt: new Date().toISOString(),
-  };
-}
-

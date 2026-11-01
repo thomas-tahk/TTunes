@@ -1,10 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
 import request from "supertest";
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdtempSync, readdirSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, readdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { FIXTURES, makeTestApp } from "./helpers.ts";
+import { FIXTURES, makeTempDir, makeTestApp } from "./helpers.ts";
 
 function streamTypes(path: string): string[] {
   const out = execFileSync("ffprobe", ["-v", "error", "-show_entries", "stream=codec_type", "-of", "csv=p=0", path]);
@@ -71,7 +70,7 @@ describe("upload: ffmpeg problems", () => {
 
   /** A PATH holding the real ffprobe plus the given ffmpeg stand-in script (if any). */
   function pathWith(ffmpegScript?: string): string {
-    const bin = mkdtempSync(join(tmpdir(), "ttunes-bin-"));
+    const bin = makeTempDir("ttunes-bin-");
     symlinkSync(execFileSync("which", ["ffprobe"]).toString().trim(), join(bin, "ffprobe"));
     if (ffmpegScript) {
       writeFileSync(join(bin, "ffmpeg"), ffmpegScript);

@@ -64,7 +64,7 @@ export function runRealYtSearch(query: string): Promise<YtSearchHit[]> {
     const proc = spawn("yt-dlp", args, { timeout: SEARCH_TIMEOUT_MS });
     let stdout = "";
     proc.stdout.on("data", (chunk) => (stdout += chunk));
-    proc.on("error", () => rejectPromise(new SearchError("yt-dlp isn't installed or couldn't run.")));
+    proc.on("error", () => rejectPromise(new SearchError("yt-dlp isn't installed — run: brew install yt-dlp")));
     proc.on("close", (code) => {
       if (code !== 0) return rejectPromise(new SearchError("YouTube search failed."));
       try {

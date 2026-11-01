@@ -7,6 +7,7 @@ import { runRealYtSearch } from "./search.ts";
 import { createApp } from "./app.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, ".."); // so double-click works from any cwd
+const HOST = "127.0.0.1"; // local-only: never reachable from the network
 const PORT = Number(process.env.PORT) || 8787;
 // TTUNES_DATA_DIR lets tests keep music/data out of the repo; default is the repo root.
 const DATA_ROOT = process.env.TTUNES_DATA_DIR ? resolve(process.env.TTUNES_DATA_DIR) : REPO_ROOT;
@@ -24,6 +25,6 @@ const app = createApp({
   staticDir: existsSync(DIST_DIR) ? DIST_DIR : undefined,
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, HOST, () => {
   console.log(`TTunes server on http://localhost:${PORT}`);
 });
