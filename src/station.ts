@@ -8,11 +8,12 @@ export interface Station {
   unplayed: string[]; // rest of the current shuffle cycle, in play order
   played: string[]; // already heard this cycle
   current: string | null;
+  library: string[]; // library as of the last sync, to tell "deleted" from "not loaded yet"
 }
 
 export type Random = () => number;
 
-export const emptyStation = (): Station => ({ queue: [], unplayed: [], played: [], current: null });
+export const emptyStation = (): Station => ({ queue: [], unplayed: [], played: [], current: null, library: [] });
 
 function shuffle(ids: string[], random: Random): string[] {
   const out = [...ids];
@@ -23,15 +24,21 @@ function shuffle(ids: string[], random: Random): string[] {
   return out;
 }
 
-/** Reconcile with the library: drop deleted ids, put brand-new ids at the front of the cycle. */
+/**
+ * Reconcile with the library: drop deleted ids, put brand-new ids at the front of the cycle.
+ * Queued ids never seen in a library yet are kept (a just-added track may not have loaded).
+ */
 export function sync(station: Station, library: string[], random: Random): Station {
   const alive = new Set(library);
+  const wasListed = new Set(station.library);
   const keep = (ids: string[]) => ids.filter((id) => alive.has(id));
+  const queue = station.queue.filter((id) => alive.has(id) || !wasListed.has(id));
   const unplayed = keep(station.unplayed);
   const played = keep(station.played);
-  const known = new Set([...unplayed, ...played, ...(station.current ? [station.current] : [])]);
+  const current = library.length ? station.current : null;
+  const known = new Set([...unplayed, ...played, ...(current ? [current] : [])]);
   const fresh = library.filter((id) => !known.has(id));
-  return { ...station, queue: keep(station.queue), unplayed: [...shuffle(fresh, random), ...unplayed], played };
+  return { queue, unplayed: [...shuffle(fresh, random), ...unplayed], played, current, library };
 }
 
 function markPlaying(station: Station, id: string): Station {
@@ -47,10 +54,11 @@ export function enqueue(station: Station, id: string, choice: Exclude<AddChoice,
   return { ...station, queue: queueWith(station.queue, id, choice) };
 }
 
+// Whole library reshuffled; if the just-played track landed first, swap it away.
 function startNewCycle(station: Station, library: string[], random: Random): Station {
-  const others = library.filter((id) => id !== station.current);
-  const pool = others.length ? others : library; // a one-track library repeats; nothing else can
-  return { ...station, played: [], unplayed: shuffle(pool, random) };
+  const order = shuffle(library, random);
+  if (order.length > 1 && order[0] === station.current) [order[0], order[1]] = [order[1], order[0]];
+  return { ...station, played: [], unplayed: order };
 }
 
 /** The track to play next and the station after choosing it; id is null only for an empty library. */
@@ -68,9 +76,8 @@ export function advance(station: Station, library: string[], random: Random): { 
 
 /** Best guess at what plays after the current track, for prefetching. Null when unknown (new cycle). */
 export function peekNext(station: Station, library: string[]): string | null {
-  const alive = new Set(library);
-  const queued = station.queue.find((id) => alive.has(id));
+  const queued = station.queue[0];
   if (queued) return queued;
   const fresh = library.find((id) => id !== station.current && !station.played.includes(id) && !station.unplayed.includes(id));
-  return fresh ?? station.unplayed.find((id) => alive.has(id)) ?? null;
+  return fresh ?? station.unplayed.find((id) => library.includes(id)) ?? null;
 }

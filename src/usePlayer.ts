@@ -30,6 +30,7 @@ export function usePlayer(tracks: Track[]): PlayerControls {
 
   const stationRef = useRef<Station>(emptyStation());
   const libraryRef = useRef<string[]>([]);
+  const failuresRef = useRef(0);
 
   const commit = useCallback((station: Station) => {
     stationRef.current = station;
@@ -40,6 +41,11 @@ export function usePlayer(tracks: Track[]): PlayerControls {
   useEffect(() => {
     libraryRef.current = tracks.map((t) => t.id);
     commit(sync(stationRef.current, libraryRef.current, Math.random));
+    if (libraryRef.current.length) return;
+    const audio = audioRef.current!;
+    audio.pause();
+    audio.removeAttribute("src");
+    setCurrentId(null);
   }, [tracks, commit]);
 
   const play = useCallback((id: string) => {
@@ -66,13 +72,24 @@ export function usePlayer(tracks: Track[]): PlayerControls {
   useEffect(() => {
     const audio = audioRef.current!;
     const onEnded = () => advanceRef.current();
+    // An unplayable/deleted file must not silence the station; give up only if every track fails in a row.
+    const onError = () => {
+      failuresRef.current += 1;
+      if (failuresRef.current <= libraryRef.current.length) advanceRef.current();
+      else setIsPlaying(false);
+    };
+    const onPlaying = () => (failuresRef.current = 0);
     const onPlay = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
     audio.addEventListener("ended", onEnded);
+    audio.addEventListener("error", onError);
+    audio.addEventListener("playing", onPlaying);
     audio.addEventListener("play", onPlay);
     audio.addEventListener("pause", onPause);
     return () => {
       audio.removeEventListener("ended", onEnded);
+      audio.removeEventListener("error", onError);
+      audio.removeEventListener("playing", onPlaying);
       audio.removeEventListener("play", onPlay);
       audio.removeEventListener("pause", onPause);
     };
