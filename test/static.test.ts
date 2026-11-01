@@ -1,15 +1,14 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import request from "supertest";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { makeTestApp } from "./helpers.ts";
+import { makeTempDir, makeTestApp } from "./helpers.ts";
 
 const INDEX_HTML = "<!doctype html><title>TTunes test</title>";
 let staticDir: string;
 
-beforeAll(() => {
-  staticDir = mkdtempSync(join(tmpdir(), "ttunes-dist-"));
+beforeEach(() => {
+  staticDir = makeTempDir("ttunes-dist-");
   writeFileSync(join(staticDir, "index.html"), INDEX_HTML);
 });
 

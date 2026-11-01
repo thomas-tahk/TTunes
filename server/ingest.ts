@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, statSync, rmSync, createReadStream, type ReadStream } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, statSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { nanoid } from "nanoid";
 import { readAudioMeta } from "./metadata.ts";
+import { YTDLP_MISSING, explainYtDlpFailure } from "./ytdlp-errors.ts";
 
 // One-time YouTube audio extraction into a staging area (design spec §6). Audio
 // is pulled to a staging dir first; nothing enters the library until the user
@@ -42,49 +43,51 @@ export class YouTubeIngest {
   constructor(stagingDir: string, runYtDlp: YtDlpRunner = runRealYtDlp) {
     this.stagingDir = resolve(stagingDir);
     this.runYtDlp = runYtDlp;
-    if (!existsSync(this.stagingDir)) mkdirSync(this.stagingDir, { recursive: true });
+    mkdirSync(this.stagingDir, { recursive: true });
+  }
+
+  /** Drop leftovers from a previous run. Call only once this process owns the port, so a second instance can't wipe a live one's files. */
+  clearStaging(): void {
+    rmSync(this.stagingDir, { recursive: true, force: true });
+    mkdirSync(this.stagingDir, { recursive: true });
   }
 
   async stage(url: string): Promise<StagedIngest> {
     if (!isSupportedUrl(url)) {
       throw new IngestError("That doesn't look like a YouTube link. Paste a youtube.com or youtu.be URL.");
     }
+    if (isPlaylistOnlyUrl(url)) {
+      throw new IngestError("That's a playlist link — paste a single song's link.");
+    }
     const id = nanoid();
+    try {
+      return await this.extract(id, url);
+    } catch (err) {
+      this.removeFilesFor(id);
+      throw err;
+    }
+  }
+
+  private removeFilesFor(id: string): void {
+    for (const name of readdirSync(this.stagingDir)) {
+      if (name.startsWith(`${id}.`)) rmSync(join(this.stagingDir, name), { force: true });
+    }
+  }
+
+  private async extract(id: string, url: string): Promise<StagedIngest> {
     const info = await this.runYtDlp(url, join(this.stagingDir, `${id}.%(ext)s`));
     const filePath = join(this.stagingDir, `${id}.mp3`);
     if (!existsSync(filePath)) {
       throw new IngestError("Couldn't get clean audio from that link — it may be too large, region-locked, or not a single track.");
     }
 
-    const audio = await readAudioMeta(filePath);
-    const identity = parseIdentity(info);
-    const durationSec = audio.durationSec ?? (typeof info.duration === "number" ? Math.round(info.duration) : null);
-
-    const entry: StagedEntry = {
-      id,
-      title: identity.title,
-      artist: identity.artist,
-      album: identity.album,
-      uploader: info.uploader ?? info.channel ?? null,
-      durationSec,
-      bitrate: audio.bitrate,
-      format: audio.format,
-      sizeBytes: statSync(filePath).size,
-      warnings: warningsFor(info, durationSec),
-      filePath,
-    };
+    const entry = await describeEntry(id, filePath, info);
     this.entries.set(id, entry);
     return toStaged(entry);
   }
 
   get(id: string): StagedEntry | undefined {
     return this.entries.get(id);
-  }
-
-  stream(id: string): ReadStream | undefined {
-    const entry = this.entries.get(id);
-    if (!entry) return undefined;
-    return createReadStream(entry.filePath);
   }
 
   discard(id: string): boolean {
@@ -105,6 +108,26 @@ export class YouTubeIngest {
 }
 
 export class IngestError extends Error {}
+
+async function describeEntry(id: string, filePath: string, info: YtInfo): Promise<StagedEntry> {
+  const audio = await readAudioMeta(filePath);
+  const identity = parseIdentity(info);
+  const durationSec = audio.durationSec ?? (typeof info.duration === "number" ? Math.round(info.duration) : null);
+
+  return {
+    id,
+    title: identity.title,
+    artist: identity.artist,
+    album: identity.album,
+    uploader: info.uploader ?? info.channel ?? null,
+    durationSec,
+    bitrate: audio.bitrate,
+    format: audio.format,
+    sizeBytes: statSync(filePath).size,
+    warnings: warningsFor(info, durationSec),
+    filePath,
+  };
+}
 
 function toStaged(entry: StagedEntry): StagedIngest {
   const { filePath: _filePath, ...staged } = entry;
@@ -129,6 +152,11 @@ function isSupportedUrl(url: string): boolean {
   }
 }
 
+function isPlaylistOnlyUrl(url: string): boolean {
+  const parsed = new URL(url);
+  return parsed.pathname.replace(/\/+$/, "") === "/playlist" && !parsed.searchParams.has("v");
+}
+
 function runRealYtDlp(url: string, outputTemplate: string): Promise<YtInfo> {
   const args = [
     "-x", "--audio-format", "mp3", "--audio-quality", "0",
@@ -142,10 +170,10 @@ function runRealYtDlp(url: string, outputTemplate: string): Promise<YtInfo> {
     let stderr = "";
     proc.stdout.on("data", (chunk) => (stdout += chunk));
     proc.stderr.on("data", (chunk) => (stderr += chunk));
-    proc.on("error", () => rejectPromise(new IngestError("yt-dlp isn't installed or couldn't run.")));
+    proc.on("error", () => rejectPromise(new IngestError(YTDLP_MISSING)));
     proc.on("close", (code) => {
       if (code !== 0) {
-        rejectPromise(new IngestError(lastLine(stderr) || "yt-dlp failed to fetch that link."));
+        rejectPromise(new IngestError(explainYtDlpFailure(stderr, "yt-dlp failed to fetch that link.")));
         return;
       }
       try {
@@ -196,9 +224,4 @@ function formatDuration(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
   return `${m}:${String(s).padStart(2, "0")}`;
-}
-
-function lastLine(text: string): string {
-  const lines = text.trim().split("\n").filter(Boolean);
-  return lines.length ? lines[lines.length - 1].replace(/^ERROR:\s*/i, "").trim() : "";
 }

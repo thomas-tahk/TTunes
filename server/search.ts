@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { YTDLP_MISSING, YTDLP_UPGRADE_HINT } from "./ytdlp-errors.ts";
 
 // YouTube search via yt-dlp (design spec §6). Results are only candidates —
 // the user picks one, which then goes through the normal stage/confirm flow.
@@ -64,9 +65,9 @@ export function runRealYtSearch(query: string): Promise<YtSearchHit[]> {
     const proc = spawn("yt-dlp", args, { timeout: SEARCH_TIMEOUT_MS });
     let stdout = "";
     proc.stdout.on("data", (chunk) => (stdout += chunk));
-    proc.on("error", () => rejectPromise(new SearchError("yt-dlp isn't installed or couldn't run.")));
+    proc.on("error", () => rejectPromise(new SearchError(YTDLP_MISSING)));
     proc.on("close", (code) => {
-      if (code !== 0) return rejectPromise(new SearchError("YouTube search failed."));
+      if (code !== 0) return rejectPromise(new SearchError("YouTube search failed." + YTDLP_UPGRADE_HINT));
       try {
         resolvePromise(parseSearchLines(stdout));
       } catch (err) {

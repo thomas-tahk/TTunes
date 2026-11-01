@@ -1,10 +1,10 @@
-import { copyFileSync, mkdtempSync } from "node:fs";
+import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LocalDiskStorage } from "../server/storage.ts";
 import { JsonTrackRepo } from "../server/repo.ts";
 import { YouTubeIngest, type YtDlpRunner, type YtInfo } from "../server/ingest.ts";
-import { runRealYtSearch, type YtSearchRunner } from "../server/search.ts";
+import type { YtSearchRunner } from "../server/search.ts";
 import { createApp } from "../server/app.ts";
 
 export const FIXTURES = join(import.meta.dirname, "fixtures");
@@ -17,12 +17,30 @@ export function fakeYtDlp(info: YtInfo): YtDlpRunner {
   };
 }
 
+const tempDirs: string[] = [];
+
+/** mkdtemp that removeTempDirs() cleans up; call it from afterEach. */
+export function makeTempDir(prefix: string): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  tempDirs.push(dir);
+  return dir;
+}
+
+export function removeTempDirs(): void {
+  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+}
+
+/** Default search: tests must never hit real YouTube. */
+const failingSearch: YtSearchRunner = async () => {
+  throw new Error("search runner not faked in this test");
+};
+
 /** A fully wired app on fresh temp dirs. */
 export function makeTestApp(
   runner: YtDlpRunner = fakeYtDlp({ title: "Fixture" }),
-  { search = runRealYtSearch, staticDir }: { search?: YtSearchRunner; staticDir?: string } = {},
+  { search = failingSearch, staticDir }: { search?: YtSearchRunner; staticDir?: string } = {},
 ) {
-  const root = mkdtempSync(join(tmpdir(), "ttunes-test-"));
+  const root = makeTempDir("ttunes-test-");
   const uploadDir = join(root, "uploads");
   const storage = new LocalDiskStorage(uploadDir);
   const repo = new JsonTrackRepo(join(root, "data", "tracks.json"));
