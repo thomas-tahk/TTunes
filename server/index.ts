@@ -26,13 +26,15 @@ const app = createApp({
   staticDir: existsSync(DIST_DIR) ? DIST_DIR : undefined,
 });
 
-const server = app.listen(PORT, HOST, () => {
+// Express 5 hands listen errors (e.g. EADDRINUSE) to this callback, so check err first.
+app.listen(PORT, HOST, (err?: Error) => {
+  if (err) return exitOnListenError(err);
   ingest.clearStaging(); // only after we own the port, so a second instance can't wipe a live one's files
   console.log(`TTunes server on http://localhost:${PORT}`);
 });
 
-server.on("error", (err: NodeJS.ErrnoException) => {
+function exitOnListenError(err: NodeJS.ErrnoException): never {
   if (err.code !== "EADDRINUSE") throw err;
   console.error(`TTunes is already running on port ${PORT}.`);
   process.exit(1);
-});
+}

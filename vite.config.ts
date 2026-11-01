@@ -9,8 +9,10 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      "/api": API_TARGET,
-      "/audio": API_TARGET,
+      // changeOrigin false keeps the browser's Host (dev server) so it matches the Origin
+      // header; the API's cross-site guard rejects writes where the two differ.
+      "/api": { target: API_TARGET, changeOrigin: false },
+      "/audio": { target: API_TARGET, changeOrigin: false },
     },
   },
 });
