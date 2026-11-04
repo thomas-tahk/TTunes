@@ -1,0 +1,9 @@
+{
+  "_comment": "Hand-written in yt-dlp's --dump-json shape (fields: title, uploader, channel, duration, artist, track, album). NOT recorded from real YouTube: the cloud build had no YouTube access.",
+  "id": "fixture0001",
+  "title": "Midnight Drive",
+  "uploader": "Neon Coast - Topic",
+  "channel": "Neon Coast - Topic",
+  "duration": 1,
+  "webpage_url": "https://www.youtube.com/watch?v=fixture0001"
+}

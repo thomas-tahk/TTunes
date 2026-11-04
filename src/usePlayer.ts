@@ -1,32 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Track } from "./types.ts";
 import { audioUrl } from "./api.ts";
-
-export const QUEUE_CAP = 6; // manual queue stays a "next few", distinct from playlists (spec §5)
-
-function shuffled(ids: string[]): string[] {
-  const out = [...ids];
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [out[i], out[j]] = [out[j], out[i]];
-  }
-  return out;
-}
+import type { AddChoice } from "./addChoice.ts";
+import { addMany as addManyStation, advance as advanceStation, emptyStation, peekNext, playNow as playNowStation, queueLast, sync, type Station } from "./station.ts";
 
 export interface PlayerControls {
   currentId: string | null;
   isPlaying: boolean;
   queue: string[];
-  canQueue: boolean;
   playNow: (id: string) => void;
   enqueue: (id: string) => void;
+  /** Play or queue tracks the user just added, in drop order. */
+  addMany: (ids: string[], choice: AddChoice) => void;
+  /** Play or queue one track the user just added. */
+  add: (id: string, choice: AddChoice) => void;
   startShuffle: () => void;
   toggle: () => void;
   next: () => void;
 }
 
-// Shuffle + manual-queue + prefetch player. The active pool here is the whole
-// library (MVP); filtered channels/playlists bolt on later without changing this.
+// Thin audio-element wrapper: all shuffle/queue decisions live in station.ts.
 export function usePlayer(tracks: Track[]): PlayerControls {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const prefetchRef = useRef<HTMLAudioElement | null>(null);
@@ -37,20 +30,25 @@ export function usePlayer(tracks: Track[]): PlayerControls {
   const [isPlaying, setIsPlaying] = useState(false);
   const [queue, setQueueState] = useState<string[]>([]);
 
-  const queueRef = useRef<string[]>([]);
-  const orderRef = useRef<string[]>([]);
-  const posRef = useRef(0);
+  const stationRef = useRef<Station>(emptyStation());
+  const libraryRef = useRef<string[]>([]);
+  const failuresRef = useRef(0);
 
-  const setQueue = useCallback((next: string[]) => {
-    queueRef.current = next;
-    setQueueState(next);
+  const commit = useCallback((station: Station) => {
+    stationRef.current = station;
+    setQueueState(station.queue);
   }, []);
 
-  // Rebuild the shuffle order when the track set changes.
+  // Library changed: reconcile only. Never touches the playing song or the cycle position.
   useEffect(() => {
-    orderRef.current = shuffled(tracks.map((t) => t.id));
-    posRef.current = 0;
-  }, [tracks]);
+    libraryRef.current = tracks.map((t) => t.id);
+    commit(sync(stationRef.current, libraryRef.current, Math.random));
+    if (libraryRef.current.length) return;
+    const audio = audioRef.current!;
+    audio.pause();
+    audio.removeAttribute("src");
+    setCurrentId(null);
+  }, [tracks, commit]);
 
   const play = useCallback((id: string) => {
     const audio = audioRef.current!;
@@ -59,29 +57,13 @@ export function usePlayer(tracks: Track[]): PlayerControls {
     setCurrentId(id);
   }, []);
 
-  const nextShuffleId = useCallback((): string | null => {
-    const order = orderRef.current;
-    if (!order.length) return null;
-    return order[(posRef.current + 1) % order.length];
-  }, []);
-
-  // Advance: manual queue takes priority, then the shuffle falls through — so
-  // the station never goes silent (spec §5).
+  // Queue first, then the shuffle falls through — the station never goes silent.
   const advance = useCallback(() => {
-    if (queueRef.current.length) {
-      const [head, ...rest] = queueRef.current;
-      setQueue(rest);
-      play(head);
-      return;
-    }
-    const order = orderRef.current;
-    if (!order.length) {
-      setIsPlaying(false);
-      return;
-    }
-    posRef.current = (posRef.current + 1) % order.length;
-    play(order[posRef.current]);
-  }, [play, setQueue]);
+    const step = advanceStation(stationRef.current, libraryRef.current, Math.random);
+    commit(step.station);
+    if (step.id) play(step.id);
+    else setIsPlaying(false);
+  }, [play, commit]);
 
   // Keep the "ended" handler pointing at the latest advance without re-binding.
   const advanceRef = useRef(advance);
@@ -92,13 +74,24 @@ export function usePlayer(tracks: Track[]): PlayerControls {
   useEffect(() => {
     const audio = audioRef.current!;
     const onEnded = () => advanceRef.current();
+    // An unplayable/deleted file must not silence the station; give up only if every track fails in a row.
+    const onError = () => {
+      failuresRef.current += 1;
+      if (failuresRef.current <= libraryRef.current.length) advanceRef.current();
+      else setIsPlaying(false);
+    };
+    const onPlaying = () => (failuresRef.current = 0);
     const onPlay = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
     audio.addEventListener("ended", onEnded);
+    audio.addEventListener("error", onError);
+    audio.addEventListener("playing", onPlaying);
     audio.addEventListener("play", onPlay);
     audio.addEventListener("pause", onPause);
     return () => {
       audio.removeEventListener("ended", onEnded);
+      audio.removeEventListener("error", onError);
+      audio.removeEventListener("playing", onPlaying);
       audio.removeEventListener("play", onPlay);
       audio.removeEventListener("pause", onPause);
     };
@@ -106,34 +99,41 @@ export function usePlayer(tracks: Track[]): PlayerControls {
 
   // Warm the next track so playback starts instantly with no buffer (spec §5).
   useEffect(() => {
-    const upcoming = queueRef.current[0] ?? nextShuffleId();
+    const upcoming = peekNext(stationRef.current, libraryRef.current);
     if (!upcoming) return;
     const pf = prefetchRef.current!;
     pf.src = audioUrl(upcoming);
     pf.preload = "auto";
     pf.load();
-  }, [currentId, queue, nextShuffleId]);
+  }, [currentId, queue, tracks]);
 
-  const playNow = useCallback((id: string) => play(id), [play]);
+  const playNow = useCallback(
+    (id: string) => {
+      commit(playNowStation(stationRef.current, id));
+      play(id);
+    },
+    [play, commit],
+  );
+
+  const addMany = useCallback(
+    (ids: string[], choice: AddChoice) => {
+      const before = stationRef.current.current;
+      const after = addManyStation(stationRef.current, ids, choice);
+      commit(after);
+      if (after.current && after.current !== before) play(after.current);
+    },
+    [play, commit],
+  );
+
+  const add = useCallback((id: string, choice: AddChoice) => addMany([id], choice), [addMany]);
 
   const enqueue = useCallback(
     (id: string) => {
-      if (!currentId) {
-        play(id);
-        return;
-      }
-      if (queueRef.current.length >= QUEUE_CAP) return;
-      setQueue([...queueRef.current, id]);
+      if (!stationRef.current.current) return add(id, "last");
+      commit(queueLast(stationRef.current, id));
     },
-    [currentId, play, setQueue],
+    [add, commit],
   );
-
-  const startShuffle = useCallback(() => {
-    const order = orderRef.current;
-    if (!order.length) return;
-    posRef.current = 0;
-    play(order[0]);
-  }, [play]);
 
   const toggle = useCallback(() => {
     const audio = audioRef.current!;
@@ -145,10 +145,11 @@ export function usePlayer(tracks: Track[]): PlayerControls {
     currentId,
     isPlaying,
     queue,
-    canQueue: queue.length < QUEUE_CAP,
     playNow,
     enqueue,
-    startShuffle,
+    addMany,
+    add,
+    startShuffle: advance,
     toggle,
     next: advance,
   };

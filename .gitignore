@@ -1,9 +1,12 @@
 node_modules/
 dist/
-# Local MVP data (temporary local adapters — swaps to R2 + Postgres later)
+# Your music library (stays on this computer)
 data/
 uploads/
+staging/
 *.log
 .env
 .env.local
 .DS_Store
+*.tsbuildinfo
+.claude/worktrees/

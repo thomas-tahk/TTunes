@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Track } from "./types.ts";
 
@@ -22,12 +22,27 @@ export class JsonTrackRepo implements TrackRepo {
 
   private load(): Track[] {
     if (!existsSync(this.file)) return [];
-    return JSON.parse(readFileSync(this.file, "utf8")) as Track[];
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(this.file, "utf8"));
+      if (Array.isArray(parsed)) return parsed as Track[];
+    } catch {
+      // unparseable: fall through to quarantine
+    }
+    return this.quarantineCorrupt();
+  }
+
+  private quarantineCorrupt(): Track[] {
+    const aside = `${this.file}.corrupt-${Date.now()}`;
+    renameSync(this.file, aside);
+    console.warn(`tracks.json was unreadable; moved to ${aside} and starting with an empty library`);
+    return [];
   }
 
   private persist(): void {
     mkdirSync(dirname(this.file), { recursive: true });
-    writeFileSync(this.file, JSON.stringify(this.tracks, null, 2));
+    const temp = `${this.file}.${process.pid}.tmp`;
+    writeFileSync(temp, JSON.stringify(this.tracks, null, 2));
+    renameSync(temp, this.file); // atomic: a crash mid-write never leaves a torn tracks.json
   }
 
   all(): Track[] {

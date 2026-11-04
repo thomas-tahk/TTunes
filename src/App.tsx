@@ -1,31 +1,50 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Track } from "./types.ts";
+import type { AddChoice } from "./addChoice.ts";
 import { fetchTracks, deleteTrack } from "./api.ts";
 import { usePlayer } from "./usePlayer.ts";
 import { Uploader } from "./components/Uploader.tsx";
+import { YouTubeAdd } from "./components/YouTubeAdd.tsx";
 import { Library } from "./components/Library.tsx";
 import { PlayerBar } from "./components/PlayerBar.tsx";
 
 export default function App() {
   const [tracks, setTracks] = useState<Track[]>([]);
   const controls = usePlayer(tracks);
-  const autoStarted = useRef(false);
+  const autoStartOnLoad = useRef(false);
 
   const refresh = useCallback(async () => {
     setTracks(await fetchTracks());
   }, []);
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  // Latest controls for async callbacks that outlive the render they were created in.
+  const controlsRef = useRef(controls);
+  controlsRef.current = controls;
 
-  // "Open it and it's playing" — auto-start once tracks first load. Browser
+  // Only a library that already had tracks when the page loaded auto-starts.
+  useEffect(() => {
+    void fetchTracks().then((loaded) => {
+      autoStartOnLoad.current = loaded.length > 0;
+      setTracks(loaded);
+    });
+  }, []);
+
+  // "Open it and it's playing" — once, on the initial load of a non-empty library. Browser
   // autoplay policy may defer this until the first click; the Play control covers that.
   useEffect(() => {
-    if (autoStarted.current || !tracks.length || controls.currentId) return;
-    autoStarted.current = true;
-    controls.startShuffle();
+    if (!autoStartOnLoad.current || !tracks.length) return;
+    autoStartOnLoad.current = false;
+    if (!controls.currentId) controls.startShuffle();
   }, [tracks, controls]);
+
+  const handleYouTubeAdded = useCallback(
+    async (track: Track, choice: AddChoice) => {
+      // The track is saved and plays/queues regardless; a failed reload just means the list catches up later.
+      await refresh().catch(() => {});
+      controlsRef.current.add(track.id, choice);
+    },
+    [refresh],
+  );
 
   const handleDelete = useCallback(
     async (id: string) => {
@@ -47,7 +66,8 @@ export default function App() {
       </header>
 
       <main className="content">
-        <Uploader onAdded={refresh} />
+        <Uploader onAdded={refresh} onChoose={(ids, choice) => controls.addMany(ids, choice)} />
+        <YouTubeAdd onAdded={handleYouTubeAdded} />
         <Library tracks={tracks} controls={controls} onDelete={handleDelete} />
       </main>
 
