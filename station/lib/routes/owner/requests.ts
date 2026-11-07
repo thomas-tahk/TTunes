@@ -25,6 +25,7 @@ export const requestModerate = ownerEndpoint("POST", async ({ db, body }) => {
   const result = await moderate(db, id, action as Moderation, Date.now);
   if (result.ok) return { status: 200, body: { request: result.request, waitingCount: await waitingCount(db), ...(result.alreadyInLibrary && { alreadyInLibrary: true }) } };
   if (result.status === 404) return { status: 404, body: { error: result.error } };
+  if (result.status !== 409) return { status: result.status, body: { error: result.error } }; // Keep's YouTube lookup failed
   return { status: 409, body: { error: result.error, ...(result.code && { code: result.code }), request: result.request, waitingCount: await waitingCount(db) } };
 });
 

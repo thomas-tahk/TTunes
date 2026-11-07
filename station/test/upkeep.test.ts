@@ -169,6 +169,24 @@ it("a YouTube outage removes nothing, fails loudly, and still takes the backup",
   expect((await sharedDb().query("select 1 from library_exports")).rowCount).toBe(1);
 });
 
+it("cron strips titles from requests older than 30 days; fresh ones keep theirs; rows stay", async () => {
+  const db = sharedDb();
+  await db.query("truncate requests, request_attempts cascade");
+  for (const [vid, days] of [["oldReq00001", 31], ["freshReq001", 29]] as const) {
+    await db.query(
+      "insert into requests (video_id, title, duration_sec, name, status, listener_id, created_at) values ($1, 'T ' || $1, 100, 'Sam', 'played', 'l', now() - make_interval(days => $2))",
+      [vid, days],
+    );
+  }
+  expect((await cron("Bearer cron-secret-123")).status).toBe(200);
+  const rows = (await db.query("select video_id, title, name from requests order by video_id")).rows;
+  expect(rows).toEqual([
+    { video_id: "freshReq001", title: "T freshReq001", name: "Sam" },
+    { video_id: "oldReq00001", title: null, name: "Sam" },
+  ]);
+  await db.query("truncate requests, request_attempts cascade");
+});
+
 it("cron route refuses missing or wrong bearer", async () => {
   await addSong("stale1", 40);
   expect((await cron()).status).toBe(401);

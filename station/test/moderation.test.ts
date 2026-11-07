@@ -201,6 +201,36 @@ describe("keep", () => {
     expect(await logWhats()).toEqual(["request_approve", "song_added", "request_keep", "request_keep"]);
   });
 
+  it("request logs carry no title, Keep stores freshly fetched metadata, and a stripped title still lists", async () => {
+    const id = await listen("gamingVid01");
+    await act(id, "approve");
+    await sharedDb().query("update requests set status = 'played', title = 'Stale Title' where id = $1", [id]);
+    catalog.gamingVid01 = { ...catalog.gamingVid01!, title: "Fresh Title" };
+    const before = Date.now() - 1000;
+    expect((await act(id, "keep")).status).toBe(200);
+    const song = (await sharedDb().query("select title, metadata_refreshed_at from songs")).rows[0];
+    expect(song.title).toBe("Fresh Title");
+    expect(song.metadata_refreshed_at.getTime()).toBeGreaterThan(before);
+    const logs = (await sharedDb().query("select what, details from activity_log where what like 'request_%'")).rows;
+    expect(logs.map((l) => l.what)).toEqual(["request_approve", "request_keep"]);
+    for (const l of logs) expect(l.details).not.toHaveProperty("title");
+    await sharedDb().query("update requests set title = null where id = $1", [id]);
+    expect(((await (await fetch(`${base}/api/requests/feed`)).json()) as any).requests[0].title).toBe("(title no longer stored)");
+    expect(((await (await owner("")).json()) as any).requests[0].title).toBe("(title no longer stored)");
+    catalog.gamingVid01 = { title: "Boss Theme", duration: "PT4M5S", category: "20" };
+  });
+
+  it("Keep reports YouTube no longer having the video instead of adding a stale song", async () => {
+    const id = await listen("gamingVid01");
+    await sharedDb().query("update requests set status = 'played' where id = $1", [id]);
+    const saved = catalog.gamingVid01!;
+    delete catalog.gamingVid01;
+    const res = await act(id, "keep");
+    catalog.gamingVid01 = saved;
+    expect(res.status).toBe(404);
+    expect((await sharedDb().query("select 1 from songs")).rowCount).toBe(0);
+  });
+
   it("restores a trashed song, and refuses a request that has not played (409)", async () => {
     const id = await listen("gamingVid01");
     expect((await act(id, "keep")).status).toBe(409);
@@ -295,7 +325,8 @@ describe("activity log", () => {
     await act(b, "deny");
     expect(await logWhats()).toEqual(["request_approve", "request_deny"]);
     const row = (await sharedDb().query("select who, details from activity_log order by id limit 1")).rows[0];
-    expect(row).toMatchObject({ who: "owner", details: { id: a, videoId: "gamingVid01", title: "Boss Theme", name: "Sam" } });
+    expect(row).toMatchObject({ who: "owner", details: { id: a, videoId: "gamingVid01", name: "Sam" } });
+    expect(row.details).not.toHaveProperty("title");
   });
 });
 

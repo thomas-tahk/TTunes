@@ -1,5 +1,5 @@
 import type pg from "pg";
-import { addToLibrary, LONG_SEC, lookupVideo, thumbnailOf } from "./addSong.ts";
+import { addToLibrary, LONG_SEC, lookupVideo, type PlayableVideo, thumbnailOf } from "./addSong.ts";
 import type { Db } from "./db.ts";
 import { lockStation } from "./lock.ts";
 import type { Clock } from "./schedule.ts";
@@ -14,6 +14,8 @@ export const IP_KEEP_MS = 7 * 24 * 3600 * 1000;
 export const DAILY_LOOKUP_CAP = 2000; // listener-triggered YouTube lookups per rolling 24h, 1 quota unit each; protects the owner's 10,000-unit pool
 export const NAME_MAX = 30;
 export const DEDICATION_MAX = 140;
+export const REQUEST_TITLE_KEEP_DAYS = 30; // YouTube's 30-day metadata cache rule
+export const TITLE_GONE = "(title no longer stored)"; // shown where a request's title was stripped
 
 type Queryable = Pick<pg.ClientBase, "query">;
 export type Refusal = { ok: false; status: number; code: string; message: string };
@@ -244,7 +246,7 @@ const MODERATION: Record<Exclude<Moderation, "keep">, StatusMove> = {
 
 export type ModerationResult =
   | { ok: true; request: FeedItem; alreadyInLibrary?: true }
-  | { ok: false; status: 404 | 409; error: string; request?: FeedItem; code?: "already_coming_up" };
+  | { ok: false; status: number; error: string; request?: FeedItem; code?: "already_coming_up" };
 
 const REQUEST_COLUMNS = "id, name, dedication, video_id, title, duration_sec, created_at, status";
 async function readRequest(q: Queryable, id: number): Promise<FeedItem | null> {
@@ -271,10 +273,10 @@ async function moveRequest(db: Db, id: number, action: Exclude<Moderation, "keep
       return request ? { ok: false, status: 409, error: "That song is already coming up.", code: "already_coming_up", request } : { ok: false, status: 404, error: "No such request." };
     }
     const { rows } = await client.query(
-      `update requests set status = $2::text, decided_at = $3, queued_at = case when $2::text = 'queued' then $3::timestamptz else queued_at end where id = $1 and status = any($4::text[]) returning video_id, title, name`,
+      `update requests set status = $2::text, decided_at = $3, queued_at = case when $2::text = 'queued' then $3::timestamptz else queued_at end where id = $1 and status = any($4::text[]) returning video_id, name`,
       [id, rule.to, at(now), rule.from],
     );
-    if (rows[0]) await client.query("insert into activity_log (who, what, details) values ('owner', $1, $2)", [`request_${action}`, { id, videoId: rows[0].video_id, title: rows[0].title, name: rows[0].name }]);
+    if (rows[0]) await client.query("insert into activity_log (who, what, details) values ('owner', $1, $2)", [`request_${action}`, { id, videoId: rows[0].video_id, name: rows[0].name }]);
     const request = await readRequest(client, id);
     await client.query("commit");
     if (rows[0] && request) return { ok: true, request };
@@ -299,21 +301,35 @@ async function comingUpElsewhere(q: Queryable, id: number): Promise<boolean> {
   return (rowCount ?? 0) > 0;
 }
 
-/** Keep: a played or playing request's song joins the library, in one transaction with the status re-check and the logs (idempotent; stored metadata, no YouTube call). */
+const KEEPABLE = ["played", "playing"];
+
+/** Keep: a played or playing request's song joins the library (idempotent). Metadata is re-fetched from YouTube first
+ * (outside the lock; the request's stored title may be days old), then the status re-check, add and logs share one transaction. */
 async function keepRequest(db: Db, id: number): Promise<ModerationResult> {
+  const { rows: peek } = await db.query("select status, video_id from requests where id = $1", [id]);
+  if (!peek[0] || !KEEPABLE.includes(peek[0].status)) return keepRefusal(db, id);
+  const found = await lookupVideo(peek[0].video_id);
+  if (!found.ok) return { ok: false, status: found.status, error: found.message };
+  return keepFetched(db, id, found.info);
+}
+
+async function keepRefusal(db: Db, id: number): Promise<ModerationResult> {
+  const request = await readRequest(db, id);
+  return request ? { ok: false, status: 409, error: `That request is ${request.status}; only played ones can be kept.`, request } : { ok: false, status: 404, error: "No such request." };
+}
+
+async function keepFetched(db: Db, id: number, info: PlayableVideo): Promise<ModerationResult> {
   const client = await db.connect();
   try {
     await client.query("begin");
     await lockStation(client);
-    const { rows } = await client.query("select status, video_id, title, duration_sec from requests where id = $1", [id]);
-    const row = rows[0];
-    if (!row || (row.status !== "played" && row.status !== "playing")) {
-      const request = await readRequest(client, id);
+    const { rows } = await client.query("select status, video_id from requests where id = $1", [id]);
+    if (!rows[0] || !KEEPABLE.includes(rows[0].status) || rows[0].video_id !== info.videoId) {
       await client.query("commit");
-      return request ? { ok: false, status: 409, error: `That request is ${request.status}; only played ones can be kept.`, request } : { ok: false, status: 404, error: "No such request." };
+      return keepRefusal(db, id);
     }
-    const added = await addToLibrary(client, { videoId: row.video_id, title: row.title, durationSec: row.duration_sec, embeddable: true, categoryId: "", channelTitle: "" });
-    await client.query("insert into activity_log (who, what, details) values ('owner', 'request_keep', $1)", [{ id, videoId: row.video_id, title: row.title, alreadyInLibrary: !added }]);
+    const added = await addToLibrary(client, info);
+    await client.query("insert into activity_log (who, what, details) values ('owner', 'request_keep', $1)", [{ id, videoId: info.videoId, alreadyInLibrary: !added }]);
     const request = (await readRequest(client, id))!;
     await client.query("commit");
     return { ok: true, request, ...(!added && { alreadyInLibrary: true as const }) };
@@ -323,6 +339,12 @@ async function keepRequest(db: Db, id: number): Promise<ModerationResult> {
   } finally {
     client.release();
   }
+}
+
+/** Daily upkeep: nulls the YouTube title of requests older than 30 days (the 30-day cache rule). Rows stay. Returns how many changed. */
+export async function stripOldRequestTitles(db: Db, clock: Clock): Promise<number> {
+  const { rowCount } = await db.query("update requests set title = null where title is not null and created_at <= $1", [at(clock() - REQUEST_TITLE_KEEP_DAYS * 24 * 3600_000)]);
+  return rowCount ?? 0;
 }
 
 /** Live waiting requests, one count query (for the badge in every moderate response). */
@@ -366,7 +388,7 @@ const toFeedItem = (r: any): FeedItem => ({
   name: r.name,
   dedication: r.dedication,
   videoId: r.video_id,
-  title: r.title,
+  title: r.title ?? TITLE_GONE,
   durationSec: r.duration_sec,
   thumbnail: thumbnailOf(r.video_id),
   status: r.status,
@@ -403,5 +425,5 @@ export async function findMine(db: Db, who: Who, clock: Clock): Promise<MyReques
   );
   const r = rows[0];
   if (!r) return null;
-  return { id: Number(r.id), videoId: r.video_id, title: r.title, thumbnail: thumbnailOf(r.video_id), status: r.status, createdAt: r.created_at.toISOString() };
+  return { id: Number(r.id), videoId: r.video_id, title: r.title ?? TITLE_GONE, thumbnail: thumbnailOf(r.video_id), status: r.status, createdAt: r.created_at.toISOString() };
 }
