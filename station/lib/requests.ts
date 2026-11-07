@@ -3,6 +3,7 @@ import { addToLibrary, LONG_SEC, lookupVideo, type PlayableVideo, thumbnailOf } 
 import type { Db } from "./db.ts";
 import { lockStation } from "./lock.ts";
 import type { Clock } from "./schedule.ts";
+import { SYSTEM_ACTOR } from "./upkeep.ts";
 
 export type Mode = "open" | "approve" | "off";
 export const MODES: readonly Mode[] = ["open", "approve", "off"];
@@ -346,6 +347,8 @@ async function keepFetched(db: Db, id: number, info: PlayableVideo): Promise<Mod
   }
 }
 
+const NOT_ON_AIR = "video_id is distinct from (select current_video_id from station_state where id = 1)"; // the song on air keeps its row until the station moves on
+
 /** Daily upkeep, 30-day YouTube metadata rule: no request row (title, duration, category) outlives 30 days.
  * Queued requests that old are marked expired first (logged) so they never play with stale data; then every finished
  * request (played, denied, expired) that old is deleted. Station lock first, like every writer. */
@@ -355,9 +358,9 @@ export async function retireOldRequests(db: Db, clock: Clock): Promise<{ expired
     await client.query("begin");
     await lockStation(client);
     const cutoff = at(clock() - REQUEST_KEEP_DAYS * 24 * 3600_000);
-    const stale = await client.query("update requests set status = 'expired', decided_at = $1 where status = 'queued' and created_at <= $2 returning id, video_id", [at(clock()), cutoff]);
-    for (const row of stale.rows) await client.query("insert into activity_log (who, what, details) values ('system:upkeep', 'request_expired', $1)", [{ id: Number(row.id), videoId: row.video_id }]);
-    const gone = await client.query("delete from requests where status in ('played', 'denied', 'expired') and created_at <= $1", [cutoff]);
+    const stale = await client.query(`update requests set status = 'expired', decided_at = $1 where status = 'queued' and created_at <= $2 and ${NOT_ON_AIR} returning id, video_id`, [at(clock()), cutoff]);
+    for (const row of stale.rows) await client.query("insert into activity_log (who, what, details) values ($1, 'request_expired', $2)", [SYSTEM_ACTOR, { id: Number(row.id), videoId: row.video_id }]);
+    const gone = await client.query(`delete from requests where status in ('played', 'denied', 'expired') and created_at <= $1 and ${NOT_ON_AIR}`, [cutoff]);
     await client.query("commit");
     return { expired: stale.rowCount ?? 0, deleted: gone.rowCount ?? 0 };
   } catch (error) {

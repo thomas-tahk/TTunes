@@ -31,6 +31,7 @@ const LABELS: Record<string, string> = {
   request_approve: "Request approved",
   request_deny: "Request denied",
   request_remove: "Request removed",
+  request_expired: "Request expired",
   request_keep: "Request kept in library",
   request_mode: "Request mode changed",
 };

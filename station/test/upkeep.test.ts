@@ -202,6 +202,28 @@ it("an old queued request never plays after the cron ran", async () => {
   await db.query("truncate requests, request_attempts cascade");
 });
 
+it("a 40-day-old playing request whose song ended is gone after the cron", async () => {
+  const db = sharedDb();
+  await db.query("truncate requests, request_attempts, station_state, play_history, queue cascade");
+  await db.query("insert into requests (video_id, title, duration_sec, name, status, listener_id, created_at, queued_at) values ('endedPlay01', 'T', 100, 'Sam', 'playing', 'l', now() - interval '40 days', now() - interval '40 days')");
+  await db.query("insert into station_state (id, current_video_id, started_at_ms) values (1, 'endedPlay01', $1) on conflict (id) do update set current_video_id = 'endedPlay01', started_at_ms = $1", [Date.now() - 3600_000]);
+  expect((await cron("Bearer cron-secret-123")).status).toBe(200);
+  expect((await db.query("select 1 from requests")).rowCount).toBe(0);
+  await db.query("truncate requests, request_attempts, station_state cascade");
+});
+
+it("the request on air is never deleted or expired mid-song, whatever its status", async () => {
+  const db = sharedDb();
+  for (const status of ["playing", "denied", "queued"]) {
+    await db.query("truncate requests, request_attempts, station_state, play_history, queue cascade");
+    await db.query("insert into requests (video_id, title, duration_sec, name, status, listener_id, created_at, queued_at, decided_at) values ('onAirSong01', 'T', 1000, 'Sam', $1, 'l', now() - interval '40 days', now() - interval '40 days', now())", [status]);
+    await db.query("insert into station_state (id, current_video_id, started_at_ms) values (1, 'onAirSong01', $1) on conflict (id) do update set current_video_id = 'onAirSong01', started_at_ms = $1", [Date.now() - 1000]);
+    expect((await cron("Bearer cron-secret-123")).status).toBe(200);
+    expect((await db.query("select status from requests")).rows).toEqual([{ status }]);
+  }
+  await db.query("truncate requests, request_attempts, station_state cascade");
+});
+
 it("cron route refuses missing or wrong bearer", async () => {
   await addSong("stale1", 40);
   expect((await cron()).status).toBe(401);

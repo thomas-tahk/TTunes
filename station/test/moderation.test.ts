@@ -185,7 +185,7 @@ describe("remove", () => {
 });
 
 describe("keep", () => {
-  it("adds a playing or played request's song to the library once; repeating is idempotent; both logged", async () => {
+  it("adds a playing or played request's song to the library once; repeating is a no-op; one log row", async () => {
     const id = await listen("gamingVid01");
     await act(id, "approve");
     await getNowPlaying(sharedDb(), Date.now);
