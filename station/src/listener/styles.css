@@ -92,7 +92,7 @@ h1 { margin: 4px 0 10px; font-size: clamp(1.4rem, 5vw, 2rem); line-height: 1.2; 
 @media (max-width: 480px) { .owner-preview { grid-template-columns: 1fr; } .owner-preview img { width: 100%; height: auto; aspect-ratio: 16 / 9; } }
 html { background: var(--ink); }
 
-.owner-search { margin-top: 16px; }
+.song-search { margin-top: 16px; }
 .owner-controls { margin-top: 20px; padding-top: 16px; border-top: 2px solid var(--muted); }
 .owner-controls h2 { margin: 0 0 12px; }
 .owner-panel button:focus-visible, .link-btn:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
@@ -117,7 +117,7 @@ html { background: var(--ink); }
 .request-box .owner-row input { flex: 1; width: auto; min-width: 0; }
 .request-box input:focus-visible, .request-box textarea:focus-visible, .request-box button:focus-visible, .feed button:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
 .counter { margin: 4px 0 0; text-align: right; color: var(--muted); font-size: 0.85rem; }
-.request-box .owner-search { margin-top: 0; }
+.request-box .song-search { margin-top: 0; }
 .request-box .owner-tabs { margin: 12px 0 0; }
 .picked { margin: 10px 0 0; overflow-wrap: anywhere; }
 .send { margin-top: 14px; width: 100%; }
@@ -135,7 +135,7 @@ html { background: var(--ink); }
 .status-played, .status-expired { background: transparent; color: var(--muted); }
 .feed-note { color: var(--muted); margin: 12px 0 0; }
 .feed-list { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; max-height: 480px; overflow-y: auto; text-align: left; }
-.feed-row { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 8px; border: 1px solid var(--muted); border-radius: 10px; overflow: hidden; }
+.feed-row { flex: none; display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 8px; border: 1px solid var(--muted); border-radius: 10px; overflow: hidden; }
 .feed-row img { width: 64px; height: 36px; object-fit: cover; border-radius: 6px; }
 .feed-body { min-width: 0; overflow: hidden; }
 .feed-body p { margin: 0; overflow: hidden; overflow-wrap: anywhere; }
@@ -144,3 +144,4 @@ html { background: var(--ink); }
 .feed-len { color: var(--muted); }
 .feed-dedication { margin-top: 4px !important; font-style: italic; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
 @media (max-width: 480px) { .feed-row { grid-template-columns: 64px minmax(0, 1fr); } .feed-row .chip { grid-column: 2; justify-self: start; } }
+.mine:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { NowPlaying } from "../../lib/schedule.ts";
 import { OwnerControls } from "./OwnerControls.tsx";
 import { call, messageOf, minutes, NETWORK_MESSAGE } from "./ownerFetch.ts";
-import { OwnerSearch, type SearchPick } from "./OwnerSearch.tsx";
+import { type SearchPick, SongSearch } from "./SongSearch.tsx";
 
 type Preview = SearchPick;
 type Position = "next" | "queue";
@@ -83,7 +83,7 @@ export function OwnerPanel({ playing, onPlaying }: { playing: NowPlaying | null;
           </button>
         </div>
       </form>
-      <OwnerSearch onPick={(pick) => setStep({ kind: "preview", preview: pick })} />
+      <SongSearch endpoint="/api/owner/search" inputId="song-search" label="Search YouTube" buttonLabel="Search" inForm onPick={(pick) => setStep({ kind: "preview", preview: pick })} />
       <div aria-live="polite" className="owner-status">
         {step.kind === "busy" && <p>{step.what}</p>}
         {step.kind === "error" && <p className="owner-error" role="alert">{step.message}</p>}

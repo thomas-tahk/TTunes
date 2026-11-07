@@ -38,7 +38,7 @@ export function App() {
   const { view, serverTime, retry, show } = useStation();
   const [started, setStarted] = useState(false);
   const owner = useOwner();
-  const { feed, mine, reload } = useRequests(view.status === "ready" ? view.playing : null);
+  const { feed, mine, afterPost, reloadFeed } = useRequests(view.status === "ready" ? view.playing : null);
 
   let body;
   if (view.status === "loading") body = <Message title="Tuning in" body="Finding out what's on air." />;
@@ -72,8 +72,8 @@ export function App() {
       </header>
       <main>{body}</main>
       <div className="requests">
-        {!(feed.status === "ready" && feed.mode === "off") && <RequestBox mine={mine} onPosted={reload} />}
-        <RequestFeed feed={feed} retry={() => void reload()} />
+        {!(feed.status === "ready" && feed.mode === "off") && <RequestBox mine={mine} mode={feed.status === "ready" ? feed.mode : null} onPosted={afterPost} />}
+        <RequestFeed feed={feed} retry={() => void reloadFeed()} />
       </div>
       {owner && <OwnerPanel playing={view.status === "ready" ? view.playing : null} onPlaying={(playing) => void show(playing)} />}
     </div>

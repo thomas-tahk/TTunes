@@ -1,13 +1,28 @@
 import { useState } from "react";
 import { call, messageOf, minutes, NETWORK_MESSAGE } from "./ownerFetch.ts";
-import type { SearchPick } from "./OwnerSearch.tsx";
 
+export interface SearchPick {
+  videoId: string;
+  title: string;
+  durationSec: number;
+  thumbnail: string;
+}
 interface Result extends SearchPick {
   channelTitle: string;
 }
 type State = { kind: "idle" } | { kind: "busy" } | { kind: "error"; message: string } | { kind: "results"; results: Result[] };
 
-export function ListenerSearch({ onPick }: { onPick: (pick: SearchPick) => void }) {
+interface Props {
+  onPick: (pick: SearchPick) => void;
+  endpoint: string;
+  inputId: string;
+  label: string;
+  buttonLabel: string;
+  /** Owner panel wraps the field in its own form; the request box already sits inside one, so Enter is handled by hand. */
+  inForm?: boolean;
+}
+
+export function SongSearch({ onPick, endpoint, inputId, label, buttonLabel, inForm = false }: Props) {
   const [query, setQuery] = useState("");
   const [state, setState] = useState<State>({ kind: "idle" });
 
@@ -15,28 +30,53 @@ export function ListenerSearch({ onPick }: { onPick: (pick: SearchPick) => void 
     if (!query.trim()) return;
     setState({ kind: "busy" });
     try {
-      const { status, body } = await call("GET", `/api/requests/search?q=${encodeURIComponent(query.trim())}`);
+      const { status, body } = await call("GET", `${endpoint}?q=${encodeURIComponent(query.trim())}`);
       setState(status === 200 ? { kind: "results", results: body.results as Result[] } : { kind: "error", message: messageOf(body) });
     } catch {
       setState({ kind: "error", message: NETWORK_MESSAGE });
     }
   }
 
-  return (
-    <div className="owner-search">
-      <label htmlFor="req-search">Song or artist to find</label>
+  const field = (
+    <>
+      <label htmlFor={inputId}>{label}</label>
       <div className="owner-row">
         <input
-          id="req-search"
+          id={inputId}
           type="search"
           autoComplete="off"
           value={query}
           placeholder="Song or artist"
           onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), void search())}
+          onKeyDown={inForm ? undefined : (e) => e.key === "Enter" && (e.preventDefault(), void search())}
         />
-        <button type="button" className="btn small" disabled={!query.trim() || state.kind === "busy"} onClick={() => void search()}>Find</button>
+        <button
+          type={inForm ? "submit" : "button"}
+          className="btn small"
+          disabled={!query.trim() || state.kind === "busy"}
+          onClick={inForm ? undefined : () => void search()}
+        >
+          {buttonLabel}
+        </button>
       </div>
+    </>
+  );
+
+  return (
+    <div className="song-search">
+      {inForm ? (
+        <form
+          className="owner-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void search();
+          }}
+        >
+          {field}
+        </form>
+      ) : (
+        field
+      )}
       <div aria-live="polite" className="owner-status">
         {state.kind === "busy" && <p>Searching…</p>}
         {state.kind === "error" && <p className="owner-error" role="alert">{state.message}</p>}
@@ -51,7 +91,9 @@ export function ListenerSearch({ onPick }: { onPick: (pick: SearchPick) => void 
                 <strong>{r.title}</strong>
                 <span>{r.channelTitle} · {minutes(r.durationSec)}</span>
               </div>
-              <button type="button" className="btn small ghost" aria-label={`Choose ${r.title}`} onClick={() => onPick(r)}>Choose</button>
+              <button type="button" className="btn small ghost" aria-label={`Choose ${r.title}`} onClick={() => onPick(r)}>
+                Choose
+              </button>
             </li>
           ))}
         </ul>
