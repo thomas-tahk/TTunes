@@ -11,7 +11,7 @@ import { chromium } from "playwright";
 
 const PORT = 5197;
 const BASE = `http://localhost:${PORT}/`;
-const SHOTS = new URL("./screenshots/", import.meta.url).pathname;
+const SHOTS = new URL("./screens/", import.meta.url).pathname;
 const SECRET = "e2e-secret-e2e-secret-e2e-secret-0123";
 const OWNER_ID = 10647431;
 const DB_URL = process.env.DATABASE_URL;
@@ -136,8 +136,7 @@ try {
   await page.getByRole("button", { name: "Choose Late Night Drive" }).click();
   await page.getByRole("button", { name: "Add to queue" }).click();
   await page.getByText(/Added "Late Night Drive" to the end of the queue/).waitFor();
-  await tab("Queue");
-  await page.getByTestId("list-queue").waitFor();
+  // No tab click: the open Queue list must refresh by itself after an add.
   await page.waitForFunction(() => document.querySelectorAll('[data-testid="list-queue"] li').length === 2);
   const queued = await page.getByTestId("list-queue").locator("li strong").allTextContents();
   check(queued.join("|") === "Neon Skyline|Late Night Drive", "queue lists both picks in order");
@@ -149,7 +148,9 @@ try {
   await page.getByRole("button", { name: "Add to queue" }).click();
   await page.getByText(/Add anyway\?/).waitFor();
   check((await db.query("select 1 from songs where video_id = 'longVideo01'")).rowCount === 0, "2-hour result not added before confirming");
-  await page.getByRole("button", { name: "Cancel" }).click();
+  await page.getByRole("button", { name: "Add anyway" }).click();
+  await page.waitForFunction(() => document.querySelectorAll('[data-testid="list-queue"] li').length === 3);
+  check(true, "queue list shows the confirmed long add without clicking a tab");
 
   // 4. Quota error shown plainly.
   await search("quota");
@@ -160,9 +161,14 @@ try {
   // 5. Queue edit.
   await page.getByRole("button", { name: "Move Neon Skyline down" }).click();
   await page.waitForFunction(() => document.querySelector('[data-testid="list-queue"] li strong')?.textContent === "Late Night Drive");
+  await waitText("next-title", "Late Night Drive");
+  check(true, "moving down changes Up next immediately");
   await page.getByRole("button", { name: "Move Neon Skyline up" }).click();
-  await page.waitForFunction(() => document.querySelector('[data-testid="list-queue"] li strong')?.textContent === "Neon Skyline");
-  check(true, "queue move down then up works");
+  await waitText("next-title", "Neon Skyline");
+  check(true, "moving back up restores Up next");
+  await page.getByRole("button", { name: "Remove Eight Hours of Rain from queue" }).click();
+  await page.waitForFunction(() => document.querySelectorAll('[data-testid="list-queue"] li').length === 2);
+  check(true, "Remove takes the long song out of the queue list");
 
   // 6. Skip: the owner's screen updates at once, both listeners follow at their 30s re-check.
   const before = await Promise.all(listeners.map((p) => p.getByTestId("now-title").textContent()));
@@ -180,11 +186,15 @@ try {
   await page.getByRole("button", { name: "Undo" }).waitFor();
   await page.waitForFunction(() => ![...document.querySelectorAll('[data-testid="list-library"] li strong')].some((e) => e.textContent === "Late Night Drive"));
   check(true, "deleted song left the library list");
+  await page.waitForFunction(() => document.querySelector('[data-testid="next-title"]')?.textContent !== "Late Night Drive");
+  check(true, "deleting the Up next song changes Up next immediately");
   check((await db.query("select 1 from queue where video_id = 'lateNight01'")).rowCount === 0, "deleted song is out of the queue");
   await tab("Trash");
   await page.getByTestId("list-trash").getByText("Late Night Drive").waitFor();
   await page.getByRole("button", { name: "Restore Late Night Drive" }).click();
   await page.getByText(/Restored "Late Night Drive"/).waitFor();
+  await waitText("next-title", "Late Night Drive");
+  check(true, "restoring puts it back as Up next immediately");
   await tab("Queue");
   await page.getByTestId("list-queue").getByText("Late Night Drive").waitFor();
   check(true, "restore returned the song to the queue");
@@ -206,7 +216,7 @@ try {
   await tab("Activity");
   await page.getByTestId("list-log").waitFor();
   const labels = await page.getByTestId("list-log").locator("li strong").allTextContents();
-  const want = ["Restored", "Deleted", "Restored", "Deleted", "Skipped", "Moved in queue", "Moved in queue", "Added", "Added"];
+  const want = ["Restored", "Deleted", "Restored", "Deleted", "Skipped", "Removed from queue", "Moved in queue", "Moved in queue", "Added", "Added", "Added"];
   check(labels.join("|") === want.join("|"), `log, newest first: ${labels.join(", ")}`);
   await shot("activity");
   await assertPlayerClear("after actions");

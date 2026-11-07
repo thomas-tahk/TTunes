@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 import type { NowPlaying } from "../../lib/schedule.ts";
 import { OwnerControls } from "./OwnerControls.tsx";
 import { call, messageOf, minutes, NETWORK_MESSAGE } from "./ownerFetch.ts";
-import { OwnerSearch, type Pick } from "./OwnerSearch.tsx";
+import { OwnerSearch, type SearchPick } from "./OwnerSearch.tsx";
 
-type Preview = Pick;
+type Preview = SearchPick;
 type Position = "next" | "queue";
 type Step =
   | { kind: "idle" }
@@ -39,7 +39,8 @@ export function SignInLink({ owner }: { owner: boolean }) {
   );
 }
 
-export function OwnerPanel({ playing, onPlaying, onRefresh }: { playing: NowPlaying; onPlaying: (playing: NowPlaying) => void; onRefresh: () => void }) {
+export function OwnerPanel({ playing, onPlaying }: { playing: NowPlaying | null; onPlaying: (playing: NowPlaying) => void }) {
+  const [adds, setAdds] = useState(0); // bumps on every successful add so the open list refetches
   const [url, setUrl] = useState("");
   const [step, setStep] = useState<Step>({ kind: "idle" });
 
@@ -62,6 +63,7 @@ export function OwnerPanel({ playing, onPlaying, onRefresh }: { playing: NowPlay
       if (status !== 200) return setStep({ kind: "error", message: messageOf(body) });
       setUrl("");
       setStep({ kind: "done", message: `Added "${preview.title}" ${position === "next" ? "as up next" : "to the end of the queue"}.` });
+      setAdds((n) => n + 1);
       onPlaying(body.playing as NowPlaying);
     } catch {
       setStep({ kind: "error", message: NETWORK_MESSAGE });
@@ -119,7 +121,7 @@ export function OwnerPanel({ playing, onPlaying, onRefresh }: { playing: NowPlay
           )}
         </div>
       )}
-      <OwnerControls playing={playing} onPlaying={onPlaying} onRefresh={onRefresh} />
+      <OwnerControls playing={playing} changes={adds} onPlaying={onPlaying} />
     </section>
   );
 }

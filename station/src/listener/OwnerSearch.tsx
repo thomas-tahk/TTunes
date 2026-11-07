@@ -1,18 +1,18 @@
 import { useState } from "react";
 import { call, messageOf, minutes, NETWORK_MESSAGE } from "./ownerFetch.ts";
 
-export interface Pick {
+export interface SearchPick {
   videoId: string;
   title: string;
   durationSec: number;
   thumbnail: string;
 }
-interface Result extends Pick {
+interface Result extends SearchPick {
   channelTitle: string;
 }
 type State = { kind: "idle" } | { kind: "busy" } | { kind: "error"; message: string } | { kind: "results"; results: Result[] };
 
-export function OwnerSearch({ onPick }: { onPick: (pick: Pick) => void }) {
+export function OwnerSearch({ onPick }: { onPick: (pick: SearchPick) => void }) {
   const [query, setQuery] = useState("");
   const [state, setState] = useState<State>({ kind: "idle" });
 
