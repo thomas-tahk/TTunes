@@ -112,8 +112,8 @@ export async function trashSong(db: Db, videoId: unknown): Promise<Outcome<{ vid
       if (item.videoId !== videoId) continue;
       const { prev, next } = neighbours(items, at);
       await client.query(
-        "insert into trash_queue (video_id, prev_id, next_id, queued_at) select video_id, $2, $3, queued_at from queue where id = $1",
-        [item.queueId, prev, next],
+        "insert into trash_queue (video_id, prev_id, next_id, queued_at, queue_index) select video_id, $2, $3, queued_at, $4 from queue where id = $1",
+        [item.queueId, prev, next, at],
       );
       spots++;
     }
@@ -125,13 +125,13 @@ export async function trashSong(db: Db, videoId: unknown): Promise<Outcome<{ vid
 }
 
 // Index to reinsert at: right after a surviving "before" neighbour, else right before a surviving "after" neighbour,
-// else the end if it used to be last, else the front.
-function restoreIndex(order: string[], prev: string | null, next: string | null): number {
+// else the end if it used to be last, else its old index clamped to the queue (front if unknown).
+function restoreIndex(order: string[], prev: string | null, next: string | null, oldIndex: number | null): number {
   const after = prev === null ? -1 : order.indexOf(prev);
   if (after >= 0) return after + 1;
   const before = next === null ? -1 : order.indexOf(next);
   if (before >= 0) return before;
-  return next === null ? order.length : 0;
+  return next === null ? order.length : Math.min(oldIndex ?? 0, order.length);
 }
 
 /** Undo of trashSong: back in library and shuffle, and back in the queue beside the entries it sat between. */
@@ -140,11 +140,11 @@ export async function restoreSong(db: Db, videoId: unknown): Promise<Outcome<{ v
   return inStationTx(db, async (client) => {
     const song = (await client.query("select title from songs where video_id = $1 and deleted_at is not null for update", [videoId])).rows[0];
     if (!song) return fail(404, "not in the trash");
-    const spots = (await client.query("select prev_id::text as prev, next_id::text as next, queued_at from trash_queue where video_id = $1 order by id", [videoId])).rows;
+    const spots = (await client.query("select prev_id::text as prev, next_id::text as next, queue_index, queued_at from trash_queue where video_id = $1 order by id", [videoId])).rows;
     const order = (await listQueue(client)).map((item) => item.queueId);
     for (const spot of spots) {
       const { rows } = await client.query("insert into queue (video_id, queued_at) values ($1, $2) returning id::text as id", [videoId, spot.queued_at]);
-      order.splice(restoreIndex(order, spot.prev, spot.next), 0, rows[0].id);
+      order.splice(restoreIndex(order, spot.prev, spot.next, spot.queue_index), 0, rows[0].id);
     }
     await renumber(client, order);
     await client.query("delete from trash_queue where video_id = $1", [videoId]);

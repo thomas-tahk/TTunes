@@ -19,7 +19,9 @@ export async function lookupVideo(videoId: string): Promise<Lookup> {
     info = (await fetchVideos([videoId])).get(videoId);
   } catch (error) {
     console.error("YouTube lookup failed", error);
-    if (error instanceof QuotaExceededError) return refuse(503, "YouTube's daily limit is used up — try again tomorrow.");
+    if (error instanceof QuotaExceededError) {
+      return refuse(503, error.reason === "quotaExceeded" ? "YouTube's daily limit is used up — try again tomorrow." : "YouTube is busy — try again shortly.");
+    }
     return refuse(502, "Couldn't reach YouTube. Try again in a moment.");
   }
   if (!info) return refuse(404, "YouTube has no public video with that link.");
@@ -40,12 +42,22 @@ export async function insertSong(db: Db, info: PlayableVideo, position: Position
   try {
     await client.query("begin");
     await lockStation(client);
+    const trashed = (await client.query("select 1 from songs where video_id = $1 and deleted_at is not null", [info.videoId])).rowCount === 1;
     const { rows } = await client.query("select current_video_id from station_state where id = 1");
     if (rows[0]?.current_video_id === info.videoId) {
-      await client.query("rollback");
-      return { ok: false, status: 422, message: "That's playing right now." };
+      if (!trashed) {
+        await client.query("rollback");
+        return { ok: false, status: 422, message: "That's playing right now." };
+      }
+      // Trashed while playing: re-adding still restores it to the library; it just isn't queued behind itself.
+      await client.query("update songs set deleted_at = null where video_id = $1", [info.videoId]);
+      await client.query("delete from trash_queue where video_id = $1", [info.videoId]);
+      await client.query("insert into activity_log (who, what, details) values ('owner', 'song_added', $1)", [
+        { videoId: info.videoId, title: info.title, position, restoredFromTrash: true, playingNow: true },
+      ]);
+      await client.query("commit");
+      return { ok: true };
     }
-    const trashed = (await client.query("select 1 from songs where video_id = $1 and deleted_at is not null", [info.videoId])).rowCount === 1;
     await client.query(
       `insert into songs (video_id, title, duration_sec, metadata_refreshed_at) values ($1, $2, $3, now())
        on conflict (video_id) do update set title = excluded.title, duration_sec = excluded.duration_sec, metadata_refreshed_at = now(), deleted_at = null`,
