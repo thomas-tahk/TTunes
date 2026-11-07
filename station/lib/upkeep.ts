@@ -5,6 +5,7 @@ import { fetchVideos, type VideoInfo } from "./youtube.ts";
 export const STALE_AFTER_DAYS = 25; // YouTube's cap is 30 days
 export const KEEP_EXPORTS = 14;
 export const TRASH_KEEP_DAYS = 30; // trash lives 30 days; YouTube's 30-day metadata cache rule also ends a trashed song (trash is never refreshed)
+export const ACTIVITY_TITLE_KEEP_DAYS = 30; // 30-day cache rule for titles in rows written before the log stopped storing them
 export const SYSTEM_ACTOR = "system:upkeep";
 
 export interface RefreshResult {
@@ -30,7 +31,7 @@ async function removeSong(db: Db, song: Stale, reason: string): Promise<void> {
     await client.query("delete from songs where video_id = $1", [song.video_id]); // queue rows cascade
     await client.query("insert into activity_log (who, what, details) values ($1, 'song_removed', $2)", [
       SYSTEM_ACTOR,
-      { videoId: song.video_id, title: song.title, reason },
+      { videoId: song.video_id, reason },
     ]);
     await client.query("commit");
   } catch (error) {
@@ -118,13 +119,13 @@ export async function purgeTrash(db: Db): Promise<string[]> {
     const { rows } = await client.query(
       `delete from songs where deleted_at is not null
          and (deleted_at < now() - make_interval(days => $1) or metadata_refreshed_at < now() - make_interval(days => $1))
-       returning video_id, title`,
+       returning video_id`,
       [TRASH_KEEP_DAYS],
     );
     for (const row of rows) {
       await client.query("insert into activity_log (who, what, details) values ($1, 'trash_purged', $2)", [
         SYSTEM_ACTOR,
-        { videoId: row.video_id, title: row.title },
+        { videoId: row.video_id },
       ]);
     }
     await client.query("commit");
@@ -141,14 +142,14 @@ const titleIn = (path: string) => `(jsonb_typeof(${path}) = 'object' and ${path}
 const withoutTitle = (key: string) =>
   `case when jsonb_typeof(details->'${key}') = 'object' then jsonb_build_object('${key}', (details->'${key}') - 'title') else '{}'::jsonb end`;
 
-/** Removes YouTube titles (details.title, plus the skipped/next titles a skip records) from activity_log rows
+/** Removes legacy YouTube titles (details.title, plus the skipped/next titles a skip records) from activity_log rows
  * older than 30 days: the 30-day cache rule. The rows themselves stay. Returns how many rows changed. */
 export async function stripOldActivityTitles(db: Db): Promise<number> {
   const { rowCount } = await db.query(
     `update activity_log set details = (details - 'title') || ${withoutTitle("skipped")} || ${withoutTitle("next")}
        where at < now() - make_interval(days => $1)
          and (details ? 'title' or ${titleIn("details->'skipped'")} or ${titleIn("details->'next'")})`,
-    [TRASH_KEEP_DAYS],
+    [ACTIVITY_TITLE_KEEP_DAYS],
   );
   return rowCount ?? 0;
 }

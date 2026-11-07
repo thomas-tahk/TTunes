@@ -170,7 +170,7 @@ export async function skipCurrent(db: Db, expectedVideoId: string, clock: Clock)
     const from = catalog.songs.get(expectedVideoId) ?? null; // null: the playing song was hard-deleted (upkeep)
     const next = await writeAdvance(client, state, catalog, now);
     await client.query("insert into activity_log (who, what, details) values ('owner', 'skip', $1)", [
-      { skipped: { videoId: expectedVideoId, title: from?.title ?? null }, next: next.current && { videoId: next.current.videoId, title: next.current.title } },
+      { skipped: { videoId: expectedVideoId }, next: next.current && { videoId: next.current.videoId } },
     ]);
     await client.query("commit");
     return { skipped: true, now: next, from };
@@ -182,7 +182,7 @@ export async function skipCurrent(db: Db, expectedVideoId: string, clock: Clock)
   }
 }
 
-export const OFF_AIR_CACHE_SECONDS = 5; // off air: a first add shows up within a few seconds
+export const OFF_AIR_CACHE_SECONDS = 5; // off air: a first add reaches listeners after their next poll (up to ~30s) plus this cache
 export const MAX_CACHE_SECONDS = 15; // listeners re-check about every 30s, so owner skips show up quickly
 
 /** Seconds a CDN may keep the response: never past the end of the current song, capped at 15; off air, 5. */

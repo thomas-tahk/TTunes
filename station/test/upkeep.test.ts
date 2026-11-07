@@ -6,7 +6,7 @@ import ownerApi from "../api/owner.ts";
 import { issueSession, SESSION_COOKIE } from "../lib/auth.ts";
 import { createDb, sharedDb } from "../lib/db.ts";
 import { migrate } from "../lib/migrate.ts";
-import { KEEP_EXPORTS } from "../lib/upkeep.ts";
+import { KEEP_EXPORTS, purgeTrash } from "../lib/upkeep.ts";
 import { parseIsoDuration } from "../lib/youtube.ts";
 
 let server: Server;
@@ -212,6 +212,16 @@ it("daily cron strips YouTube titles from activity_log rows older than 30 days, 
   expect(rows[1].details).toEqual({ skipped: { videoId: "a" }, next: { videoId: "b" } });
   expect(rows[2].details).toEqual({ skipped: { videoId: "a" }, next: null });
   expect(rows[3].details).toEqual({ videoId: "c", title: "New Song" });
+});
+
+it("purging an expired trashed song logs its videoId only, no title", async () => {
+  const db = sharedDb();
+  await db.query("delete from activity_log");
+  await addSong("gone", 1);
+  await db.query("update songs set deleted_at = now() - interval '31 days' where video_id = 'gone'");
+  expect(await purgeTrash(db)).toEqual(["gone"]);
+  const { rows } = await db.query("select details from activity_log where what = 'trash_purged'");
+  expect(rows).toEqual([{ details: { videoId: "gone" } }]);
 });
 
 it("owner export returns every library song as a download; non-owner gets 401", async () => {

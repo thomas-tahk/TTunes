@@ -21,3 +21,9 @@ it("on production, migrations run against DATABASE_URL_UNPOOLED, not the pooled 
   expect(result.status).toBe(0);
   expect(result.stdout).toMatch(/Applied|up to date/);
 });
+
+it("fails closed when VERCEL is set but VERCEL_ENV is not", () => {
+  const result = run({ VERCEL: "1" });
+  expect(result.status).not.toBe(0);
+  expect(result.stderr).toContain("System Environment Variables");
+});

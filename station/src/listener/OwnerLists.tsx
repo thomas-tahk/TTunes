@@ -99,7 +99,7 @@ export function LogList({ rows }: { rows: LogRow[] }) {
     <ul className="owner-list" data-testid="list-log">
       {rows.map((r) => (
         <li key={r.id}>
-          <Meta title={LABELS[r.what] ?? r.what} sub={`${r.details?.title ?? r.details?.skipped?.title ?? ""} · ${new Date(r.at).toLocaleString()}`} />
+          <Meta title={LABELS[r.what] ?? r.what} sub={[r.details?.title ?? r.details?.skipped?.title, new Date(r.at).toLocaleString()].filter(Boolean).join(" · ")} />
         </li>
       ))}
     </ul>

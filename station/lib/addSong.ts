@@ -53,7 +53,7 @@ export async function insertSong(db: Db, info: PlayableVideo, position: Position
       await client.query("update songs set deleted_at = null where video_id = $1", [info.videoId]);
       await client.query("delete from trash_queue where video_id = $1", [info.videoId]);
       await client.query("insert into activity_log (who, what, details) values ('owner', 'song_added', $1)", [
-        { videoId: info.videoId, title: info.title, position, restoredFromTrash: true, playingNow: true },
+        { videoId: info.videoId, position, restoredFromTrash: true, playingNow: true },
       ]);
       await client.query("commit");
       return { ok: true };
@@ -68,7 +68,7 @@ export async function insertSong(db: Db, info: PlayableVideo, position: Position
     const place = position === "next" ? "coalesce(min(position) - 1, 0)" : "coalesce(max(position) + 1, 0)";
     await client.query(`insert into queue (video_id, position) select $1::text, ${place} from queue`, [info.videoId]);
     await client.query("insert into activity_log (who, what, details) values ('owner', 'song_added', $1)", [
-      { videoId: info.videoId, title: info.title, position, ...(trashed ? { restoredFromTrash: true } : {}) },
+      { videoId: info.videoId, position, ...(trashed ? { restoredFromTrash: true } : {}) },
     ]);
     await client.query("commit");
     return { ok: true };

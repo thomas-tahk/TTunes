@@ -1,12 +1,20 @@
-// Build step: applies migrations on Vercel production builds only. Preview builds have no DB and
-// local builds must keep working. A failed migration exits non-zero, which fails the build.
+// Final build step: applies migrations on Vercel production builds only. Preview builds must never touch the
+// production DB (the Neon integration is set to Production only, so they have no DATABASE_URL) and local builds
+// must keep working. A failed migration exits non-zero, which fails the build.
 import { spawnSync } from "node:child_process";
 
-if (process.env.VERCEL_ENV !== "production") {
-  console.log(`migrate-on-deploy: skipped (VERCEL_ENV=${process.env.VERCEL_ENV ?? "unset"})`);
+const { VERCEL, VERCEL_ENV, DATABASE_URL_UNPOOLED } = process.env;
+if (VERCEL && !VERCEL_ENV) {
+  console.error("migrate-on-deploy: VERCEL is set but VERCEL_ENV is not. Turn on 'Automatically expose System Environment Variables' in the Vercel project settings.");
+  process.exit(1);
+}
+if (VERCEL_ENV !== "production") {
+  console.log(`migrate-on-deploy: skipped (VERCEL_ENV=${VERCEL_ENV ?? "unset"})`);
   process.exit(0);
 }
-const result = spawnSync("npm", ["run", "db:migrate"], { stdio: "inherit" }); // db:migrate prefers DATABASE_URL_UNPOOLED
+// Prefer the direct (non-PgBouncer) URL; only this script does, so a plain `DATABASE_URL=x npm run db:migrate` stays on x.
+const env = DATABASE_URL_UNPOOLED ? { ...process.env, DATABASE_URL: DATABASE_URL_UNPOOLED } : process.env;
+const result = spawnSync("npm", ["run", "db:migrate"], { stdio: "inherit", env });
 if (result.status !== 0) {
   console.error("migrate-on-deploy: migration failed, failing the build");
   process.exit(result.status ?? 1);

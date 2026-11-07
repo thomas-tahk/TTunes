@@ -11,7 +11,8 @@ if (!existsSync(".vercel/project.json")) {
   const settings = { framework: "vite", buildCommand: null, outputDirectory: null, installCommand: null, devCommand: null, nodeVersion: "22.x", rootDirectory: null };
   writeFileSync(".vercel/project.json", JSON.stringify({ projectId: "prj_local000000000000000000000000", orgId: "team_local00000000000000000", settings }));
 }
-execFileSync("npx", ["vercel", "build"], { stdio: "inherit" });
+// Local `vercel build` sets VERCEL=1 but not VERCEL_ENV; say "preview" so the build never migrates anything.
+execFileSync("npx", ["vercel", "build"], { stdio: "inherit", env: { ...process.env, VERCEL_ENV: "preview" } });
 
 const functionsRoot = resolve(".vercel/output/functions");
 function funcDirs(dir) {

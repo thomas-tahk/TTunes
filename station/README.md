@@ -29,8 +29,10 @@ Without `DATABASE_URL` the app uses `postgres://ttunes:ttunes@localhost:55432/tt
 
 ## Migrations
 
-`npm run db:migrate` applies numbered files in `migrations/` in order, once each, in one transaction guarded by `pg_advisory_xact_lock`, so concurrent runs are safe and it works through PgBouncer. It prefers `DATABASE_URL_UNPOOLED` when set (else `DATABASE_URL`).
-The Vercel build runs it only when `VERCEL_ENV=production` (`scripts/migrate-on-deploy.mjs`); a failed migration fails the build. Preview and local builds skip it.
+`npm run db:migrate` applies numbered files in `migrations/` in order, once each, in one transaction guarded by `pg_advisory_xact_lock`, so concurrent runs are safe and it works through PgBouncer. It uses `DATABASE_URL`.
+The Vercel build runs it as its **last** step, after `vite build`, only when `VERCEL_ENV=production` (`scripts/migrate-on-deploy.mjs`, which points it at `DATABASE_URL_UNPOOLED` when set). A failed migration fails the build. Preview and local builds skip it; if `VERCEL` is set without `VERCEL_ENV` the build fails (turn on "Automatically expose System Environment Variables").
+
+**Rule: every migration must be additive or otherwise safe for the code that is currently live.** The old deployment keeps serving on the new schema until the new one is promoted, and Instant Rollback puts old code on the new schema later. Drop or rename in a later release, after no live code uses the old shape.
 
 ## Tests
 
@@ -53,7 +55,7 @@ Same for `test/e2e/controls.e2e.mjs` and `npm run e2e` (sync).
 ## Deploy (Vercel + Neon)
 
 1. Create the Vercel project from this repo with **Root Directory = `station`**.
-2. Add Neon through the Vercel integration, in the same region as the functions (**iad1**). It sets `DATABASE_URL` and `DATABASE_URL_UNPOOLED`.
+2. Add Neon through the Vercel integration, in the same region as the functions (**iad1**), and tick **Production only** for its environments. Otherwise Preview deployments would point PR code at the production database. It sets `DATABASE_URL` and `DATABASE_URL_UNPOOLED`.
 3. Set `YOUTUBE_API_KEY`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `SESSION_SECRET`, `CRON_SECRET`.
 4. GitHub OAuth app callback URL: `https://<prod domain>/api/auth/github/callback`.
 5. Deploy to production; the build applies migrations. **Never run `db:seed` on production.**
