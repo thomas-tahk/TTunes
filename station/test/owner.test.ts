@@ -39,8 +39,7 @@ beforeEach(async () => {
   const db = sharedDb();
   await db.query("truncate play_history, queue, station_state, songs, activity_log, trash_queue, library_exports restart identity cascade");
   for (const id of ["aaa", "bbb", "ccc", "ddd"]) await db.query("insert into songs (video_id, title, duration_sec) values ($1, $2, 300)", [id, `Song ${id}`]);
-  cookie = `${SESSION_COOKIE}=${encodeURIComponent(await issueSession(db))}`;
-  // YouTube returns nothing for any id: upkeep treats every stale song as gone.
+  cookie = `${SESSION_COOKIE}=${encodeURIComponent(await issueSession(db))}`;  // YouTube returns nothing for any id: upkeep treats every stale song as gone.
   vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
     if (new URL(String(input)).hostname === "www.googleapis.com") return Response.json({ items: [] });
     return realFetch(input, init);
@@ -208,7 +207,7 @@ it("concurrent queue edits leave one consistent order", async () => {
 
 it("a deleted song leaves library and queue; restore brings it back with its queue spots", async () => {
   await enqueue("bbb", "ccc", "bbb", "ddd");
-  expect((await trashIt("bbb")).json).toEqual({ videoId: "bbb", title: "Song bbb", removedFromQueue: 2 });
+  expect((await trashIt("bbb")).json).toMatchObject({ videoId: "bbb", title: "Song bbb", removedFromQueue: 2 });
   expect((await call("GET", "/api/owner/library")).json.songs.map((s: any) => s.videoId)).toEqual(["aaa", "ccc", "ddd"]);
   expect(await queueIds()).toEqual(["ccc", "ddd"]);
   expect((await call("GET", "/api/owner/trash")).json.songs.map((s: any) => s.videoId)).toEqual(["bbb"]);
@@ -378,4 +377,27 @@ it("every owner action appears in the log, newest first, with a limit", async ()
   const owner = (await call("GET", "/api/owner/log")).json.entries.filter((e: any) => e.who === "owner");
   expect(owner).toHaveLength(5);
   expect(owner.every((e: any) => e.details && Object.keys(e.details).length > 0)).toBe(true);
+});
+
+it("log comes back newest first in numeric id order past 10 entries (ids are not sorted as text)", async () => {
+  const db = sharedDb();
+  for (let i = 1; i <= 12; i++) await db.query("insert into activity_log (who, what, details) values ('owner', 'note', $1)", [{ n: i }]);
+  const entries = (await call("GET", "/api/owner/log?limit=50")).json.entries as { details: { n: number } }[];
+  expect(entries.map((e) => e.details.n)).toEqual([12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]);
+});
+
+it("queue, trash and stale-skip responses carry the fresh playing info", async () => {
+  await now(); // station running, as it always is in prod
+  await enqueue("ccc", "bbb");
+  const items = await queueItems();
+  const moved = await call("POST", "/api/owner/queue/move", { queueId: items[1]!.queueId, toIndex: 0 });
+  expect(moved.json.playing.next.videoId).toBe((await now()).next!.videoId);
+  const removed = await call("DELETE", "/api/owner/queue", { queueId: items[0]!.queueId });
+  expect(removed.json.playing.next.videoId).toBe((await now()).next!.videoId);
+  const trashed = await trashIt("ddd");
+  expect(trashed.json.playing.current.videoId).toBe((await now()).current!.videoId);
+  expect((await restoreIt("ddd")).json.playing).toBeTruthy();
+  const stale = await call("POST", "/api/owner/skip", { expectedVideoId: "nope" });
+  expect(stale.status).toBe(409);
+  expect(stale.json.playing.current.videoId).toBe((await now()).current!.videoId);
 });

@@ -67,7 +67,7 @@ export function App() {
         <SignInLink owner={owner} />
       </header>
       <main>{body}</main>
-      {owner && <OwnerPanel onAdded={(playing) => void show(playing)} />}
+      {owner && <OwnerPanel playing={view.status === "ready" ? view.playing : null} onPlaying={(playing) => void show(playing)} />}
     </div>
   );
 }
