@@ -40,9 +40,12 @@ export interface PostedRequest {
 }
 export type PostResult = { ok: true; request: PostedRequest } | Refusal;
 
-// Control (Cc, incl. C1 and newlines), format (Cf: zero-width, RTL override) and the Unicode line/paragraph separators.
-const HIDDEN_CHARS = /[\p{Cc}\p{Cf}\u2028\u2029]/u;
-const VISIBLE_CHAR = /[^\p{Z}\p{C}]/u;
+// Spoofing characters: C0/C1 controls (newlines too), zero-width space, word joiner, BOM, line/paragraph separators, bidi overrides and isolates.
+// ZWJ/ZWNJ (U+200C/D) and tag characters stay allowed: Persian names, family/rainbow/England-flag emoji.
+const HIDDEN_CHARS = /[\u0000-\u001f\u007f-\u009f\u200b\u2060\ufeff\u2028\u2029\u202a-\u202e\u2066-\u2069]/;
+// Something a reader can see: not whitespace, not a format/control/unassigned char, not a combining mark, not a blank-looking filler.
+const VISIBLE_CHAR = /[^\p{Z}\p{C}\p{M}\u3164\u2800\u115f\u1160\uffa0]/u;
+const STACKED_MARKS = /\p{M}{3,}/u; // more than 2 combining marks in a row is Zalgo
 const length = (text: string): number => [...text].length;
 
 /** Name 1-30 and dedication 0-140 characters of plain text (no control characters), trimmed. Null body fields are rejected, unknown fields ignored by the caller. */
@@ -52,7 +55,8 @@ export function validateText(name: unknown, dedication: unknown): { ok: true; na
   const cleanDedication = (dedication ?? "").trim();
   if (length(cleanName) < 1 || length(cleanName) > NAME_MAX) return refuse(400, "bad_name", `Name must be 1 to ${NAME_MAX} characters.`);
   if (length(cleanDedication) > DEDICATION_MAX) return refuse(400, "bad_dedication", `Dedication can be up to ${DEDICATION_MAX} characters.`);
-  if (HIDDEN_CHARS.test(cleanName) || HIDDEN_CHARS.test(cleanDedication)) return refuse(400, "bad_text", "Name and dedication must be plain text.");
+  if (HIDDEN_CHARS.test(name) || HIDDEN_CHARS.test(dedication ?? "")) return refuse(400, "bad_text", "Name and dedication must be plain text."); // raw input: trim() would hide a trailing BOM or separator
+  if (STACKED_MARKS.test(cleanName) || STACKED_MARKS.test(cleanDedication)) return refuse(400, "bad_text", "Too many stacked accent marks.");
   if (!VISIBLE_CHAR.test(cleanName)) return refuse(400, "bad_name", "Name needs at least one visible character.");
   return { ok: true, name: cleanName, dedication: cleanDedication };
 }
@@ -242,4 +246,64 @@ export async function moderate(db: Db, id: number, action: Moderation, clock: Cl
   } finally {
     client.release();
   }
+}
+
+// --- public reads (#30). Read-only: a waiting request past 24h shows as expired before the daily cron marks it.
+
+export const FEED_LIMIT = 30;
+
+export interface FeedItem {
+  id: number;
+  name: string;
+  dedication: string;
+  videoId: string;
+  title: string;
+  durationSec: number;
+  thumbnail: string;
+  status: string;
+  createdAt: string;
+}
+
+/** The last 30 requests, newest first, public fields only. Denied requests are left out. */
+export async function listFeed(db: Db, clock: Clock): Promise<{ mode: Mode; requests: FeedItem[] }> {
+  const { rows } = await db.query(
+    `select id, name, dedication, video_id, title, duration_sec, created_at,
+            case when status = 'waiting' and created_at <= $1 then 'expired' else status end as status
+       from requests where status <> 'denied' order by id desc limit $2`,
+    [at(clock() - WAIT_EXPIRY_MS), FEED_LIMIT],
+  );
+  const requests = rows.map((r) => ({
+    id: Number(r.id),
+    name: r.name,
+    dedication: r.dedication,
+    videoId: r.video_id,
+    title: r.title,
+    durationSec: r.duration_sec,
+    thumbnail: thumbnailOf(r.video_id),
+    status: r.status,
+    createdAt: r.created_at.toISOString(),
+  }));
+  return { mode: await getMode(db), requests };
+}
+
+export interface MyRequest {
+  id: number;
+  videoId: string;
+  title: string;
+  thumbnail: string;
+  status: string;
+  createdAt: string;
+}
+
+/** The caller's own waiting, queued or playing request (by cookie or network, like the posting limit), or null. */
+export async function findMine(db: Db, who: Who, clock: Clock): Promise<MyRequest | null> {
+  const { rows } = await db.query(
+    `select id, video_id, title, status, created_at from requests
+      where (status in ('queued', 'playing') or (status = 'waiting' and created_at > $3)) and (listener_id = $1 or ip_hash = $2)
+      order by id desc limit 1`,
+    [who.listenerId, who.ipHash, at(clock() - WAIT_EXPIRY_MS)],
+  );
+  const r = rows[0];
+  if (!r) return null;
+  return { id: Number(r.id), videoId: r.video_id, title: r.title, thumbnail: thumbnailOf(r.video_id), status: r.status, createdAt: r.created_at.toISOString() };
 }

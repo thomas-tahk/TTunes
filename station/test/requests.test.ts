@@ -9,7 +9,7 @@ import { SESSION_COOKIE, issueSession, requireOwner } from "../lib/auth.ts";
 import { createDb, sharedDb } from "../lib/db.ts";
 import { LISTENER_COOKIE, hashIp, identifyListener, ipKey } from "../lib/listener.ts";
 import { migrate } from "../lib/migrate.ts";
-import { DAILY_LOOKUP_CAP, expireStale, getMode, moderate, purgeOldIpHashes, setMode } from "../lib/requests.ts";
+import { DAILY_LOOKUP_CAP, expireStale, getMode, moderate, purgeOldIpHashes, setMode, validateText } from "../lib/requests.ts";
 import { getNowPlaying } from "../lib/schedule.ts";
 
 interface Fake { title: string; duration: string; category?: string; embeddable?: boolean }
@@ -36,7 +36,7 @@ beforeAll(async () => {
   const db = createDb();
   await migrate(db);
   await db.end();
-  const routes = { "/api/requests": requestsApi, "/api/now": nowApi, "/api/owner/skip": ownerApi };
+  const routes = { "/api/requests": requestsApi, "/api/requests/feed": requestsApi, "/api/requests/mine": requestsApi, "/api/now": nowApi, "/api/owner/skip": ownerApi };
   server = createServer((req, res) => void routes[new URL(req.url!, "http://x").pathname as keyof typeof routes]?.(req, res));
   await new Promise<void>((resolve) => server.listen(0, resolve));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -176,7 +176,8 @@ describe("POST /api/requests rules", () => {
 
   it("a blocked, unknown or malformed link is refused with a plain message", async () => {
     expect((await ask(newListener("1.2.3.4"), "blockedVid1")).status).toBe(422);
-    expect((await ask(newListener("1.2.3.5"), "notFound001")).status).toBe(404);
+    const missing = await ask(newListener("1.2.3.5"), "notFound001");
+    expect([missing.status, missing.json.code]).toEqual([404, "video_unavailable"]);
     const bad = await ask(newListener("1.2.3.6"), "https://example.com/x");
     expect(bad.status).toBe(400);
     expect(bad.json.code).toBe("bad_link");
@@ -425,5 +426,86 @@ describe("review fixes", () => {
     expect(ipKey("::ffff:1.2.3.4")).toBe("1.2.3.4");
     expect(hashIp("1.2.3.4")).not.toBe(hashIp("1.2.3.5"));
     expect(ipKey("1.2.3.4")).toBe("1.2.3.4");
+  });
+});
+
+describe("text rules (narrowed)", () => {
+  const ok = (name: string, dedication = "") => validateText(name, dedication).ok;
+  it("allows ZWJ/ZWNJ and tag characters: Persian names, family, rainbow and England flags", () => {
+    expect(ok("نام‌ها")).toBe(true);
+    expect(ok("Sam", "\u{1F468}‍\u{1F469}‍\u{1F467}")).toBe(true);
+    expect(ok("Sam", "\u{1F3F3}️‍\u{1F308}")).toBe(true);
+    expect(ok("Sam", "\u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}")).toBe(true);
+  });
+  it("rejects the spoofing set: bidi overrides/isolates, zero-width space, word joiner, BOM, separators, controls", () => {
+    const spoof = ["‪", "‫", "‬", "‭", "‮", "⁦", "⁧", "⁨", "⁩", "​", "⁠", "﻿", " ", " ", "\u0000", "\u001f", "\u007f", "\u0080", "\u0085", "\u009f", "\n"];
+    for (const c of spoof) {
+      expect(ok(`Sam${c}`), `name U+${c.codePointAt(0)!.toString(16)}`).toBe(false);
+      expect(ok("Sam", `a${c}b`), `dedication U+${c.codePointAt(0)!.toString(16)}`).toBe(false);
+    }
+  });
+  it("rejects names that only look blank, and names made of combining marks alone", () => {
+    for (const blank of ["ㅤ", "⠀", "ᅟ", "ᅠ", "ﾠ", "́̂", "ㅤ⠀́", "‍", "\u{E0067}"]) {
+      const res = validateText(blank, "");
+      expect(res.ok, `U+${blank.codePointAt(0)!.toString(16)}`).toBe(false);
+    }
+  });
+  it("caps stacked combining marks at 2 in a row (no Zalgo), in names and dedications", () => {
+    expect(ok("á̂")).toBe(true);
+    expect(ok("á̂̃")).toBe(false);
+    expect(ok("Sam", "é̂̃̄")).toBe(false);
+    expect(ok("Sam", "é é")).toBe(true);
+  });
+});
+
+describe("feed and mine", () => {
+  const feed = () => fetch(`${base}/api/requests/feed`);
+  it("lists the newest 30 first with only public fields, the mode, and 10s cache headers", async () => {
+    const db = sharedDb();
+    for (let i = 0; i < 32; i++) {
+      await db.query(
+        "insert into requests (video_id, title, duration_sec, name, dedication, status, listener_id, ip_hash, created_at) values ($1, $2, 100, $3, 'hi', 'played', 'secret-listener', 'secret-hash', now() - make_interval(mins => $4))",
+        [`vid${String(i).padStart(8, "0")}`, `Song ${i}`, `N${i}`, 100 - i],
+      );
+    }
+    const res = await feed();
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("public, s-maxage=10, stale-while-revalidate=5");
+    const body = await res.json();
+    expect(body.mode).toBe("open");
+    expect(body.requests.length).toBe(30);
+    expect(body.requests[0].name).toBe("N31");
+    expect(body.requests[29].name).toBe("N2");
+    expect(Object.keys(body.requests[0]).sort()).toEqual(["createdAt", "dedication", "durationSec", "id", "name", "status", "thumbnail", "title", "videoId"]);
+    expect(JSON.stringify(body)).not.toMatch(/secret|listener|ip_hash|ipHash/);
+    expect(body.requests[0].thumbnail).toBe("https://i.ytimg.com/vi/vid00000031/hqdefault.jpg");
+    expect(typeof body.requests[0].createdAt).toBe("string");
+  });
+
+  it("hides denied requests, shows a stale waiting one as expired, and reports the mode", async () => {
+    const who = newListener("30.0.0.1");
+    await ask(who, "gamingVid01");
+    await ask(newListener("30.0.0.2"), "musicTwelve");
+    const [gaming, twelve] = (await sharedDb().query("select id from requests order by id")).rows.map((r) => Number(r.id));
+    await moderate(sharedDb(), twelve!, "deny", Date.now);
+    await sharedDb().query("update requests set created_at = now() - interval '25 hours' where id = $1", [gaming]);
+    await setMode(sharedDb(), "approve");
+    const body = await (await feed()).json();
+    expect(body.mode).toBe("approve");
+    expect(body.requests.map((r: any) => [r.videoId, r.status])).toEqual([["gamingVid01", "expired"]]);
+  });
+
+  it("mine: the caller's own active request, uncached; null for someone else or a stranger", async () => {
+    const sam = newListener("31.0.0.1");
+    await ask(sam, "gamingVid01");
+    const mine = (who: Caller) => fetch(`${base}/api/requests/mine`, { headers: { "x-forwarded-for": who.ip, ...(who.cookie ? { cookie: who.cookie } : {}) } });
+    const res = await mine(sam);
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect((await res.json()).request).toMatchObject({ status: "waiting", videoId: "gamingVid01", title: "Boss Theme" });
+    expect(Object.keys((await (await mine(sam)).json()).request).sort()).toEqual(["createdAt", "id", "status", "thumbnail", "title", "videoId"]);
+    expect((await (await mine({ ip: "31.0.0.9" })).json()).request).toBeNull();
+    expect((await (await mine({ ip: "31.0.0.1" })).json()).request).toMatchObject({ status: "waiting" }); // same network counts, like the posting limit
+    await sharedDb().query("update requests set status = 'played'");
+    expect((await (await mine(sam)).json()).request).toBeNull();
   });
 });

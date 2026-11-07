@@ -345,6 +345,17 @@ it("the daily cron expires 24h-old waiting requests and clears 7-day-old IP hash
   await db.query("truncate requests");
 });
 
+it("the daily cron deletes request attempts older than 7 days and keeps recent ones", async () => {
+  process.env.CRON_SECRET = "cron-secret-123";
+  const db = sharedDb();
+  await db.query("truncate request_attempts");
+  await db.query("insert into request_attempts (listener_id, ip_hash, at) values ('old', 'h', now() - interval '8 days'), ('fresh', 'h', now() - interval '1 hour')");
+  const res = await fetch(`${base}/api/cron/refresh`, { headers: { authorization: "Bearer cron-secret-123" } });
+  expect(res.status).toBe(200);
+  expect((await db.query("select listener_id from request_attempts")).rows).toEqual([{ listener_id: "fresh" }]);
+  await db.query("truncate request_attempts");
+});
+
 it("the export leaves out trashed songs", async () => {
   await trashIt("bbb");
   const res = await call("GET", "/api/owner/export");
