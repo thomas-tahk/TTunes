@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Track } from "./types.ts";
 import { audioUrl } from "./api.ts";
-import type { AddChoice } from "./addChoice.ts";
-import { addMany as addManyStation, advance as advanceStation, emptyStation, peekNext, playNow as playNowStation, queueLast, sync, type Station } from "./station.ts";
+import type { AddChoice } from "../shared/addChoice.ts";
+import { addMany as addManyStation, advance as advanceStation, emptyStation, peekNext, playNow as playNowStation, queueLast, sync, type Station } from "../shared/station.ts";
 
 export interface PlayerControls {
   currentId: string | null;

@@ -1,0 +1,36 @@
+{
+  "name": "ttunes-station",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": { "node": "22.x" },
+  "scripts": {
+    "sync:shared": "node scripts/copy-shared.mjs",
+    "dev": "npm run sync:shared && vite",
+    "build": "npm run sync:shared && vite build",
+    "typecheck": "npm run sync:shared && tsc --noEmit",
+    "check:build": "node scripts/check-build.mjs",
+    "db:up": "docker compose up -d --wait",
+    "db:down": "docker compose down",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "db:seed": "tsx scripts/seed.ts",
+    "pretest": "npm run sync:shared && npm run db:up",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "pg": "^8.23.1",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.15.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "vite": "^8.1.2",
+    "vitest": "^5.0.5"
+  }
+}
