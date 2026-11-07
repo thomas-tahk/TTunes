@@ -31,8 +31,8 @@ export async function planNextFetch(p: NowPlaying, io: FetchPlanIo, staleRetries
   const stale = () => p.current !== null && hasEnded(p, io.serverTime());
   const settled = () => ({ delayMs: nextFetchDelayMs(p, io.serverTime()), staleRetries: 0 });
   if (!stale()) return settled();
+  await io.remeasure(); // also once per 30s re-check after the retries are used up, so a recovered /api/time un-sticks the page
   if (staleRetries >= MAX_STALE_RETRIES) return { delayMs: RECHECK_MS, staleRetries };
-  await io.remeasure();
   if (!stale()) return settled();
   return { delayMs: STALE_RETRY_MS, staleRetries: staleRetries + 1 };
 }

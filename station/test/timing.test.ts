@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { NowPlaying } from "../lib/schedule.ts";
-import { clockOffset, hasEnded, nextFetchDelayMs, RECHECK_MS } from "../src/listener/timing.ts";
+import { clockOffset, hasEnded, MAX_STALE_RETRIES, nextFetchDelayMs, planNextFetch, RECHECK_MS } from "../src/listener/timing.ts";
 
 const song = { videoId: "a", title: "A", durationSec: 20 };
 const playing = (startedAt: number): NowPlaying => ({ current: song, startedAt, next: null, serverNow: startedAt });
@@ -12,6 +12,20 @@ describe("listener timing", () => {
   it("detects a song that already ended", () => {
     expect(hasEnded(playing(0), 19_999)).toBe(false);
     expect(hasEnded(playing(0), 20_000)).toBe(true);
+  });
+  it("still re-measures the clock on the capped path, so a device whose /api/time recovered is not stuck", async () => {
+    let offset = 100_000; // clock far ahead: every song looks ended
+    let measures = 0;
+    const io = { serverTime: () => 5_000 + offset, remeasure: async () => { measures++; offset = measures >= 2 ? 0 : offset; } }; // /api/time works from the 2nd call
+    const first = await planNextFetch(playing(0), io, MAX_STALE_RETRIES);
+    expect(first).toEqual({ delayMs: RECHECK_MS, staleRetries: MAX_STALE_RETRIES });
+    expect(measures).toBe(1);
+    const second = await planNextFetch(playing(0), io, first.staleRetries);
+    expect(measures).toBe(2);
+    expect(second.delayMs).toBe(RECHECK_MS);
+    const third = await planNextFetch(playing(0), io, second.staleRetries); // next 30s re-check: clock is right again
+    expect(third.staleRetries).toBe(0);
+    expect(third.delayMs).toBe(15_000 + 300);
   });
   it("fetches just after the song ends, never later than 30s", () => {
     expect(nextFetchDelayMs(playing(0), 5_000)).toBe(15_000 + 300);
