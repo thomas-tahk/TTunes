@@ -239,6 +239,25 @@ it("restore falls back to before the next entry when the previous one is gone, a
   expect(await queueIds()).toEqual(["ddd", "bbb", "ccc"]);
 });
 
+it("restore with both neighbours gone uses the old index, clamped", async () => {
+  await enqueue("aaa", "bbb", "ccc", "ddd");
+  await trashIt("ccc"); // was index 2, between bbb and ddd
+  const items = await queueItems();
+  for (const id of ["bbb", "ddd"]) await call("DELETE", "/api/owner/queue", { queueId: items.find((q) => q.videoId === id)!.queueId });
+  await restoreIt("ccc");
+  expect(await queueIds()).toEqual(["aaa", "ccc"]);
+});
+
+it("restore of a last entry whose previous neighbour is gone goes to the end", async () => {
+  await enqueue("aaa", "bbb", "ccc");
+  await trashIt("ccc");
+  const items = await queueItems();
+  await call("DELETE", "/api/owner/queue", { queueId: items.find((q) => q.videoId === "bbb")!.queueId });
+  await insertSong(sharedDb(), info("ddd"), "queue");
+  await restoreIt("ccc");
+  expect(await queueIds()).toEqual(["aaa", "ddd", "ccc"]);
+});
+
 it("a trashed song never comes up in the shuffle", async () => {
   await trashIt("bbb");
   const seen = new Set<string>();
