@@ -1,9 +1,10 @@
+import type pg from "pg";
 import type { Db } from "./db.ts";
 import { lockStation } from "./lock.ts";
 import { fetchVideos, QuotaExceededError, type VideoInfo } from "./youtube.ts";
 
 export const LONG_SEC = 15 * 60;
-export type Position = "next" | "queue";
+export type Position = "next" | "queue" | "library"; // "library": join the library only, no queue change (Keep on a request)
 export type PlayableVideo = VideoInfo & { durationSec: number };
 
 export const thumbnailOf = (videoId: string): string => `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
@@ -31,7 +32,7 @@ export async function lookupVideo(videoId: string): Promise<Lookup> {
   return { ok: true, info: { ...info, durationSec: info.durationSec } };
 }
 
-export type Inserted = { ok: true } | { ok: false; status: number; message: string };
+export type Inserted = { ok: true; alreadyInLibrary?: true } | { ok: false; status: number; message: string };
 
 /**
  * Adds to the library and queue in one transaction; the station_state row lock (as in schedule.ts) serialises concurrent adds.
@@ -42,6 +43,7 @@ export async function insertSong(db: Db, info: PlayableVideo, position: Position
   try {
     await client.query("begin");
     await lockStation(client);
+    if (position === "library") return await insertLibraryOnly(client, info);
     const trashed = (await client.query("select 1 from songs where video_id = $1 and deleted_at is not null", [info.videoId])).rowCount === 1;
     const { rows } = await client.query("select current_video_id from station_state where id = 1");
     if (rows[0]?.current_video_id === info.videoId) {
@@ -78,4 +80,22 @@ export async function insertSong(db: Db, info: PlayableVideo, position: Position
   } finally {
     client.release();
   }
+}
+
+/** Library-only add (Keep): idempotent. A live library song is left alone; a trashed one is restored; playing now is fine. Commits. */
+async function insertLibraryOnly(client: pg.PoolClient, info: PlayableVideo): Promise<Inserted> {
+  const live = (await client.query("select 1 from songs where video_id = $1 and deleted_at is null", [info.videoId])).rowCount === 1;
+  if (live) {
+    await client.query("commit");
+    return { ok: true, alreadyInLibrary: true };
+  }
+  await client.query(
+    `insert into songs (video_id, title, duration_sec, metadata_refreshed_at) values ($1, $2, $3, now())
+     on conflict (video_id) do update set deleted_at = null`,
+    [info.videoId, info.title, info.durationSec],
+  );
+  await client.query("delete from trash_queue where video_id = $1", [info.videoId]);
+  await client.query("insert into activity_log (who, what, details) values ('owner', 'song_added', $1)", [{ videoId: info.videoId, title: info.title, position: "library" }]);
+  await client.query("commit");
+  return { ok: true };
 }
