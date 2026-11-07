@@ -5,7 +5,7 @@ import { Player } from "./Player.tsx";
 import { RequestBox } from "./RequestBox.tsx";
 import { RequestFeed } from "./RequestFeed.tsx";
 import { type Action, useOwnerRequests } from "./useOwnerRequests.ts";
-import { useRequests } from "./useRequests.ts";
+import { type PostedRequest, useRequests } from "./useRequests.ts";
 import { useStation } from "./useStation.ts";
 import { Visualizer } from "./Visualizer.tsx";
 
@@ -44,6 +44,14 @@ export function App() {
   const ownerRequests = useOwnerRequests(owner, playingNow);
   const moderation = { note: ownerRequests.note, kept: ownerRequests.kept, busyId: ownerRequests.busyId, onAct: (id: number, action: Action) => void ownerRequests.moderate(id, action) };
 
+  // The public feed is CDN-cached, so the owner's own box follows the owner's uncached mode.
+  const modeFeed = owner ? ownerRequests.feed : feed;
+  const boxMode = modeFeed.status === "ready" ? modeFeed.mode : null;
+  const posted = async (post?: PostedRequest) => {
+    await afterPost(post);
+    if (owner) await ownerRequests.reload();
+  };
+
   let body;
   if (view.status === "loading") body = <Message title="Tuning in" body="Finding out what's on air." />;
   else if (view.status === "error")
@@ -76,7 +84,7 @@ export function App() {
       </header>
       <main>{body}</main>
       <div className="requests">
-        {!(feed.status === "ready" && feed.mode === "off") && <RequestBox mine={mine} mode={feed.status === "ready" ? feed.mode : null} onPosted={afterPost} />}
+        {boxMode !== "off" && <RequestBox mine={mine} mode={boxMode} onPosted={posted} />}
         {owner ? (
           <RequestFeed feed={ownerRequests.feed} retry={() => void ownerRequests.reload()} moderation={moderation} />
         ) : (

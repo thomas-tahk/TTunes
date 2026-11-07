@@ -161,3 +161,5 @@ html { background: var(--ink); }
 .seg:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
 .chip.in-library { border-color: #6dffb0; color: #6dffb0; }
 @media (max-width: 480px) { .segmented { grid-template-columns: 1fr; } }
+.btn[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
+.feed-row:focus-visible { outline: 3px solid var(--cyan); outline-offset: 2px; }

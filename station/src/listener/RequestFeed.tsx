@@ -1,5 +1,7 @@
+import { useEffect, useRef } from "react";
 import { type Moderation, ModerationActions } from "./ModerationActions.tsx";
 import { minutes } from "./ownerFetch.ts";
+import type { Action } from "./useOwnerRequests.ts";
 import type { FeedItem, FeedState, Mode, RequestStatus } from "./useRequests.ts";
 
 const MODE_LABEL: Record<Mode, string> = { open: "Open", approve: "Approval on", off: "Requests off" };
@@ -13,8 +15,16 @@ const STATUS_LABEL: Record<RequestStatus, string> = {
 };
 
 function Row({ item, moderation }: { item: FeedItem; moderation?: Moderation }) {
+  const li = useRef<HTMLLIElement>(null);
+  const acted = useRef(false);
+  // After a tap the pressed button may be gone (approve, deny): keep keyboard focus on the row instead of dropping it to the page.
+  useEffect(() => {
+    if (acted.current && li.current && !li.current.contains(document.activeElement)) li.current.focus();
+    acted.current = false;
+  }, [item.status]);
+  const tracked = moderation && { ...moderation, onAct: (id: number, action: Action) => { acted.current = true; moderation.onAct(id, action); } };
   return (
-    <li className="feed-row" data-testid="feed-row">
+    <li className="feed-row" data-testid="feed-row" ref={li} tabIndex={moderation ? -1 : undefined}>
       <img src={item.thumbnail} alt="" width={64} height={36} loading="lazy" />
       <div className="feed-body">
         <p className="feed-name">{item.name}</p>
@@ -22,7 +32,7 @@ function Row({ item, moderation }: { item: FeedItem; moderation?: Moderation }) 
         {item.dedication && <p className="feed-dedication">{item.dedication}</p>}
       </div>
       <span className={`chip status-${item.status}`}>{STATUS_LABEL[item.status]}</span>
-      {moderation && <ModerationActions item={item} moderation={moderation} />}
+      {tracked && <ModerationActions item={item} moderation={tracked} />}
     </li>
   );
 }

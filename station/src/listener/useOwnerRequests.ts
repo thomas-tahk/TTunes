@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { NowPlaying } from "../../lib/schedule.ts";
 import { call, messageOf, NETWORK_MESSAGE } from "./ownerFetch.ts";
+import { createStaleGuard, withAllWaiting } from "./ownerRequestsLogic.ts";
 import type { FeedItem, Mode } from "./useRequests.ts";
 
 export type Action = "approve" | "deny" | "remove" | "keep";
@@ -28,18 +29,25 @@ export function useOwnerRequests(enabled: boolean, playing: NowPlaying | null) {
   const [busyId, setBusyId] = useState<number | null>(null);
   const [changes, setChanges] = useState(0); // bumps on every owner action so the Activity and Library lists refetch
 
+  const guard = useRef(createStaleGuard());
+  const modeBusy = useRef(false);
+
   const load = useCallback(async () => {
+    const fresh = guard.current.startLoad();
     try {
       const { status, body } = await call("GET", "/api/owner/requests");
+      if (!fresh()) return; // an action finished meanwhile; its reply is newer than this list
       if (status !== 200) return setFeed((prev) => (prev.status === "ready" ? prev : { status: "error", message: messageOf(body) }));
-      setFeed({ status: "ready", mode: body.mode as Mode, waitingCount: body.waitingCount as number, requests: body.requests as FeedItem[] });
+      setFeed({ status: "ready", mode: body.mode as Mode, waitingCount: body.waitingCount as number, requests: withAllWaiting(body.requests as FeedItem[], (body.waiting as FeedItem[]) ?? []) });
     } catch {
       setFeed((prev) => (prev.status === "ready" ? prev : { status: "error", message: NETWORK_MESSAGE }));
     }
   }, []);
 
   useEffect(() => {
-    if (enabled) void load();
+    if (!enabled) return;
+    setNote(null); // a note belongs to the last action; a new load (song change, 30s re-check) retires it
+    void load();
   }, [enabled, load, playing]);
 
   const patch = (request: FeedItem, waitingCount: number) =>
@@ -48,6 +56,8 @@ export function useOwnerRequests(enabled: boolean, playing: NowPlaying | null) {
   const moderate = useCallback(
     async (id: number, action: Action) => {
       setBusyId(id);
+      setNote(null);
+      guard.current.actionStarted();
       try {
         const { status, body } = await call("POST", "/api/owner/requests/moderate", { id, action });
         if (status === 200 || status === 409) patch(body.request as FeedItem, body.waitingCount as number);
@@ -62,6 +72,7 @@ export function useOwnerRequests(enabled: boolean, playing: NowPlaying | null) {
       } catch {
         setNote({ text: NETWORK_MESSAGE, error: true });
       } finally {
+        guard.current.actionStarted();
         setBusyId(null);
       }
     },
@@ -69,6 +80,10 @@ export function useOwnerRequests(enabled: boolean, playing: NowPlaying | null) {
   );
 
   const setMode = useCallback(async (mode: Mode) => {
+    if (modeBusy.current) return;
+    modeBusy.current = true;
+    setNote(null);
+    guard.current.actionStarted();
     try {
       const { status, body } = await call("POST", "/api/owner/requests/mode", { mode });
       if (status !== 200) return setNote({ text: messageOf(body), error: true });
@@ -76,6 +91,9 @@ export function useOwnerRequests(enabled: boolean, playing: NowPlaying | null) {
       setChanges((n) => n + 1);
     } catch {
       setNote({ text: NETWORK_MESSAGE, error: true });
+    } finally {
+      guard.current.actionStarted();
+      modeBusy.current = false;
     }
   }, []);
 

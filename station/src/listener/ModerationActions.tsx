@@ -20,9 +20,9 @@ function Btn({ item, action, text, moderation, ghost }: BtnProps) {
     <button
       type="button"
       className={ghost ? "btn small ghost" : "btn small"}
-      disabled={moderation.busyId !== null}
+      aria-disabled={moderation.busyId !== null}
       aria-label={`${text} ${item.title} for ${item.name}`}
-      onClick={() => moderation.onAct(item.id, action)}
+      onClick={() => moderation.busyId === null && moderation.onAct(item.id, action)}
     >
       {text}
     </button>

@@ -184,11 +184,29 @@ try {
   await owner.route("**/api/owner/requests", (route) => (route.request().method() === "GET" ? route.fulfill({ status: 200, contentType: "application/json", body: frozen }) : route.continue()));
   await rowOf("Dana").getByRole("button", { name: /^Approve/ }).waitFor();
   await db.query("update requests set status = 'queued', queued_at = now() where name = 'Dana'");
-  await rowOf("Dana").getByRole("button", { name: /^Approve/ }).click();
+  const [reply] = await Promise.all([
+    owner.waitForResponse((r) => r.url().endsWith("/api/owner/requests/moderate")),
+    rowOf("Dana").getByRole("button", { name: /^Approve/ }).click(),
+  ]);
+  const replyBody = await reply.json();
+  check(reply.status() === 409 && typeof replyBody.error === "string" && replyBody.error.length > 5, `server answered 409: ${replyBody.error}`);
   await rowOf("Dana").getByText("Coming up").waitFor();
   await owner.unroute("**/api/owner/requests");
-  check((await owner.getByTestId("mod-note").textContent()).length > 5, "409 shows the server's message and updates the row");
+  const note = owner.getByTestId("mod-note");
+  check((await note.textContent()) === replyBody.error, "note shows the server's exact 409 text");
+  check(((await note.getAttribute("class")) ?? "").includes("owner-error"), "the 409 note is styled as an error");
   check((await badge()) === "0", "badge follows the server's count after the 409");
+
+  // 5b. More than 30 newer rows push an old waiting request out of the public list: it must still be actionable, and clicking keeps focus.
+  await db.query("insert into requests (video_id, title, duration_sec, name, status, listener_id, created_at) values ('oldWait0001', 'Old Waiting Song', 100, 'Olga', 'waiting', 'olga', now() - interval '2 hours')");
+  await db.query(`insert into requests (video_id, title, duration_sec, name, status, listener_id)
+    select 'fillSong' || g, 'Filler ' || g, 100, 'Filler ' || g, 'played', 'filler' || g from generate_series(1, 31) g`);
+  await reloadOwner();
+  check((await badge()) === "1", "badge counts the old waiting request");
+  await rowOf("Olga").getByRole("button", { name: /^Deny/ }).click();
+  await rowOf("Olga").getByText("Denied").waitFor();
+  check((await owner.evaluate(() => document.activeElement?.closest('[data-testid="feed-row"]')?.textContent.includes("Olga"))) === true, "focus stays on the row after a tap");
+  check((await badge()) === "0", "old waiting request (beyond the newest 30) was actionable");
 
   // 6. Mode off: the listener's box disappears at its next refresh (the 30s re-check).
   await alice.reload();
@@ -196,11 +214,13 @@ try {
   await owner.getByRole("radio", { name: /^Off/ }).click();
   await owner.waitForFunction(() => document.querySelector('[role="radio"][aria-checked="true"]')?.textContent?.startsWith("Off"));
   check((await db.query("select value from settings where key = 'request_mode'")).rows[0].value === "off", "mode saved as off");
+  check((await owner.getByRole("heading", { name: "Request a song" }).count()) === 0, "owner's own box follows the uncached mode (hidden when Off)");
   await alice.getByRole("heading", { name: "Request a song" }).waitFor({ state: "detached", timeout: 60000 });
   check(true, "listener's request box disappears on its next refresh");
   await owner.getByRole("radio", { name: /^Approve first/ }).click();
   await owner.waitForFunction(() => document.querySelector('[role="radio"][aria-checked="true"]')?.textContent?.startsWith("Approve first"));
   check((await db.query("select value from settings where key = 'request_mode'")).rows[0].value === "approve", "Approve first is saved");
+  check((await owner.getByRole("heading", { name: "Request a song" }).count()) === 1, "owner's own request box is back after leaving Off");
   await shot("owner-final");
   await layoutOk("final");
 
