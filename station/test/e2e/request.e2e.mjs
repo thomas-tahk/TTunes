@@ -191,6 +191,8 @@ try {
   await c.getByTestId("mine").waitFor();
   await c.getByTestId("feed-row").first().waitFor();
   check((await c.getByTestId("feed-row").first().textContent()).includes("Waiting for approval"), "C sees its own waiting row on a frozen feed");
+  const { rows: [cleo] } = await db.query("select dedication from requests where name = 'Cleo'");
+  check(cleo.dedication === "line one line two", "tabs in the dedication collapse to one space");
   await db.query("update requests set status = 'denied' where name = 'Cleo'");
   await c.getByLabel("Your name").waitFor({ timeout: 45000 }); // the 30s re-check re-reads mine
   check((await c.getByTestId("feed-row").count()) === 0, "denied request: the stale row is gone and the form is back");

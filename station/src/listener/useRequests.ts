@@ -41,7 +41,7 @@ export interface PostedRequest {
   thumbnail: string;
   status: RequestStatus;
 }
-const POSTED_TTL_MS = 15_000;
+const POSTED_TTL_MS = 20_000; // feed cache is s-maxage 10 + swr 5; 5s margin
 const ACTIVE = new Set(["waiting", "queued", "playing"]);
 
 /**
@@ -69,8 +69,9 @@ export function useRequests(playing: NowPlaying | null) {
   }, []);
 
   /** Our optimistic rows are only real while `mine` says so: a denied request is hidden from the feed and would stay forever. */
+  // A different own request means the posted row is stale now; a null `mine` (denied, or cookie blocked) waits for the TTL.
   const dropStalePosts = useCallback((mineId: number | undefined) => {
-    const gone = justPosted.current.filter((r) => r.item.id !== mineId || Date.now() - r.at >= POSTED_TTL_MS).map((r) => r.item.id);
+    const gone = justPosted.current.filter((r) => (mineId !== undefined && r.item.id !== mineId) || Date.now() - r.at >= POSTED_TTL_MS).map((r) => r.item.id);
     if (gone.length === 0) return;
     justPosted.current = justPosted.current.filter((r) => !gone.includes(r.item.id));
     setFeed((prev) => (prev.status === "ready" ? { ...prev, requests: prev.requests.filter((r) => !gone.includes(r.id)) } : prev));
