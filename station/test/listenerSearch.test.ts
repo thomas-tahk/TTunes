@@ -14,6 +14,7 @@ let base: string;
 const realFetch = globalThis.fetch;
 let searchCalls = 0;
 let searchStatus: { status: number; reason: string } | null = null;
+let videosStatus: { status: number; reason: string } | null = null;
 const videos: Record<string, { title: string; channel: string; category: string }> = {
   mv: { title: "Song (Official Video)", channel: "Artist", category: "10" },
   topic: { title: "Song", channel: "Artist - Topic", category: "10" },
@@ -39,6 +40,7 @@ afterAll(async () => {
 beforeEach(async () => {
   searchCalls = 0;
   searchStatus = null;
+  videosStatus = null;
   await sharedDb().query("truncate search_attempts, activity_log cascade");
   await sharedDb().query("update settings set value = 'open' where key = 'request_mode'");
   vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -49,6 +51,7 @@ beforeEach(async () => {
       if (searchStatus) return Response.json({ error: { errors: [{ reason: searchStatus.reason }] } }, { status: searchStatus.status });
       return Response.json({ items: order.map((videoId) => ({ id: { videoId }, snippet: { thumbnails: { medium: { url: `https://t/${videoId}` } } } })) });
     }
+    if (videosStatus) return Response.json({ error: { errors: [{ reason: videosStatus.reason }] } }, { status: videosStatus.status });
     const ids = url.searchParams.get("id")!.split(",").filter((id) => videos[id]);
     return Response.json({
       items: ids.map((id) => ({ id, snippet: { title: videos[id]!.title, channelTitle: videos[id]!.channel, categoryId: videos[id]!.category }, contentDetails: { duration: "PT4M" }, status: { embeddable: true } })),
@@ -91,13 +94,17 @@ describe("GET /api/requests/search", () => {
     expect(searchCalls).toBe(5);
     const sixth = await listenerSearch("9.9.9.9", "song", cookie);
     expect(sixth.status).toBe(429);
-    expect((await sixth.json()).code).toBe("rate_limited");
+    const body = await sixth.json();
+    expect(body.code).toBe("rate_limited");
+    expect(body.error).not.toContain("network"); // your own cookie hit the limit
     expect(searchCalls).toBe(5);
   });
 
   it("the hourly limit also holds per network when the cookie is dropped", async () => {
     for (let i = 0; i < 5; i++) expect((await listenerSearch("3.3.3.3")).status).toBe(200);
-    expect((await listenerSearch("3.3.3.3")).status).toBe(429);
+    const blocked = await listenerSearch("3.3.3.3");
+    expect(blocked.status).toBe(429);
+    expect((await blocked.json()).error).toContain("from your network"); // a fresh cookie, so only the network hit it
     expect((await listenerSearch("4.4.4.4")).status).toBe(200);
   });
 
@@ -147,6 +154,13 @@ describe("GET /api/requests/search", () => {
     expect(body.code).toBe("search_paused");
     expect(body.error).toBe(SEARCH_PAUSED_MESSAGE);
     expect((await sharedDb().query("select count(*)::int as n from search_attempts")).rows[0].n).toBe(1);
+  });
+
+  it("quota used up on videos.list (not search.list) says youtube_unavailable, not search_paused", async () => {
+    videosStatus = { status: 403, reason: "quotaExceeded" };
+    const res = await listenerSearch("1.2.3.4");
+    expect(res.status).toBe(503);
+    expect((await res.json()).code).toBe("youtube_unavailable");
   });
 
   it("counts the attempt when YouTube is merely rate-limiting, and says youtube_unavailable", async () => {

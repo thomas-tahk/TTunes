@@ -10,7 +10,7 @@ import { freePort, startDevServer } from "./devServer.mjs";
 import { chromium } from "playwright";
 
 const PORT = await freePort();
-const BASE = `http://localhost:${PORT}/`;
+const BASE = `http://127.0.0.1:${PORT}/`;
 const SHOTS = new URL("./screens/", import.meta.url).pathname;
 const DB_URL = process.env.DATABASE_URL;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

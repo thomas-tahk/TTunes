@@ -11,7 +11,7 @@ import { freePort, startDevServer } from "./devServer.mjs";
 import { chromium } from "playwright";
 
 const PORT = await freePort();
-const BASE = `http://localhost:${PORT}/`;
+const BASE = `http://127.0.0.1:${PORT}/`;
 const SHOTS = new URL("./screens/", import.meta.url).pathname;
 const SECRET = "e2e-secret-e2e-secret-e2e-secret-0123";
 const OWNER_ID = 10647431;
