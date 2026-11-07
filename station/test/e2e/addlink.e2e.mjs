@@ -85,6 +85,14 @@ try {
   const nextBefore = await page.getByTestId("next-title").textContent();
 
   const assertPlayerClear = async (label) => {
+    for (const width of [1280, 375]) {
+      await page.setViewportSize({ width, height: 900 });
+      await sleep(200);
+      await assertPlayerClearAt(`${label} @${width}px`);
+    }
+    await page.setViewportSize({ width: 1280, height: 900 });
+  };
+  const assertPlayerClearAt = async (label) => {
     const frame = await page.locator(".player-frame").boundingBox();
     const panel = await page.locator(".owner-panel").boundingBox();
     check(frame.width >= 200 && frame.height >= 200, `${label}: player ${frame.width}x${frame.height} >= 200x200`);

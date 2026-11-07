@@ -1,5 +1,5 @@
 const ID = /^[A-Za-z0-9_-]{11}$/;
-const HOSTS = new Set(["youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be", "www.youtu.be"]);
+const HOSTS = new Set(["youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be", "www.youtu.be", "youtube-nocookie.com", "www.youtube-nocookie.com"]);
 
 /** Video id from any YouTube link form (watch, youtu.be, music, shorts, embed, live) or a bare 11-char id; null if none. */
 export function parseVideoId(input: unknown): string | null {

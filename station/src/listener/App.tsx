@@ -32,7 +32,7 @@ function Message({ title, body, action }: { title: string; body: string; action?
 }
 
 export function App() {
-  const { view, serverTime, retry } = useStation();
+  const { view, serverTime, retry, show } = useStation();
   const [started, setStarted] = useState(false);
   const owner = useOwner();
 
@@ -67,7 +67,7 @@ export function App() {
         <SignInLink owner={owner} />
       </header>
       <main>{body}</main>
-      {owner && <OwnerPanel onAdded={() => void retry()} />}
+      {owner && <OwnerPanel onAdded={(playing) => void show(playing)} />}
     </div>
   );
 }

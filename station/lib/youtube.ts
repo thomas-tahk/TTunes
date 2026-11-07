@@ -1,7 +1,7 @@
 // YouTube Data API v3 client. videos.list costs 1 quota unit per call and takes up to 50 ids.
 const DEFAULT_ENDPOINT = "https://www.googleapis.com/youtube/v3/videos";
 // Tests point this at a local stub; production never sets it.
-const endpoint = (): string => process.env.YOUTUBE_API_BASE_URL || DEFAULT_ENDPOINT;
+const endpoint = (): string => (process.env.VERCEL ? undefined : process.env.YOUTUBE_API_BASE_URL) || DEFAULT_ENDPOINT;
 export const MAX_IDS_PER_CALL = 50;
 
 export interface VideoInfo {

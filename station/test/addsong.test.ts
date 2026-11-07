@@ -6,6 +6,7 @@ import preview from "../api/owner/preview.ts";
 import songs from "../api/owner/songs.ts";
 import { SESSION_COOKIE, issueSession } from "../lib/auth.ts";
 import { createDb, sharedDb } from "../lib/db.ts";
+import { insertSong } from "../lib/addSong.ts";
 import { migrate } from "../lib/migrate.ts";
 import { parseVideoId } from "../lib/ytlink.ts";
 
@@ -24,6 +25,7 @@ describe("parseVideoId", () => {
     `https://m.youtube.com/watch?v=${ID}`,
     `youtube.com/watch?v=${ID}`,
     `  ${ID}  `,
+    `https://www.youtube-nocookie.com/embed/${ID}`,
   ];
   it.each(forms)("parses %s", (form) => expect(parseVideoId(form)).toBe(ID));
   it.each(["", "hello", "https://example.com/watch?v=" + ID, "https://www.youtube.com/watch", "https://youtu.be/short", "https://www.youtube.com/playlist?list=PL1", 42])(
@@ -36,6 +38,7 @@ interface Fake { title: string; duration: string; embeddable?: boolean; category
 const catalog: Record<string, Fake> = {
   musicVid001: { title: "Synth Song", duration: "PT3M30S", category: "10" },
   gamingVid01: { title: "Boss Theme (Soundtrack)", duration: "PT4M5S", category: "20" },
+  nullLength1: { title: "Odd Length", duration: "garbage" },
   longVideo01: { title: "Two Hour Mix", duration: "PT2H" },
   blockedVid1: { title: "No Embeds", duration: "PT3M", embeddable: false },
   liveVideo01: { title: "Live Radio", duration: "P0D" },
@@ -142,16 +145,18 @@ describe("owner endpoints", () => {
     await add("musicVid001", "queue");
     await add("secondVid01", "queue");
     await add("gamingVid01", "next");
-    const { rows } = await sharedDb().query("select video_id from queue order by id");
+    const { rows } = await sharedDb().query("select video_id from queue order by position");
     expect(rows.map((r) => r.video_id)).toEqual(["gamingVid01", "musicVid001", "secondVid01"]);
   });
 
   it("two simultaneous adds both land, in a consistent order", async () => {
+    await sharedDb().query("insert into songs (video_id, title, duration_sec) values ('seedSong001','Seed',100)");
+    await nowJson();
     const results = await Promise.all([add("musicVid001", "next"), add("secondVid01", "next"), add("gamingVid01", "queue")]);
     expect(results.map((r) => r.status)).toEqual([200, 200, 200]);
-    const { rows } = await sharedDb().query("select id, video_id from queue order by id");
+    const { rows } = await sharedDb().query("select id, position, video_id from queue order by position");
     expect(rows.map((r) => r.video_id).sort()).toEqual(["gamingVid01", "musicVid001", "secondVid01"]);
-    expect(new Set(rows.map((r) => String(r.id))).size).toBe(3);
+    expect(new Set(rows.map((r) => String(r.position))).size).toBe(3);
   });
 
   it("a 2-hour video needs confirmLong", async () => {
@@ -177,5 +182,73 @@ describe("owner endpoints", () => {
     expect((await add("musicVid001", "queue", { title: "Evil title" })).status).toBe(200);
     const row = (await sharedDb().query("select title, duration_sec, metadata_refreshed_at > now() - interval '1 minute' as fresh from songs where video_id = 'musicVid001'")).rows[0];
     expect(row).toEqual({ title: "Synth Song", duration_sec: 210, fresh: true });
+  });
+
+  it("three 'next' adds on a fresh station: the last added plays first, then the earlier ones", async () => {
+    await sharedDb().query("insert into songs (video_id, title, duration_sec) values ('seedSong001','Seed',100)");
+    await nowJson();
+    for (const id of ["musicVid001", "gamingVid01", "secondVid01"]) expect((await add(id, "next")).status).toBe(200);
+    const { rows } = await sharedDb().query("select video_id from queue order by position, id");
+    expect(rows.map((r) => r.video_id)).toEqual(["secondVid01", "gamingVid01", "musicVid001"]);
+    expect((await nowJson()).next?.videoId).toBe("secondVid01");
+  });
+
+  it("returns a fresh now-playing whose next is the added song", async () => {
+    await sharedDb().query("insert into songs (video_id, title, duration_sec) values ('seedSong001','Seed',100),('seedSong002','Seed 2',100)");
+    await nowJson();
+    const body = (await (await add("musicVid001", "next")).json()) as { playing: { next: { videoId: string } } };
+    expect(body.playing.next.videoId).toBe("musicVid001");
+  });
+
+  it("refuses the song playing right now", async () => {
+    await sharedDb().query("insert into songs (video_id, title, duration_sec) values ('seedSong001','Seed',100)");
+    const current = (await nowJson()).current!.videoId;
+    catalog[current] = { title: "Seed", duration: "PT1M40S" };
+    for (const position of ["next", "queue"] as const) {
+      const res = await add(current, position);
+      expect(res.status).toBe(422);
+      expect(((await res.json()) as { error: string }).error).toBe("That's playing right now.");
+    }
+    expect((await sharedDb().query("select count(*)::int as n from queue")).rows[0].n).toBe(0);
+    delete catalog[current];
+  });
+
+  it("re-adding a queued song moves it, without a duplicate row", async () => {
+    await sharedDb().query("insert into songs (video_id, title, duration_sec) values ('seedSong001','Seed',100)");
+    await nowJson();
+    await add("musicVid001", "queue");
+    await add("gamingVid01", "queue");
+    await add("secondVid01", "queue");
+    await add("musicVid001", "queue"); // to the end
+    const order = async () => (await sharedDb().query("select video_id from queue order by position, id")).rows.map((r) => r.video_id);
+    expect(await order()).toEqual(["gamingVid01", "secondVid01", "musicVid001"]);
+    await add("musicVid001", "next"); // to the front
+    expect(await order()).toEqual(["musicVid001", "gamingVid01", "secondVid01"]);
+  });
+
+  it("an add waits for a transaction holding the station lock (fails without `for update`)", async () => {
+    const db = sharedDb();
+    await db.query("insert into station_state (id) values (1) on conflict do nothing");
+    const holder = await db.connect();
+    await holder.query("begin");
+    await holder.query("select 1 from station_state where id = 1 for update");
+    let finished = false;
+    const second = insertSong(db, { videoId: "musicVid001", title: "Synth Song", durationSec: 210, embeddable: true }, "next").then((r) => ((finished = true), r));
+    await new Promise((r) => setTimeout(r, 400));
+    expect(finished).toBe(false); // blocked on the lock
+    await holder.query("commit");
+    holder.release();
+    expect((await second).ok).toBe(true);
+  });
+
+  it("reports quota exhaustion and unusable lengths plainly", async () => {
+    const was = globalThis.fetch;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) =>
+      String(input).startsWith("https://www.googleapis.com") ? new Response("{}", { status: 403 }) : was(input, init));
+    const quota = await post("/api/owner/preview", { url: ID });
+    expect(((await quota.json()) as { error: string }).error).toBe("YouTube's daily limit is used up — try again tomorrow.");
+    vi.stubGlobal("fetch", was);
+    const odd = await post("/api/owner/preview", { url: "nullLength1" });
+    expect(((await odd.json()) as { error: string }).error).toBe("YouTube didn't give a usable length for that video.");
   });
 });

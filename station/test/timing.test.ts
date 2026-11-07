@@ -22,10 +22,7 @@ describe("listener timing", () => {
     expect(measures).toBe(1);
     const second = await planNextFetch(playing(0), io, first.staleRetries);
     expect(measures).toBe(2);
-    expect(second.delayMs).toBe(RECHECK_MS);
-    const third = await planNextFetch(playing(0), io, second.staleRetries); // next 30s re-check: clock is right again
-    expect(third.staleRetries).toBe(0);
-    expect(third.delayMs).toBe(15_000 + 300);
+    expect(second).toEqual({ delayMs: 15_000 + 300, staleRetries: 0 }); // recovered on this very check, not one cycle later
   });
   it("fetches just after the song ends, never later than 30s", () => {
     expect(nextFetchDelayMs(playing(0), 5_000)).toBe(15_000 + 300);

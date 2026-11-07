@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { NowPlaying } from "../../lib/schedule.ts";
 
 interface Preview {
   videoId: string;
@@ -53,7 +54,7 @@ async function post(path: string, body: object): Promise<{ status: number; body:
 
 const messageOf = (body: Record<string, unknown>): string => (typeof body.error === "string" ? body.error : "Something went wrong. Try again.");
 
-export function OwnerPanel({ onAdded }: { onAdded: () => void }) {
+export function OwnerPanel({ onAdded }: { onAdded: (playing: NowPlaying) => void }) {
   const [url, setUrl] = useState("");
   const [step, setStep] = useState<Step>({ kind: "idle" });
 
@@ -76,7 +77,7 @@ export function OwnerPanel({ onAdded }: { onAdded: () => void }) {
       if (status !== 200) return setStep({ kind: "error", message: messageOf(body) });
       setUrl("");
       setStep({ kind: "done", message: `Added "${preview.title}" ${position === "next" ? "as up next" : "to the end of the queue"}.` });
-      onAdded();
+      onAdded(body.playing as NowPlaying);
     } catch {
       setStep({ kind: "error", message: "Couldn't reach the station. Try again." });
     }
