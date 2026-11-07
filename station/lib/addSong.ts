@@ -91,10 +91,10 @@ export async function addToLibrary(client: Queryable, info: PlayableVideo): Prom
   const trashed = existing.length === 1;
   await client.query(
     `insert into songs (video_id, title, duration_sec, metadata_refreshed_at) values ($1, $2, $3, now())
-     on conflict (video_id) do update set deleted_at = null`,
+     on conflict (video_id) do update set title = excluded.title, duration_sec = excluded.duration_sec, metadata_refreshed_at = now(), deleted_at = null`,
     [info.videoId, info.title, info.durationSec],
   );
   await client.query("delete from trash_queue where video_id = $1", [info.videoId]);
-  await client.query("insert into activity_log (who, what, details) values ('owner', 'song_added', $1)", [{ videoId: info.videoId, title: info.title, position: "library", ...(trashed ? { restoredFromTrash: true } : {}) }]);
+  await client.query("insert into activity_log (who, what, details) values ('owner', 'song_added', $1)", [{ videoId: info.videoId, position: "library", ...(trashed ? { restoredFromTrash: true } : {}) }]);
   return true;
 }

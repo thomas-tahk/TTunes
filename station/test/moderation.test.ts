@@ -198,7 +198,7 @@ describe("keep", () => {
     const songs = (await sharedDb().query("select video_id, title, duration_sec, deleted_at from songs")).rows;
     expect(songs).toEqual([{ video_id: "gamingVid01", title: "Boss Theme", duration_sec: 245, deleted_at: null }]);
     expect((await sharedDb().query("select count(*)::int as n from queue")).rows[0].n).toBe(0);
-    expect(await logWhats()).toEqual(["request_approve", "song_added", "request_keep", "request_keep"]);
+    expect(await logWhats()).toEqual(["request_approve", "song_added", "request_keep"]);
   });
 
   it("request logs carry no title, Keep stores freshly fetched metadata, and a stripped title still lists", async () => {
@@ -206,28 +206,48 @@ describe("keep", () => {
     await act(id, "approve");
     await sharedDb().query("update requests set status = 'played', title = 'Stale Title' where id = $1", [id]);
     catalog.gamingVid01 = { ...catalog.gamingVid01!, title: "Fresh Title" };
-    const before = Date.now() - 1000;
     expect((await act(id, "keep")).status).toBe(200);
-    const song = (await sharedDb().query("select title, metadata_refreshed_at from songs")).rows[0];
-    expect(song.title).toBe("Fresh Title");
-    expect(song.metadata_refreshed_at.getTime()).toBeGreaterThan(before);
-    const logs = (await sharedDb().query("select what, details from activity_log where what like 'request_%'")).rows;
-    expect(logs.map((l) => l.what)).toEqual(["request_approve", "request_keep"]);
+    expect((await sharedDb().query("select title from songs")).rows[0].title).toBe("Fresh Title");
+    const logs = (await sharedDb().query("select what, details from activity_log where what like 'request_%' or what = 'song_added'")).rows;
+    expect(logs.map((l) => l.what)).toEqual(["request_approve", "song_added", "request_keep"]);
     for (const l of logs) expect(l.details).not.toHaveProperty("title");
-    await sharedDb().query("update requests set title = null where id = $1", [id]);
-    expect(((await (await fetch(`${base}/api/requests/feed`)).json()) as any).requests[0].title).toBe("(title no longer stored)");
-    expect(((await (await owner("")).json()) as any).requests[0].title).toBe("(title no longer stored)");
+    const shown = ((await (await fetch(`${base}/api/owner/log`, { headers: { cookie: ownerCookie } })).json()) as any).entries.find((e: any) => e.what === "song_added");
+    expect(shown.details.title).toBe("Fresh Title"); // title comes from the songs join
     catalog.gamingVid01 = { title: "Boss Theme", duration: "PT4M5S", category: "20" };
   });
 
-  it("Keep reports YouTube no longer having the video instead of adding a stale song", async () => {
+  it("Keep restoring a trashed song stores fresh title, duration and timestamp", async () => {
+    const id = await listen("gamingVid01");
+    await sharedDb().query("update requests set status = 'played' where id = $1", [id]);
+    await sharedDb().query("insert into songs (video_id, title, duration_sec, metadata_refreshed_at, deleted_at) values ('gamingVid01', 'Old', 10, now() - interval '40 days', now())");
+    const before = Date.now() - 1000;
+    expect((await act(id, "keep")).status).toBe(200);
+    const song = (await sharedDb().query("select title, duration_sec, metadata_refreshed_at, deleted_at from songs")).rows[0];
+    expect(song).toMatchObject({ title: "Boss Theme", duration_sec: 245, deleted_at: null });
+    expect(song.metadata_refreshed_at.getTime()).toBeGreaterThan(before);
+  });
+
+  it("Keep of a song already in the library makes no YouTube call", async () => {
+    const id = await listen("gamingVid01");
+    await sharedDb().query("update requests set status = 'played' where id = $1", [id]);
+    await sharedDb().query("insert into songs (video_id, title, duration_sec) values ('gamingVid01', 'Mine', 10)");
+    const saved = catalog.gamingVid01!;
+    delete catalog.gamingVid01; // a lookup would now fail
+    const res = await act(id, "keep");
+    catalog.gamingVid01 = saved;
+    expect(res.status).toBe(200);
+    expect(res.json.alreadyInLibrary).toBe(true);
+  });
+
+  it("Keep says 422 (not 404) when YouTube no longer has the video, and adds nothing", async () => {
     const id = await listen("gamingVid01");
     await sharedDb().query("update requests set status = 'played' where id = $1", [id]);
     const saved = catalog.gamingVid01!;
     delete catalog.gamingVid01;
     const res = await act(id, "keep");
     catalog.gamingVid01 = saved;
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(422);
+    expect(res.json.error).toMatch(/no longer has/);
     expect((await sharedDb().query("select 1 from songs")).rowCount).toBe(0);
   });
 

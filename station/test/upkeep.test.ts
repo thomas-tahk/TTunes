@@ -7,6 +7,7 @@ import { issueSession, SESSION_COOKIE } from "../lib/auth.ts";
 import { createDb, sharedDb } from "../lib/db.ts";
 import { migrate } from "../lib/migrate.ts";
 import { KEEP_EXPORTS, purgeTrash } from "../lib/upkeep.ts";
+import { getNowPlaying } from "../lib/schedule.ts";
 import { parseIsoDuration } from "../lib/youtube.ts";
 
 let server: Server;
@@ -169,21 +170,35 @@ it("a YouTube outage removes nothing, fails loudly, and still takes the backup",
   expect((await sharedDb().query("select 1 from library_exports")).rowCount).toBe(1);
 });
 
-it("cron strips titles from requests older than 30 days; fresh ones keep theirs; rows stay", async () => {
+it("cron deletes finished requests 30+ days old, expires old queued ones, leaves fresh rows alone", async () => {
   const db = sharedDb();
   await db.query("truncate requests, request_attempts cascade");
-  for (const [vid, days] of [["oldReq00001", 31], ["freshReq001", 29]] as const) {
+  const rows: [string, string, number][] = [
+    ["oldPlayed01", "played", 31], ["oldDenied01", "denied", 31], ["oldExpired1", "expired", 31], ["oldQueued01", "queued", 31],
+    ["freshPlay01", "played", 29], ["freshQueue1", "queued", 29],
+  ];
+  for (const [vid, status, days] of rows) {
     await db.query(
-      "insert into requests (video_id, title, duration_sec, name, status, listener_id, created_at) values ($1, 'T ' || $1, 100, 'Sam', 'played', 'l', now() - make_interval(days => $2))",
-      [vid, days],
+      "insert into requests (video_id, title, duration_sec, name, status, listener_id, created_at, queued_at) values ($1, 'T', 100, 'Sam', $2, 'l', now() - make_interval(days => $3), now())",
+      [vid, status, days],
     );
   }
   expect((await cron("Bearer cron-secret-123")).status).toBe(200);
-  const rows = (await db.query("select video_id, title, name from requests order by video_id")).rows;
-  expect(rows).toEqual([
-    { video_id: "freshReq001", title: "T freshReq001", name: "Sam" },
-    { video_id: "oldReq00001", title: null, name: "Sam" },
+  expect((await db.query("select video_id, status from requests order by video_id")).rows).toEqual([
+    { video_id: "freshPlay01", status: "played" },
+    { video_id: "freshQueue1", status: "queued" },
   ]);
+  const log = (await db.query("select who, what, details from activity_log where what = 'request_expired'")).rows;
+  expect(log).toEqual([{ who: "system:upkeep", what: "request_expired", details: { id: expect.any(Number), videoId: "oldQueued01" } }]);
+  await db.query("truncate requests, request_attempts cascade");
+});
+
+it("an old queued request never plays after the cron ran", async () => {
+  const db = sharedDb();
+  await db.query("truncate requests, request_attempts, station_state, play_history, queue cascade");
+  await db.query("insert into requests (video_id, title, duration_sec, name, status, listener_id, created_at, queued_at) values ('oldQueued01', 'T', 100, 'Sam', 'queued', 'l', now() - interval '31 days', now() - interval '31 days')");
+  expect((await cron("Bearer cron-secret-123")).status).toBe(200);
+  expect((await getNowPlaying(db, Date.now)).current).toBeNull();
   await db.query("truncate requests, request_attempts cascade");
 });
 

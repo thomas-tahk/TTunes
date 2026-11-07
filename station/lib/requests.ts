@@ -14,8 +14,7 @@ export const IP_KEEP_MS = 7 * 24 * 3600 * 1000;
 export const DAILY_LOOKUP_CAP = 2000; // listener-triggered YouTube lookups per rolling 24h, 1 quota unit each; protects the owner's 10,000-unit pool
 export const NAME_MAX = 30;
 export const DEDICATION_MAX = 140;
-export const REQUEST_TITLE_KEEP_DAYS = 30; // YouTube's 30-day metadata cache rule
-export const TITLE_GONE = "(title no longer stored)"; // shown where a request's title was stripped
+export const REQUEST_KEEP_DAYS = 30; // YouTube's 30-day metadata cache rule
 
 type Queryable = Pick<pg.ClientBase, "query">;
 export type Refusal = { ok: false; status: number; code: string; message: string };
@@ -306,11 +305,17 @@ const KEEPABLE = ["played", "playing"];
 /** Keep: a played or playing request's song joins the library (idempotent). Metadata is re-fetched from YouTube first
  * (outside the lock; the request's stored title may be days old), then the status re-check, add and logs share one transaction. */
 async function keepRequest(db: Db, id: number): Promise<ModerationResult> {
-  const { rows: peek } = await db.query("select status, video_id from requests where id = $1", [id]);
+  const { rows: peek } = await db.query("select r.status, r.video_id, (s.video_id is not null and s.deleted_at is null) as in_library from requests r left join songs s on s.video_id = r.video_id where r.id = $1", [id]);
   if (!peek[0] || !KEEPABLE.includes(peek[0].status)) return keepRefusal(db, id);
+  if (peek[0].in_library) return keepNoop(db, id); // no YouTube call, no quota
   const found = await lookupVideo(peek[0].video_id);
-  if (!found.ok) return { ok: false, status: found.status, error: found.message };
+  if (!found.ok) return { ok: false, status: found.status === 404 ? 422 : found.status, error: found.status === 404 ? "YouTube no longer has that video, so it can't be kept." : found.message };
   return keepFetched(db, id, found.info);
+}
+
+async function keepNoop(db: Db, id: number): Promise<ModerationResult> {
+  const request = await readRequest(db, id);
+  return request ? { ok: true, request, alreadyInLibrary: true } : { ok: false, status: 404, error: "No such request." };
 }
 
 async function keepRefusal(db: Db, id: number): Promise<ModerationResult> {
@@ -341,10 +346,26 @@ async function keepFetched(db: Db, id: number, info: PlayableVideo): Promise<Mod
   }
 }
 
-/** Daily upkeep: nulls the YouTube title of requests older than 30 days (the 30-day cache rule). Rows stay. Returns how many changed. */
-export async function stripOldRequestTitles(db: Db, clock: Clock): Promise<number> {
-  const { rowCount } = await db.query("update requests set title = null where title is not null and created_at <= $1", [at(clock() - REQUEST_TITLE_KEEP_DAYS * 24 * 3600_000)]);
-  return rowCount ?? 0;
+/** Daily upkeep, 30-day YouTube metadata rule: no request row (title, duration, category) outlives 30 days.
+ * Queued requests that old are marked expired first (logged) so they never play with stale data; then every finished
+ * request (played, denied, expired) that old is deleted. Station lock first, like every writer. */
+export async function retireOldRequests(db: Db, clock: Clock): Promise<{ expired: number; deleted: number }> {
+  const client = await db.connect();
+  try {
+    await client.query("begin");
+    await lockStation(client);
+    const cutoff = at(clock() - REQUEST_KEEP_DAYS * 24 * 3600_000);
+    const stale = await client.query("update requests set status = 'expired', decided_at = $1 where status = 'queued' and created_at <= $2 returning id, video_id", [at(clock()), cutoff]);
+    for (const row of stale.rows) await client.query("insert into activity_log (who, what, details) values ('system:upkeep', 'request_expired', $1)", [{ id: Number(row.id), videoId: row.video_id }]);
+    const gone = await client.query("delete from requests where status in ('played', 'denied', 'expired') and created_at <= $1", [cutoff]);
+    await client.query("commit");
+    return { expired: stale.rowCount ?? 0, deleted: gone.rowCount ?? 0 };
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 /** Live waiting requests, one count query (for the badge in every moderate response). */
@@ -388,7 +409,7 @@ const toFeedItem = (r: any): FeedItem => ({
   name: r.name,
   dedication: r.dedication,
   videoId: r.video_id,
-  title: r.title ?? TITLE_GONE,
+  title: r.title,
   durationSec: r.duration_sec,
   thumbnail: thumbnailOf(r.video_id),
   status: r.status,
@@ -425,5 +446,5 @@ export async function findMine(db: Db, who: Who, clock: Clock): Promise<MyReques
   );
   const r = rows[0];
   if (!r) return null;
-  return { id: Number(r.id), videoId: r.video_id, title: r.title ?? TITLE_GONE, thumbnail: thumbnailOf(r.video_id), status: r.status, createdAt: r.created_at.toISOString() };
+  return { id: Number(r.id), videoId: r.video_id, title: r.title, thumbnail: thumbnailOf(r.video_id), status: r.status, createdAt: r.created_at.toISOString() };
 }
