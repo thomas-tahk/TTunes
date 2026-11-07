@@ -233,7 +233,7 @@ describe("owner endpoints", () => {
     await holder.query("begin");
     await holder.query("select 1 from station_state where id = 1 for update");
     let finished = false;
-    const second = insertSong(db, { videoId: "musicVid001", title: "Synth Song", durationSec: 210, embeddable: true }, "next").then((r) => ((finished = true), r));
+    const second = insertSong(db, { videoId: "musicVid001", title: "Synth Song", durationSec: 210, embeddable: true, categoryId: "10", channelTitle: "Test" }, "next").then((r) => ((finished = true), r));
     await new Promise((r) => setTimeout(r, 400));
     expect(finished).toBe(false); // blocked on the lock
     await holder.query("commit");
