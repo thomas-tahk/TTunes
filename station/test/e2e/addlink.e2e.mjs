@@ -51,7 +51,6 @@ const run = (cmd) => new Promise((ok, bad) => spawn("npm", ["run", cmd], { env, 
 await run("db:migrate");
 const db = new pg.Pool({ connectionString: DB_URL });
 await db.query("truncate queue, station_state, play_history, activity_log, songs cascade");
-await db.query("insert into songs (video_id, title, duration_sec) values ('seedSong001','Seed Song One',300),('seedSong002','Seed Song Two',300)");
 
 const server = spawn("npx", ["vite", "--port", String(PORT), "--strictPort"], { env, stdio: "ignore" });
 for (let i = 0; ; i++) {
@@ -70,7 +69,12 @@ try {
   const listener = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   const lp = await listener.newPage();
   await lp.goto(BASE);
+  // Day one: empty library is off air; a tab left there can check again without a reload.
+  await lp.getByRole("heading", { name: "Off air" }).waitFor();
+  await db.query("insert into songs (video_id, title, duration_sec) values ('seedSong001','Seed Song One',300),('seedSong002','Seed Song Two',300)");
+  await lp.getByRole("button", { name: "Check again" }).click();
   await lp.getByTestId("next-title").waitFor();
+  check(true, "off-air tab picks up the first songs via Check again");
   check((await lp.getByRole("link", { name: "Sign in" }).count()) === 1, "listener sees the Sign in link");
   check((await lp.getByRole("heading", { name: "Add song" }).count()) === 0, "listener sees no Add song panel");
 

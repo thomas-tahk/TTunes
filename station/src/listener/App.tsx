@@ -42,7 +42,7 @@ export function App() {
   if (view.status === "loading") body = <Message title="Tuning in" body="Finding out what's on air." />;
   else if (view.status === "error")
     body = <Message title="Can't reach the station" body="The schedule didn't load. Check your connection." action={{ label: "Try again", run: () => void retry() }} />;
-  else if (!view.playing.current) body = <Message title="Off air" body="Nothing is in the library yet. Check back soon." />;
+  else if (!view.playing.current) body = <Message title="Off air" body="Nothing is in the library yet. Check back soon." action={{ label: "Check again", run: () => void retry() }} />;
   else
     body = (
       <>

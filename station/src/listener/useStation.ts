@@ -14,7 +14,7 @@ async function fetchOffset(): Promise<number> {
 }
 
 async function fetchNow(): Promise<NowPlaying> {
-  const res = await fetch("/api/now");
+  const res = await fetch("/api/now", { cache: "no-cache" }); // skip the browser's stale-while-revalidate copy; the CDN still caches
   if (!res.ok) throw new Error(`now ${res.status}`);
   return (await res.json()) as NowPlaying;
 }
