@@ -6,9 +6,10 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { mkdirSync } from "node:fs";
 import pg from "pg";
+import { freePort, startDevServer } from "./devServer.mjs";
 import { chromium } from "playwright";
 
-const PORT = 5197;
+const PORT = await freePort();
 const BASE = `http://localhost:${PORT}/`;
 const SHOTS = new URL("./screens/", import.meta.url).pathname;
 const DB_URL = process.env.DATABASE_URL;
@@ -44,15 +45,11 @@ await db.query("truncate queue, station_state, play_history, activity_log, songs
 await db.query("update settings set value = 'open' where key = 'request_mode'");
 await db.query("insert into songs (video_id, title, duration_sec) values ('seedSong001','Seed Song One',300),('seedSong002','Seed Song Two',300)");
 
-const server = spawn("npx", ["vite", "--port", String(PORT), "--strictPort"], { env, stdio: "ignore" });
-for (let i = 0; ; i++) {
-  if (await fetch(BASE).then((r) => r.ok, () => false)) break;
-  if (i > 60) throw new Error("dev server did not start");
-  await sleep(500);
-}
+const server = await startDevServer(PORT, env);
 
 const PIXEL = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
 const DEDICATION = "For Mom, happy birthday! <b>not bold</b>";
+const TYPED_DEDICATION = "For Mom,\nhappy birthday! <b>not bold</b>"; // Enter in the box becomes a space
 const browser = await chromium.launch();
 const errors = [];
 const open = async (viewport, ip) => {
@@ -95,13 +92,19 @@ try {
 
   // Counter, name memory, post by link.
   await a.getByLabel("Your name").fill("Thomas");
-  await a.getByLabel("Dedication (optional)").fill(DEDICATION);
-  check((await a.getByTestId("counter").textContent()) === `${DEDICATION.length}/140`, "dedication counter is live");
+  await a.getByLabel("Dedication (optional)").fill(TYPED_DEDICATION);
+  check((await a.getByTestId("counter").textContent()) === `${TYPED_DEDICATION.length}/140`, "dedication counter is live");
   check(await a.getByRole("button", { name: "Send request" }).isDisabled(), "send is disabled with no song chosen");
   await a.getByLabel("Song link").fill("https://youtu.be/musicVid001");
   await shot(a, "filled");
+  // The feed is CDN-cached: freeze it at "empty" and the poster must still see their own row.
+  await a.route("**/api/requests/feed", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ mode: "open", requests: [] }) }));
   await a.getByRole("button", { name: "Send request" }).click();
   await a.getByTestId("mine").waitFor();
+  await a.getByTestId("feed-row").first().waitFor();
+  check(await a.getByTestId("feed-row").count() === 1, "frozen (stale) feed: the poster still sees their own row");
+  check(await a.evaluate(() => document.activeElement?.getAttribute("data-testid")) === "mine", "focus moved to the notice after sending");
+  await a.unroute("**/api/requests/feed");
   check((await a.getByTestId("mine").textContent()).includes("queued"), "A sees its request as queued");
   check((await a.getByLabel("Your name").count()) === 0, "box shows one-at-a-time notice instead of the form");
   const row = a.getByTestId("feed-row").first();
@@ -151,6 +154,27 @@ try {
   await b.getByRole("alert").filter({ hasText: /./ }).first().waitFor();
   check((await b.getByRole("alert").first().textContent()).length > 5, "server refusal text is shown, not swallowed");
   await shot(b, "refused");
+
+  // Full list: 30 rows must keep their height and the list must scroll, not squash.
+  await db.query(`insert into requests (video_id, title, duration_sec, name, dedication, status, listener_id)
+    select 'seedFill' || g, 'A fairly long song title number ' || g || ' by somebody', 200, 'Listener ' || g, 'Dedication ' || g || ' with some words so it wraps onto more lines on a phone', 'played', 'fill' || g
+    from generate_series(1, 30) g`);
+  for (const [w, h] of [[375, 812], [1280, 900]]) {
+    await b.setViewportSize({ width: w, height: h });
+    await b.reload();
+    await b.getByTestId("feed-row").first().waitFor();
+    const m = await b.evaluate(() => {
+      const list = document.querySelector('[data-testid="feed"]');
+      const rows = [...list.querySelectorAll('[data-testid="feed-row"]')];
+      const overlap = rows.some((r) => { const c = r.querySelector(".chip").getBoundingClientRect(), d = r.querySelector(".feed-dedication")?.getBoundingClientRect(); return d && c.top < d.bottom && c.bottom > d.top && c.left < d.right && c.right > d.left; });
+      return { n: rows.length, min: Math.min(...rows.map((r) => r.getBoundingClientRect().height)), scrolls: list.scrollHeight > list.clientHeight + 10, overlap };
+    });
+    check(m.n === 30 && m.min > 40, `${w}px: 30 rows, shortest is ${Math.round(m.min)}px (> 40)`);
+    check(m.scrolls, `${w}px: full feed scrolls inside its box`);
+    check(!m.overlap, `${w}px: status chip does not overlap the dedication`);
+    await shot(b, `full-${w}`);
+  }
+  await b.setViewportSize({ width: 1280, height: 900 });
 
   // Mode off hides the box.
   await db.query("update settings set value = 'off' where key = 'request_mode'");
