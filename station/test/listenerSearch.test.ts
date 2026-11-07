@@ -14,6 +14,7 @@ let base: string;
 const realFetch = globalThis.fetch;
 let searchCalls = 0;
 let searchStatus: { status: number; reason: string } | null = null;
+let videosStatus: { status: number; reason: string } | null = null;
 const videos: Record<string, { title: string; channel: string; category: string }> = {
   mv: { title: "Song (Official Video)", channel: "Artist", category: "10" },
   topic: { title: "Song", channel: "Artist - Topic", category: "10" },
@@ -39,6 +40,7 @@ afterAll(async () => {
 beforeEach(async () => {
   searchCalls = 0;
   searchStatus = null;
+  videosStatus = null;
   await sharedDb().query("truncate search_attempts, activity_log cascade");
   await sharedDb().query("update settings set value = 'open' where key = 'request_mode'");
   vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -49,6 +51,7 @@ beforeEach(async () => {
       if (searchStatus) return Response.json({ error: { errors: [{ reason: searchStatus.reason }] } }, { status: searchStatus.status });
       return Response.json({ items: order.map((videoId) => ({ id: { videoId }, snippet: { thumbnails: { medium: { url: `https://t/${videoId}` } } } })) });
     }
+    if (videosStatus) return Response.json({ error: { errors: [{ reason: videosStatus.reason }] } }, { status: videosStatus.status });
     const ids = url.searchParams.get("id")!.split(",").filter((id) => videos[id]);
     return Response.json({
       items: ids.map((id) => ({ id, snippet: { title: videos[id]!.title, channelTitle: videos[id]!.channel, categoryId: videos[id]!.category }, contentDetails: { duration: "PT4M" }, status: { embeddable: true } })),
@@ -151,6 +154,13 @@ describe("GET /api/requests/search", () => {
     expect(body.code).toBe("search_paused");
     expect(body.error).toBe(SEARCH_PAUSED_MESSAGE);
     expect((await sharedDb().query("select count(*)::int as n from search_attempts")).rows[0].n).toBe(1);
+  });
+
+  it("quota used up on videos.list (not search.list) says youtube_unavailable, not search_paused", async () => {
+    videosStatus = { status: 403, reason: "quotaExceeded" };
+    const res = await listenerSearch("1.2.3.4");
+    expect(res.status).toBe(503);
+    expect((await res.json()).code).toBe("youtube_unavailable");
   });
 
   it("counts the attempt when YouTube is merely rate-limiting, and says youtube_unavailable", async () => {

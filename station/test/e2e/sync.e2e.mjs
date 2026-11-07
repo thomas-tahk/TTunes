@@ -8,7 +8,7 @@ import { chromium } from "playwright";
 
 const T0 = Date.now();
 const PORT = await freePort();
-const BASE = `http://localhost:${PORT}/`;
+const BASE = `http://127.0.0.1:${PORT}/`;
 const SHOTS = new URL("./screens/", import.meta.url).pathname;
 const MAX_SYNC_GAP_SEC = 3;
 const MAX_SCHEDULE_GAP_SEC = 2.5;
