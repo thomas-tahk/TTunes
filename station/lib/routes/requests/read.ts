@@ -11,7 +11,7 @@ export async function feed(_req: IncomingMessage, res: ServerResponse): Promise<
     const body = await listFeed(sharedDb(), Date.now);
     res.statusCode = 200;
     res.setHeader("Content-Type", "application/json");
-    res.setHeader("Cache-Control", "public, s-maxage=10, stale-while-revalidate=5");
+    res.setHeader("Cache-Control", "public, max-age=0, s-maxage=10, stale-while-revalidate=5");
     res.end(JSON.stringify(body));
   } catch (error) {
     console.error("GET /api/requests/feed failed", error);
