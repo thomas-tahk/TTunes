@@ -1,5 +1,5 @@
 import type pg from "pg";
-import { insertSong, LONG_SEC, lookupVideo, thumbnailOf } from "./addSong.ts";
+import { addToLibrary, LONG_SEC, lookupVideo, thumbnailOf } from "./addSong.ts";
 import type { Db } from "./db.ts";
 import { lockStation } from "./lock.ts";
 import type { Clock } from "./schedule.ts";
@@ -244,7 +244,7 @@ const MODERATION: Record<Exclude<Moderation, "keep">, StatusMove> = {
 
 export type ModerationResult =
   | { ok: true; request: FeedItem; alreadyInLibrary?: true }
-  | { ok: false; status: 404 | 409; error: string; request?: FeedItem };
+  | { ok: false; status: 404 | 409; error: string; request?: FeedItem; code?: "already_coming_up" };
 
 const REQUEST_COLUMNS = "id, name, dedication, video_id, title, duration_sec, created_at, status";
 async function readRequest(q: Queryable, id: number): Promise<FeedItem | null> {
@@ -265,6 +265,11 @@ async function moveRequest(db: Db, id: number, action: Exclude<Moderation, "keep
     await lockStation(client);
     const now = clock();
     await expireWaiting(client, now); // a 25h-old waiting request is expired, not approvable
+    if (action === "approve" && (await comingUpElsewhere(client, id))) {
+      const request = await readRequest(client, id);
+      await client.query("commit");
+      return request ? { ok: false, status: 409, error: "That song is already coming up.", code: "already_coming_up", request } : { ok: false, status: 404, error: "No such request." };
+    }
     const { rows } = await client.query(
       `update requests set status = $2::text, decided_at = $3, queued_at = case when $2::text = 'queued' then $3::timestamptz else queued_at end where id = $1 and status = any($4::text[]) returning video_id, title, name`,
       [id, rule.to, at(now), rule.from],
@@ -282,31 +287,48 @@ async function moveRequest(db: Db, id: number, action: Exclude<Moderation, "keep
   }
 }
 
-/** Keep: a played or playing request's song joins the library through the shared add-song path (idempotent; its stored metadata, no YouTube call). */
-async function keepRequest(db: Db, id: number): Promise<ModerationResult> {
-  const { rows } = await db.query("select status, video_id, title, duration_sec from requests where id = $1", [id]);
-  const row = rows[0];
-  if (!row) return { ok: false, status: 404, error: "No such request." };
-  if (row.status !== "played" && row.status !== "playing") return { ok: false, status: 409, error: `That request is ${row.status}; only played ones can be kept.`, request: (await readRequest(db, id)) ?? undefined };
-  const added = await insertSong(db, { videoId: row.video_id, title: row.title, durationSec: row.duration_sec, embeddable: true, categoryId: "", channelTitle: "" }, "library");
-  if (!added.ok) throw new Error(added.message);
-  await logOwner(db, "request_keep", { id, videoId: row.video_id, title: row.title, alreadyInLibrary: added.alreadyInLibrary === true });
-  return { ok: true, request: (await readRequest(db, id))!, ...(added.alreadyInLibrary && { alreadyInLibrary: true as const }) };
+/** The listeners' "already coming up" rule for an approval: the waiting request's song is playing now, in the owner queue, or queued as another request. */
+async function comingUpElsewhere(q: Queryable, id: number): Promise<boolean> {
+  const { rowCount } = await q.query(
+    `select 1 from requests r where r.id = $1 and r.status = 'waiting' and (
+       r.video_id = (select current_video_id from station_state where id = 1)
+       or exists (select 1 from queue where video_id = r.video_id)
+       or exists (select 1 from requests o where o.video_id = r.video_id and o.id <> r.id and o.status in ('queued', 'playing')))`,
+    [id],
+  );
+  return (rowCount ?? 0) > 0;
 }
 
-async function logOwner(db: Db, what: string, details: object): Promise<void> {
+/** Keep: a played or playing request's song joins the library, in one transaction with the status re-check and the logs (idempotent; stored metadata, no YouTube call). */
+async function keepRequest(db: Db, id: number): Promise<ModerationResult> {
   const client = await db.connect();
   try {
     await client.query("begin");
     await lockStation(client);
-    await client.query("insert into activity_log (who, what, details) values ('owner', $1, $2)", [what, details]);
+    const { rows } = await client.query("select status, video_id, title, duration_sec from requests where id = $1", [id]);
+    const row = rows[0];
+    if (!row || (row.status !== "played" && row.status !== "playing")) {
+      const request = await readRequest(client, id);
+      await client.query("commit");
+      return request ? { ok: false, status: 409, error: `That request is ${request.status}; only played ones can be kept.`, request } : { ok: false, status: 404, error: "No such request." };
+    }
+    const added = await addToLibrary(client, { videoId: row.video_id, title: row.title, durationSec: row.duration_sec, embeddable: true, categoryId: "", channelTitle: "" });
+    await client.query("insert into activity_log (who, what, details) values ('owner', 'request_keep', $1)", [{ id, videoId: row.video_id, title: row.title, alreadyInLibrary: !added }]);
+    const request = (await readRequest(client, id))!;
     await client.query("commit");
+    return { ok: true, request, ...(!added && { alreadyInLibrary: true as const }) };
   } catch (error) {
     await client.query("rollback").catch(() => undefined);
     throw error;
   } finally {
     client.release();
   }
+}
+
+/** Live waiting requests, one count query (for the badge in every moderate response). */
+export async function countWaiting(q: Queryable, clock: Clock): Promise<number> {
+  const { rows } = await q.query("select count(*)::int as n from requests where status = 'waiting' and created_at > $1", [at(clock() - WAIT_EXPIRY_MS)]);
+  return rows[0].n;
 }
 
 export interface ModerationList {

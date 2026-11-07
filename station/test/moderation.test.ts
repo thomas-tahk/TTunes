@@ -296,3 +296,82 @@ describe("activity log", () => {
     expect(row).toMatchObject({ who: "owner", details: { id: a, videoId: "gamingVid01", title: "Boss Theme", name: "Sam" } });
   });
 });
+
+describe("review fixes", () => {
+  it("keep re-checks the status under the lock: denied while keep waits means 409, no song, no logs", async () => {
+    const id = await listen("gamingVid01");
+    await act(id, "approve");
+    await getNowPlaying(sharedDb(), Date.now); // playing
+    const holder = await sharedDb().connect();
+    await holder.query("begin");
+    await lockStation(holder);
+    const keeping = act(id, "keep"); // blocks on the lock
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await holder.query("update requests set status = 'denied' where id = $1", [id]);
+    await holder.query("commit");
+    holder.release();
+    const res = await keeping;
+    expect(res.status).toBe(409);
+    expect(res.json.request.status).toBe("denied");
+    expect((await sharedDb().query("select count(*)::int as n from songs")).rows[0].n).toBe(0);
+    expect(await logWhats()).toEqual(["request_approve"]);
+  });
+
+  it("an old denied request does not keep a hard-deleted song alive", async () => {
+    const db = sharedDb();
+    await db.query("insert into requests (video_id, title, duration_sec, name, status, listener_id, decided_at) values ('deadSong001', 'Dead', 600, 'Old', 'denied', 'l', now() - interval '1 hour')");
+    await db.query("insert into songs (video_id, title, duration_sec) values ('deadSong001', 'Dead', 600)");
+    await db.query("insert into station_state (id, current_video_id, started_at_ms) values (1, 'deadSong001', $1) on conflict (id) do update set current_video_id = 'deadSong001', started_at_ms = $1", [Date.now()]);
+    await db.query("delete from songs where video_id = 'deadSong001'"); // upkeep hard-delete
+    expect((await getNowPlaying(db, Date.now)).current?.videoId).not.toBe("deadSong001");
+  });
+
+  it("approve refuses a song that is already coming up (playing, owner queue, or queued as a request) with 409 already_coming_up", async () => {
+    const db = sharedDb();
+    const inQueue = await listen("gamingVid01");
+    const queuedElsewhere = await listen("gamingVid02");
+    const playing = await listen("musicVid001");
+    await db.query("insert into songs (video_id, title, duration_sec) values ('gamingVid01', 'Boss Theme', 245)");
+    await db.query("insert into queue (video_id) values ('gamingVid01')");
+    await db.query("insert into requests (video_id, title, duration_sec, name, status, listener_id) values ('gamingVid02', 'Other Boss', 180, 'X', 'queued', 'other')");
+    await db.query("insert into station_state (id, current_video_id, started_at_ms) values (1, 'musicVid001', $1) on conflict (id) do update set current_video_id = 'musicVid001', started_at_ms = $1", [Date.now()]);
+    for (const id of [inQueue, queuedElsewhere, playing]) {
+      const res = await act(id, "approve");
+      expect(res.status).toBe(409);
+      expect(res.json.code).toBe("already_coming_up");
+      expect(res.json.error).toBe("That song is already coming up.");
+      expect(res.json.request).toMatchObject({ id, status: "waiting" });
+      expect(await statusOf(id)).toBe("waiting");
+    }
+    expect((await act(inQueue, "deny")).status).toBe(200); // denying is still fine
+  });
+
+  it("an owner skip of a removed playing request moves on and leaves it denied", async () => {
+    const a = await listen("musicVid001");
+    const b = await listen("musicVid002");
+    await act(a, "approve");
+    await act(b, "approve");
+    await getNowPlaying(sharedDb(), Date.now);
+    await act(a, "remove");
+    const res = await fetch(`${base}/api/owner/skip`, { method: "POST", headers: { cookie: ownerCookie }, body: JSON.stringify({ expectedVideoId: "musicVid001" }) });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as any).current.videoId).toBe("musicVid002");
+    expect(await statusOf(a)).toBe("denied");
+    expect(await statusOf(b)).toBe("playing");
+  });
+
+  it("the new routes are no-store and 405 on the wrong method", async () => {
+    const id = await listen("gamingVid01");
+    const calls: [string, string, object?][] = [["GET", ""], ["POST", "/moderate", { id, action: "deny" }], ["GET", "/mode"], ["POST", "/mode", { mode: "open" }]];
+    for (const [method, path, body] of calls) {
+      const res = await fetch(`${base}/api/owner/requests${path}`, { method, headers: { cookie: ownerCookie }, body: body ? JSON.stringify(body) : undefined });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("cache-control")).toBe("no-store");
+    }
+    for (const [method, path] of [["POST", ""], ["GET", "/moderate"], ["PUT", "/mode"], ["DELETE", "/moderate"]]) {
+      const res = await fetch(`${base}/api/owner/requests${path}`, { method, headers: { cookie: ownerCookie } });
+      expect(res.status).toBe(405);
+      expect(res.headers.get("cache-control")).toBe("no-store");
+    }
+  });
+});

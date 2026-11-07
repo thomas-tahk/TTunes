@@ -1,6 +1,6 @@
 import type { Db } from "../../db.ts";
 import { byMethod, ownerEndpoint } from "../../ownerApi.ts";
-import { getMode, listForModeration, MODERATIONS, MODES, moderate, setMode, type Mode, type Moderation } from "../../requests.ts";
+import { countWaiting, getMode, listForModeration, MODERATIONS, MODES, moderate, setMode, type Mode, type Moderation } from "../../requests.ts";
 
 // All owner-only (401 without the session cookie). Every write takes the station lock and writes an activity_log row.
 //
@@ -10,11 +10,11 @@ import { getMode, listForModeration, MODERATIONS, MODES, moderate, setMode, type
 // POST /api/owner/requests/moderate {id, action: approve|deny|remove|keep} -> {request: Item, waitingCount, alreadyInLibrary?}
 //      approve: waiting -> queued, at the back of the requests line. deny: waiting -> denied. remove: any status but denied -> denied (hidden from the feed;
 //      a playing song keeps playing, use skip to stop it). keep: played or playing -> the song joins the library (alreadyInLibrary:true when it was there).
-//      400 {error} bad id/action; 404 {error} no such request; 409 {error, request: Item, waitingCount} the request's current state does not allow the action.
+//      400 {error} bad id/action; 404 {error} no such request; 409 {error, request: Item, waitingCount, code?} the request's current state does not allow the action (code "already_coming_up" when approving a song that is playing, in the owner queue or already queued as a request).
 // GET  /api/owner/requests/mode -> {mode: open|approve|off}
 // POST /api/owner/requests/mode {mode} -> {mode}; 400 {error} for an unknown mode.
 
-const waitingCount = async (db: Db): Promise<number> => (await listForModeration(db, Date.now)).waitingCount;
+const waitingCount = (db: Db): Promise<number> => countWaiting(db, Date.now);
 
 export const requestsList = ownerEndpoint("GET", async ({ db }) => ({ status: 200, body: await listForModeration(db, Date.now) }));
 
@@ -25,7 +25,7 @@ export const requestModerate = ownerEndpoint("POST", async ({ db, body }) => {
   const result = await moderate(db, id, action as Moderation, Date.now);
   if (result.ok) return { status: 200, body: { request: result.request, waitingCount: await waitingCount(db), ...(result.alreadyInLibrary && { alreadyInLibrary: true }) } };
   if (result.status === 404) return { status: 404, body: { error: result.error } };
-  return { status: 409, body: { error: result.error, request: result.request, waitingCount: await waitingCount(db) } };
+  return { status: 409, body: { error: result.error, ...(result.code && { code: result.code }), request: result.request, waitingCount: await waitingCount(db) } };
 });
 
 export const requestMode = byMethod({
