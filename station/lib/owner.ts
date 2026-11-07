@@ -165,6 +165,6 @@ export async function listLibrary(db: Db) {
 }
 
 export async function readLog(db: Db, limit: number) {
-  const { rows } = await db.query("select id::text as id, who, what, at, details from activity_log order by id desc limit $1", [limit]);
+  const { rows } = await db.query("select id::text as id, who, what, at, details from activity_log order by activity_log.id desc limit $1", [limit]);
   return rows.map((r) => ({ id: r.id, who: r.who, what: r.what, at: r.at.toISOString(), details: r.details }));
 }

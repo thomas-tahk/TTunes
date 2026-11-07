@@ -67,7 +67,9 @@ export function App() {
         <SignInLink owner={owner} />
       </header>
       <main>{body}</main>
-      {owner && <OwnerPanel onAdded={(playing) => void show(playing)} />}
+      {owner && view.status === "ready" && (
+        <OwnerPanel playing={view.playing} onPlaying={(playing) => void show(playing)} onRefresh={() => void retry()} />
+      )}
     </div>
   );
 }

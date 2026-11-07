@@ -1,12 +1,10 @@
 import { useEffect, useState } from "react";
 import type { NowPlaying } from "../../lib/schedule.ts";
+import { OwnerControls } from "./OwnerControls.tsx";
+import { call, messageOf, minutes, NETWORK_MESSAGE } from "./ownerFetch.ts";
+import { OwnerSearch, type Pick } from "./OwnerSearch.tsx";
 
-interface Preview {
-  videoId: string;
-  title: string;
-  durationSec: number;
-  thumbnail: string;
-}
+type Preview = Pick;
 type Position = "next" | "queue";
 type Step =
   | { kind: "idle" }
@@ -41,20 +39,7 @@ export function SignInLink({ owner }: { owner: boolean }) {
   );
 }
 
-function minutes(sec: number): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const h = Math.floor(sec / 3600);
-  return h ? `${h}:${pad(Math.floor((sec % 3600) / 60))}:${pad(sec % 60)}` : `${Math.floor(sec / 60)}:${pad(sec % 60)}`;
-}
-
-async function post(path: string, body: object): Promise<{ status: number; body: Record<string, unknown> }> {
-  const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  return { status: res.status, body: (await res.json().catch(() => ({}))) as Record<string, unknown> };
-}
-
-const messageOf = (body: Record<string, unknown>): string => (typeof body.error === "string" ? body.error : "Something went wrong. Try again.");
-
-export function OwnerPanel({ onAdded }: { onAdded: (playing: NowPlaying) => void }) {
+export function OwnerPanel({ playing, onPlaying, onRefresh }: { playing: NowPlaying; onPlaying: (playing: NowPlaying) => void; onRefresh: () => void }) {
   const [url, setUrl] = useState("");
   const [step, setStep] = useState<Step>({ kind: "idle" });
 
@@ -62,24 +47,24 @@ export function OwnerPanel({ onAdded }: { onAdded: (playing: NowPlaying) => void
     event.preventDefault();
     setStep({ kind: "busy", what: "Checking the link…" });
     try {
-      const { status, body } = await post("/api/owner/preview", { url });
+      const { status, body } = await call("POST", "/api/owner/preview", { url });
       setStep(status === 200 ? { kind: "preview", preview: body as unknown as Preview } : { kind: "error", message: messageOf(body) });
     } catch {
-      setStep({ kind: "error", message: "Couldn't reach the station. Try again." });
+      setStep({ kind: "error", message: NETWORK_MESSAGE });
     }
   }
 
   async function add(preview: Preview, position: Position, confirmLong = false) {
     setStep({ kind: "busy", what: "Adding…" });
     try {
-      const { status, body } = await post("/api/owner/songs", { videoId: preview.videoId, position, confirmLong });
+      const { status, body } = await call("POST", "/api/owner/songs", { videoId: preview.videoId, position, confirmLong });
       if (status === 409) return setStep({ kind: "confirm", preview, position, question: messageOf(body) });
       if (status !== 200) return setStep({ kind: "error", message: messageOf(body) });
       setUrl("");
       setStep({ kind: "done", message: `Added "${preview.title}" ${position === "next" ? "as up next" : "to the end of the queue"}.` });
-      onAdded(body.playing as NowPlaying);
+      onPlaying(body.playing as NowPlaying);
     } catch {
-      setStep({ kind: "error", message: "Couldn't reach the station. Try again." });
+      setStep({ kind: "error", message: NETWORK_MESSAGE });
     }
   }
 
@@ -96,6 +81,7 @@ export function OwnerPanel({ onAdded }: { onAdded: (playing: NowPlaying) => void
           </button>
         </div>
       </form>
+      <OwnerSearch onPick={(pick) => setStep({ kind: "preview", preview: pick })} />
       <div aria-live="polite" className="owner-status">
         {step.kind === "busy" && <p>{step.what}</p>}
         {step.kind === "error" && <p className="owner-error" role="alert">{step.message}</p>}
@@ -133,6 +119,7 @@ export function OwnerPanel({ onAdded }: { onAdded: (playing: NowPlaying) => void
           )}
         </div>
       )}
+      <OwnerControls playing={playing} onPlaying={onPlaying} onRefresh={onRefresh} />
     </section>
   );
 }

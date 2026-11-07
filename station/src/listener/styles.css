@@ -91,3 +91,19 @@ h1 { margin: 4px 0 10px; font-size: clamp(1.4rem, 5vw, 2rem); line-height: 1.2; 
 .owner-confirm p { margin: 0; font-weight: 700; }
 @media (max-width: 480px) { .owner-preview { grid-template-columns: 1fr; } .owner-preview img { width: 100%; height: auto; aspect-ratio: 16 / 9; } }
 html { background: var(--ink); }
+
+.owner-search { margin-top: 16px; }
+.owner-controls { margin-top: 20px; padding-top: 16px; border-top: 2px solid var(--muted); }
+.owner-controls h2 { margin: 0 0 12px; }
+.owner-panel button:focus-visible, .link-btn:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
+.owner-tabs { display: flex; gap: 6px; margin: 12px 0; flex-wrap: wrap; }
+.tab { min-height: 44px; padding: 0 14px; border-radius: 999px; border: 2px solid var(--muted); background: transparent; color: var(--text); font: inherit; font-weight: 800; cursor: pointer; }
+.tab.on { background: var(--cyan); border-color: var(--cyan); color: #00222a; }
+.link-btn { min-height: 44px; padding: 0 8px; background: none; border: 0; color: var(--cyan); font: inherit; font-weight: 800; text-decoration: underline; cursor: pointer; }
+.owner-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; text-align: left; max-height: 360px; overflow-y: auto; }
+.owner-list li { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 8px; border: 1px solid var(--muted); border-radius: 10px; }
+.owner-list li .owner-meta { flex: 1 1 200px; min-width: 0; }
+.owner-list.results img { width: 96px; height: 54px; object-fit: cover; border-radius: 6px; }
+.row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.owner-list .btn.small { min-width: 64px; padding: 0 12px; }
+.owner-empty { color: var(--muted); }
