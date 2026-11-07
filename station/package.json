@@ -9,7 +9,7 @@
   "scripts": {
     "sync:shared": "node scripts/copy-shared.mjs",
     "dev": "npm run sync:shared && vite",
-    "build": "npm run sync:shared && vite build",
+    "build": "npm run sync:shared && node scripts/migrate-on-deploy.mjs && vite build",
     "typecheck": "npm run sync:shared && tsc --noEmit",
     "check:build": "node scripts/check-build.mjs",
     "db:up": "docker compose up -d --wait",

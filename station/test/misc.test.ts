@@ -1,3 +1,6 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { expect, it } from "vitest";
@@ -25,4 +28,25 @@ it("migrate applies each numbered file once; seeding is separate", async () => {
   expect((await db.query("select count(*)::int as n from songs")).rows[0].n).toBe(0);
   expect(await seedSongs(db)).toBeGreaterThan(0);
   await db.end();
+});
+
+it("two concurrent migrate runs apply each file exactly once", async () => {
+  const admin = createDb();
+  const name = `ttunes_mig_${Date.now()}`;
+  await admin.query(`create database ${name}`);
+  const url = new URL(process.env.DATABASE_URL!);
+  url.pathname = `/${name}`;
+  const dir = mkdtempSync(join(tmpdir(), "mig-"));
+  writeFileSync(join(dir, "001_a.sql"), "create table hits (n int); select pg_sleep(0.5);");
+  writeFileSync(join(dir, "002_b.sql"), "insert into hits values (1);");
+  const [one, two] = [createDb(url.toString()), createDb(url.toString())];
+  try {
+    const results = await Promise.all([migrate(one, dir), migrate(two, dir)]);
+    expect(results.map((r) => r.length).sort()).toEqual([0, 2]);
+    expect((await one.query("select count(*)::int as n from hits")).rows[0].n).toBe(1);
+  } finally {
+    await Promise.all([one.end(), two.end()]);
+    await admin.query(`drop database ${name} with (force)`);
+    await admin.end();
+  }
 });

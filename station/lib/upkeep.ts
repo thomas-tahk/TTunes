@@ -136,3 +136,19 @@ export async function purgeTrash(db: Db): Promise<string[]> {
     client.release();
   }
 }
+
+const titleIn = (path: string) => `(jsonb_typeof(${path}) = 'object' and ${path} ? 'title')`;
+const withoutTitle = (key: string) =>
+  `case when jsonb_typeof(details->'${key}') = 'object' then jsonb_build_object('${key}', (details->'${key}') - 'title') else '{}'::jsonb end`;
+
+/** Removes YouTube titles (details.title, plus the skipped/next titles a skip records) from activity_log rows
+ * older than 30 days: the 30-day cache rule. The rows themselves stay. Returns how many rows changed. */
+export async function stripOldActivityTitles(db: Db): Promise<number> {
+  const { rowCount } = await db.query(
+    `update activity_log set details = (details - 'title') || ${withoutTitle("skipped")} || ${withoutTitle("next")}
+       where at < now() - make_interval(days => $1)
+         and (details ? 'title' or ${titleIn("details->'skipped'")} or ${titleIn("details->'next'")})`,
+    [TRASH_KEEP_DAYS],
+  );
+  return rowCount ?? 0;
+}

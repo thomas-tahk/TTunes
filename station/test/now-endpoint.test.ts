@@ -35,3 +35,13 @@ it("serves JSON that a CDN may cache until the song ends", async () => {
   expect(Number(match![1])).toBeLessThanOrEqual(15);
   expect(res.headers.get('cache-control')).toContain('stale-while-revalidate');
 });
+
+it("off air is publicly cached for a few seconds too", async () => {
+  const db = createDb();
+  await db.query("truncate play_history, queue, station_state, songs restart identity cascade");
+  await db.end();
+  const { port } = server.address() as AddressInfo;
+  const res = await fetch(`http://127.0.0.1:${port}/api/now`);
+  expect((await res.json()).current).toBeNull();
+  expect(res.headers.get("cache-control")).toBe("public, max-age=0, s-maxage=5, stale-while-revalidate=5");
+});

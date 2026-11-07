@@ -197,6 +197,23 @@ it("keeps only the last 14 exports", async () => {
   expect(rows[13].data.songs).toEqual([{ videoId: "a", addedAt: expect.any(String) }]); // no title/duration saved
 });
 
+it("daily cron strips YouTube titles from activity_log rows older than 30 days, keeps newer ones", async () => {
+  const db = sharedDb();
+  await db.query("delete from activity_log");
+  const old = "now() - interval '31 days'";
+  await db.query(`insert into activity_log (who, what, at, details) values
+    ('owner','queue_move', ${old}, '{"videoId":"a","title":"Old Song","from":1}'),
+    ('owner','skip', ${old}, '{"skipped":{"videoId":"a","title":"Old"},"next":{"videoId":"b","title":"Next"}}'),
+    ('owner','skip', ${old}, '{"skipped":{"videoId":"a","title":"Old"},"next":null}'),
+    ('owner','queue_move', now(), '{"videoId":"c","title":"New Song"}')`);
+  expect((await cron("Bearer cron-secret-123")).status).toBe(200);
+  const { rows } = await db.query("select details from activity_log order by id");
+  expect(rows[0].details).toEqual({ videoId: "a", from: 1 });
+  expect(rows[1].details).toEqual({ skipped: { videoId: "a" }, next: { videoId: "b" } });
+  expect(rows[2].details).toEqual({ skipped: { videoId: "a" }, next: null });
+  expect(rows[3].details).toEqual({ videoId: "c", title: "New Song" });
+});
+
 it("owner export returns every library song as a download; non-owner gets 401", async () => {
   await addSong("a", 1, "Song A");
   await addSong("b", 50, "Song B");

@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { sendJson } from "../../lib/auth.ts";
 import { sharedDb } from "../../lib/db.ts";
-import { purgeTrash, refreshStale, storeExport } from "../../lib/upkeep.ts";
+import { purgeTrash, refreshStale, storeExport, stripOldActivityTitles } from "../../lib/upkeep.ts";
 
 // Vercel sends `Authorization: Bearer ${CRON_SECRET}` on cron invocations. No secret configured = nobody gets in.
 function authorized(req: IncomingMessage): boolean {
@@ -40,6 +40,12 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   } catch (error) {
     console.error("cron trash purge failed", error);
     failures.push("purge");
+  }
+  try {
+    await stripOldActivityTitles(db);
+  } catch (error) {
+    console.error("cron activity-title strip failed", error);
+    failures.push("activity-titles");
   }
   sendJson(res, failures.length ? 500 : 200, { ok: failures.length === 0, failures, refresh, exportedSongs, purged });
 }

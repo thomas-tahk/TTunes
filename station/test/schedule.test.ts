@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createDb, type Db } from "../lib/db.ts";
 import { migrate } from "../lib/migrate.ts";
-import { cacheSeconds, getNowPlaying, MAX_CACHE_SECONDS } from "../lib/schedule.ts";
+import { cacheSeconds, getNowPlaying, MAX_CACHE_SECONDS, OFF_AIR_CACHE_SECONDS } from "../lib/schedule.ts";
 
 const T0 = 1_800_000_000_000; // fake clock origin, epoch ms
 const sec = (n: number) => n * 1000;
@@ -103,10 +103,19 @@ describe("GET /api/now schedule", () => {
     }
   });
 
-  it("with an empty library reports nothing playing and does not cache", async () => {
+  it("with an empty library reports nothing playing, caches briefly, and writes nothing", async () => {
     const playing = await playAt(db, T0);
     expect(playing).toEqual({ current: null, startedAt: null, next: null, serverNow: T0 });
-    expect(cacheSeconds(playing)).toBe(0);
+    expect(cacheSeconds(playing)).toBe(OFF_AIR_CACHE_SECONDS);
+    await playAt(db, T0 + 1000);
+    expect((await db.query("select count(*)::int as n from station_state")).rows[0].n).toBe(0); // no lock row written
+    expect((await db.query("select count(*)::int as n from play_history")).rows[0].n).toBe(0);
+  });
+
+  it("the first song added to an empty station starts it on the next poll", async () => {
+    await playAt(db, T0);
+    await seed(SONGS.slice(0, 1));
+    expect((await playAt(db, T0 + 1000)).current?.videoId).toBe("aaa");
   });
 
   it("a single-song library repeats that song", async () => {
