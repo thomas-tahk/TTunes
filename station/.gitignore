@@ -2,3 +2,4 @@ node_modules/
 dist/
 .vercel/
 shared/
+test/e2e/screens/

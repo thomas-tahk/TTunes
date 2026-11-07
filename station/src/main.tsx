@@ -1,4 +1,5 @@
 import { createRoot } from "react-dom/client";
+import { App } from "./listener/App.tsx";
+import "./listener/styles.css";
 
-// Placeholder: the listener page is built in a separate task.
-createRoot(document.getElementById("root")!).render(<p>TTunes station</p>);
+createRoot(document.getElementById("root")!).render(<App />);
