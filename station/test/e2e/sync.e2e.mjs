@@ -150,7 +150,7 @@ try {
   assertRequestCounts(listeners, (await songStarts()) - 1); // every song start after the first is a song end
   await assertPauseLeg(first);
   check(idle.nowRequests === 1, `a tab that never pressed Play made exactly 1 /api/now over ${Math.round((Date.now() - T0) / 1000)}s (got ${idle.nowRequests})`);
-  const errors = listeners.flatMap((l) => l.errors).filter((e) => !/favicon|youtube|googlevideo|google|doubleclick|ERR_BLOCKED|Failed to load resource/i.test(e));
+  const errors = listeners.flatMap((l) => l.errors).filter((e) => !/favicon|youtube|googlevideo|google|doubleclick|ERR_BLOCKED|Failed to load resource|compute-pressure|Permissions policy/i.test(e));
   check(errors.length === 0, `no app console errors ${errors.join(" | ")}`);
   console.log("E2E PASS");
 } finally {

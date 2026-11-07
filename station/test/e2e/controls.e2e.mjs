@@ -144,6 +144,7 @@ try {
   await page.getByRole("button", { name: "Add to queue" }).click();
   await page.getByText(/Add anyway\?/).waitFor();
   check((await db.query("select 1 from songs where video_id = 'longVideo01'")).rowCount === 0, "2-hour result not added before confirming");
+  check(await page.getByRole("button", { name: "Add anyway" }).evaluate((el) => el === document.activeElement), "focus lands on Add anyway");
   await page.getByRole("button", { name: "Add anyway" }).click();
   await page.waitForFunction(() => document.querySelectorAll('[data-testid="list-queue"] li').length === 3);
   check(true, "queue list shows the confirmed long add without clicking a tab");

@@ -26,6 +26,8 @@ export function useStation(listening: boolean) {
   const timer = useRef<number>(undefined);
   const staleRetries = useRef(0);
   const fetched = useRef({ at: 0, dueAt: 0 }); // last response, and when its plan wants the next one
+  const inFlight = useRef(false); // a fetch already running will plan the next one itself
+  const joined = useRef(false); // the first /api/now attempt finished (clock sync runs before it)
   const listeningRef = useRef(listening);
   listeningRef.current = listening;
   const serverTime = useCallback(() => Date.now() + offset.current, []);
@@ -36,6 +38,7 @@ export function useStation(listening: boolean) {
 
   const refresh = useCallback(async (known?: NowPlaying): Promise<void> => {
     window.clearTimeout(timer.current);
+    inFlight.current = true;
     try {
       const playing = known ?? (await fetchNow()); // `known`: a response the page already holds (owner add), skipping the CDN-cached /api/now
       // Re-measures the clock first if the response looks ended, so the page never starts a song at its end.
@@ -47,6 +50,9 @@ export function useStation(listening: boolean) {
     } catch {
       setView((prev) => (prev.status === "ready" ? prev : { status: "error" }));
       if (listeningRef.current) timer.current = window.setTimeout(() => void refresh(), RECHECK_MS);
+    } finally {
+      inFlight.current = false;
+      joined.current = true;
     }
   }, [serverTime, remeasure]);
 
@@ -70,7 +76,8 @@ export function useStation(listening: boolean) {
       window.clearTimeout(timer.current);
       return;
     }
-    // Play or unpause: rejoin live, then the timer resumes
+    // Play or unpause: rejoin live, then the timer resumes. Still joining (clock sync or first fetch running): that fetch plans the next one.
+    if (inFlight.current || !joined.current) return;
     if (refetchOnResume(Date.now() - fetched.current.at)) void refresh();
     else timer.current = window.setTimeout(() => void refresh(), Math.max(0, fetched.current.dueAt - Date.now()));
   }, [listening, refresh]);
