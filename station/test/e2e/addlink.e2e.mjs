@@ -7,9 +7,10 @@ import { createServer } from "node:http";
 import { mkdirSync } from "node:fs";
 import { SignJWT } from "jose";
 import pg from "pg";
+import { freePort, startDevServer } from "./devServer.mjs";
 import { chromium } from "playwright";
 
-const PORT = 5198;
+const PORT = await freePort();
 const BASE = `http://localhost:${PORT}/`;
 const SHOTS = new URL("./screens/", import.meta.url).pathname;
 const SECRET = "e2e-secret-e2e-secret-e2e-secret-0123";
@@ -53,12 +54,7 @@ const db = new pg.Pool({ connectionString: DB_URL });
 await db.query("truncate queue, station_state, play_history, activity_log, songs cascade");
 await db.query("insert into songs (video_id, title, duration_sec) values ('seedSong001','Seed Song One',300),('seedSong002','Seed Song Two',300)");
 
-const server = spawn("npx", ["vite", "--port", String(PORT), "--strictPort"], { env, stdio: "ignore" });
-for (let i = 0; ; i++) {
-  if (await fetch(BASE).then((r) => r.ok, () => false)) break;
-  if (i > 60) throw new Error("dev server did not start");
-  await sleep(500);
-}
+const server = await startDevServer(PORT, env);
 
 const { rows: [{ session_version: ver }] } = await db.query("select session_version from auth_state where id = 1");
 const token = await new SignJWT({ ver }).setProtectedHeader({ alg: "HS256" }).setSubject(String(OWNER_ID)).setIssuedAt().setExpirationTime("1h").sign(new TextEncoder().encode(SECRET));

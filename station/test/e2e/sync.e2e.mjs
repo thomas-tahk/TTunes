@@ -1,12 +1,13 @@
 // Done check for the listener page: two browsers click Play and stay in sync across a song change.
 // Run: npm run e2e (from station/). Needs Docker for Postgres and internet for YouTube.
-import { execSync, spawn } from "node:child_process";
+import { execSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import pg from "pg";
+import { freePort, startDevServer } from "./devServer.mjs";
 import { chromium } from "playwright";
 
 const T0 = Date.now();
-const PORT = 5199;
+const PORT = await freePort();
 const BASE = `http://localhost:${PORT}/`;
 const SHOTS = new URL("./screens/", import.meta.url).pathname;
 const MAX_SYNC_GAP_SEC = 3;
@@ -35,16 +36,6 @@ async function resetStation() {
   const db = new pg.Pool({ connectionString: DB_URL });
   await db.query("truncate queue, station_state, play_history");
   await db.end();
-}
-
-async function startDevServer() {
-  const server = spawn("npx", ["vite", "--port", String(PORT), "--strictPort"], { stdio: "ignore" });
-  for (let i = 0; i < 60; i++) {
-    if (await fetch(BASE).then((r) => r.ok, () => false)) return server;
-    await sleep(500);
-  }
-  server.kill();
-  return fail("dev server did not start");
 }
 
 const SKEW_MS = 20_000;
@@ -121,7 +112,7 @@ function assertRequestCounts(listeners, songChanges) {
 }
 
 await resetStation();
-const server = await startDevServer();
+const server = await startDevServer(PORT);
 const browser = await chromium.launch();
 try {
   const listeners = [await openListener(browser), await openListener(browser, { skewMs: SKEW_MS })]; // second one has a clock 20s fast

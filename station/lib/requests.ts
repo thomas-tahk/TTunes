@@ -203,6 +203,7 @@ export async function purgeOldIpHashes(db: Db, clock: Clock): Promise<number> {
     const cutoff = at(clock() - IP_KEEP_MS);
     const { rowCount } = await client.query("update requests set ip_hash = null where ip_hash is not null and created_at <= $1", [cutoff]);
     await client.query("delete from request_attempts where at <= $1", [cutoff]);
+    await client.query("delete from search_attempts where at <= $1", [cutoff]);
     await client.query("commit");
     return rowCount ?? 0;
   } catch (error) {
