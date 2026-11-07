@@ -225,6 +225,16 @@ describe("owner endpoints", () => {
     expect(await order()).toEqual(["musicVid001", "gamingVid01", "secondVid01"]);
   });
 
+  it("refuses a song a listener request already has lined up, and adds nothing", async () => {
+    const db = sharedDb();
+    await db.query("truncate requests cascade");
+    await db.query("insert into requests (video_id, title, duration_sec, name, status, listener_id) values ('musicVid001', 'T', 100, 'Sam', 'queued', 'l')");
+    const res = await insertSong(db, { videoId: "musicVid001", title: "Synth Song", durationSec: 210, embeddable: true, categoryId: "10", channelTitle: "Test" }, "next");
+    expect(res).toEqual({ ok: false, status: 422, message: "That song is already coming up as a request." });
+    expect((await db.query("select 1 from songs where video_id = 'musicVid001'")).rowCount).toBe(0);
+    await db.query("truncate requests cascade");
+  });
+
   it("an add waits for a transaction holding the station lock (fails without `for update`)", async () => {
     const db = sharedDb();
     await db.query("insert into station_state (id) values (1) on conflict do nothing");

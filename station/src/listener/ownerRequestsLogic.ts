@@ -19,3 +19,15 @@ export function createStaleGuard() {
     },
   };
 }
+
+const DONE = {
+  approve: "Approved. It is queued.",
+  deny: "Denied. It will not play.",
+  remove: "Removed from the feed.",
+  keep: "Added to the library.",
+} as const;
+
+/** The note after a successful action; Remove on a request that had not played yet cancels it, and says so. */
+export function doneNote(action: keyof typeof DONE, before: string | undefined): string {
+  return action === "remove" && (before === "queued" || before === "waiting") ? "Removed. It will not play." : DONE[action];
+}

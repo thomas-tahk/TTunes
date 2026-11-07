@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createStaleGuard, withAllWaiting } from "../src/listener/ownerRequestsLogic.ts";
+import { createStaleGuard, doneNote, withAllWaiting } from "../src/listener/ownerRequestsLogic.ts";
 import type { FeedItem } from "../src/listener/useRequests.ts";
 
 const item = (id: number): FeedItem => ({ id, name: `n${id}`, dedication: null, videoId: "v", title: "t", durationSec: 1, thumbnail: "", status: "waiting", createdAt: "" });
@@ -20,5 +20,15 @@ describe("createStaleGuard", () => {
     const late = guard.startLoad();
     expect(early()).toBe(false);
     expect(late()).toBe(true);
+  });
+});
+
+describe("doneNote", () => {
+  it("remove says it will not play only when the request had not played yet", () => {
+    expect(doneNote("remove", "queued")).toBe("Removed. It will not play.");
+    expect(doneNote("remove", "waiting")).toBe("Removed. It will not play.");
+    expect(doneNote("remove", "played")).toBe("Removed from the feed.");
+    expect(doneNote("remove", "playing")).toBe("Removed from the feed.");
+    expect(doneNote("keep", "played")).toBe("Added to the library.");
   });
 });

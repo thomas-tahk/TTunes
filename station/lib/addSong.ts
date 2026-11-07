@@ -61,6 +61,10 @@ export async function insertSong(db: Db, info: PlayableVideo, position: Position
       await client.query("commit");
       return { ok: true };
     }
+    if ((await client.query("select 1 from requests where video_id = $1 and status in ('queued', 'playing')", [info.videoId])).rowCount) {
+      await client.query("rollback");
+      return { ok: false, status: 422, message: "That song is already coming up as a request." };
+    }
     await client.query(
       `insert into songs (video_id, title, duration_sec, metadata_refreshed_at) values ($1, $2, $3, now())
        on conflict (video_id) do update set title = excluded.title, duration_sec = excluded.duration_sec, metadata_refreshed_at = now(), deleted_at = null`,

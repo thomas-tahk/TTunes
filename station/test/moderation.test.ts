@@ -185,6 +185,18 @@ describe("remove", () => {
 });
 
 describe("keep", () => {
+  it("a newly kept song counts as heard this shuffle cycle, so it is not replayed at once", async () => {
+    const id = await listen("gamingVid01");
+    await act(id, "approve");
+    await getNowPlaying(sharedDb(), Date.now);
+    expect((await act(id, "keep")).status).toBe(200);
+    const cycle = (await sharedDb().query("select cycle from station_state where id = 1")).rows[0].cycle;
+    expect(cycle.played).toContain("gamingVid01");
+    expect(cycle.unplayed).not.toContain("gamingVid01");
+    expect((await act(id, "keep")).json.alreadyInLibrary).toBe(true);
+    expect((await sharedDb().query("select cycle from station_state where id = 1")).rows[0].cycle.played.filter((v: string) => v === "gamingVid01")).toHaveLength(1);
+  });
+
   it("adds a playing or played request's song to the library once; repeating is a no-op; one log row", async () => {
     const id = await listen("gamingVid01");
     await act(id, "approve");

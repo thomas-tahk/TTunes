@@ -15,7 +15,7 @@ export const IP_KEEP_MS = 7 * 24 * 3600 * 1000;
 export const DAILY_LOOKUP_CAP = 2000; // listener-triggered YouTube lookups per rolling 24h, 1 quota unit each; protects the owner's 10,000-unit pool
 export const NAME_MAX = 30;
 export const DEDICATION_MAX = 140;
-export const REQUEST_KEEP_DAYS = 29; // YouTube's 30-day metadata cache rule, minus a day: the cron runs daily
+export const REQUEST_KEEP_DAYS = 28; // YouTube's 30-day metadata cache rule, minus two days: the daily cron (Vercel Hobby) fires within ±59 min of its slot
 
 type Queryable = Pick<pg.ClientBase, "query">;
 export type Refusal = { ok: false; status: number; code: string; message: string };
@@ -335,6 +335,7 @@ async function keepFetched(db: Db, id: number, info: PlayableVideo): Promise<Mod
       return keepRefusal(db, id);
     }
     const added = await addToLibrary(client, info);
+    if (added) await client.query("update station_state set cycle = jsonb_set(cycle, '{played}', coalesce(cycle->'played', '[]'::jsonb) || to_jsonb($1::text)) where id = 1", [info.videoId]); // heard this cycle: the shuffle must not put a just-kept song first
     await client.query("insert into activity_log (who, what, details) values ('owner', 'request_keep', $1)", [{ id, videoId: info.videoId, alreadyInLibrary: !added }]);
     const request = (await readRequest(client, id))!;
     await client.query("commit");

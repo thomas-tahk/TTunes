@@ -170,12 +170,12 @@ it("a YouTube outage removes nothing, fails loudly, and still takes the backup",
   expect((await sharedDb().query("select 1 from library_exports")).rowCount).toBe(1);
 });
 
-it("cron deletes finished requests 29+ days old, expires old queued ones, leaves fresh rows alone", async () => {
+it("cron deletes finished requests 28+ days old, expires old queued ones, leaves fresh rows alone", async () => {
   const db = sharedDb();
   await db.query("truncate requests, request_attempts cascade");
   const rows: [string, string, number][] = [
     ["oldPlayed01", "played", 31], ["oldDenied01", "denied", 31], ["oldExpired1", "expired", 31], ["oldQueued01", "queued", 31],
-    ["freshPlay01", "played", 28], ["freshQueue1", "queued", 28],
+    ["edgePlay001", "played", 28], ["freshPlay01", "played", 27], ["freshQueue1", "queued", 27],
   ];
   for (const [vid, status, days] of rows) {
     await db.query(
