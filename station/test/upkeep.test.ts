@@ -90,6 +90,7 @@ it("refreshes a stale song and leaves fresh ones unrequested", async () => {
   expect(youtubeCalls).toHaveLength(1);
   expect(youtubeCalls[0]!.searchParams.get("id")).toBe("stale1");
   expect(youtubeCalls[0]!.searchParams.get("part")).toBe("snippet,contentDetails,status");
+  expect(youtubeCalls[0]!.searchParams.has("maxResults")).toBe(false);
 });
 
 it("makes no YouTube call when nothing is stale", async () => {
@@ -114,6 +115,36 @@ it("removes unembeddable and vanished songs from library and queue, and logs eac
   expect(log.every((r) => r.who === "system:upkeep" && r.what === "song_removed")).toBe(true);
   expect(log.map((r) => r.details.videoId).sort()).toEqual(["blocked", "gone"]);
   expect(log.find((r) => r.details.videoId === "blocked").details.reason).toBe("no longer embeddable");
+});
+
+it("removes a live/upcoming (zero-duration) song and logs it", async () => {
+  await addSong("live", 30);
+  youtube.live = { title: "Live", duration: "P0D", embeddable: true };
+  expect((await cron("Bearer cron-secret-123")).status).toBe(200);
+  expect((await sharedDb().query("select 1 from songs")).rowCount).toBe(0);
+  const log = (await sharedDb().query("select details from activity_log")).rows;
+  expect(log).toHaveLength(1);
+  expect(log[0].details).toMatchObject({ videoId: "live", reason: "no playable duration (live or upcoming)" });
+});
+
+it("skips a song with an unparseable duration, logs the error, and finishes the run", async () => {
+  await addSong("weird", 30);
+  await addSong("fine", 30);
+  youtube.weird = { title: "Weird", duration: "garbage", embeddable: true };
+  youtube.fine = { title: "Fine now", duration: "PT2M", embeddable: true };
+  const err = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  try {
+    expect((await cron("Bearer cron-secret-123")).status).toBe(200);
+    expect(err.mock.calls.flat().join(" ")).toContain("weird");
+  } finally {
+    err.mockRestore();
+  }
+  const { rows } = await sharedDb().query("select video_id, title, duration_sec from songs order by video_id");
+  expect(rows).toEqual([
+    { video_id: "fine", title: "Fine now", duration_sec: 120 },
+    { video_id: "weird", title: "old weird", duration_sec: 100 },
+  ]);
+  expect((await sharedDb().query("select 1 from activity_log")).rowCount).toBe(0);
 });
 
 it("batches 50 ids per YouTube call", async () => {
@@ -163,7 +194,7 @@ it("keeps only the last 14 exports", async () => {
   const { rows } = await sharedDb().query("select id, data from library_exports order by id");
   expect(rows).toHaveLength(14);
   expect(rows[0].id).toBe("4"); // ids 1-3 pruned
-  expect(rows[13].data.songs.map((s: { videoId: string }) => s.videoId)).toEqual(["a"]);
+  expect(rows[13].data.songs).toEqual([{ videoId: "a", addedAt: expect.any(String) }]); // no title/duration saved
 });
 
 it("owner export returns every library song as a download; non-owner gets 401", async () => {

@@ -5,7 +5,7 @@ export const MAX_IDS_PER_CALL = 50;
 export interface VideoInfo {
   videoId: string;
   title: string;
-  durationSec: number;
+  durationSec: number | null; // null: YouTube sent a duration we cannot parse
   embeddable: boolean;
 }
 
@@ -24,6 +24,15 @@ interface ApiItem {
   status: { embeddable: boolean };
 }
 
+function safeDuration(item: ApiItem): number | null {
+  try {
+    return parseIsoDuration(item.contentDetails.duration);
+  } catch (error) {
+    console.error(`video ${item.id}: ${(error as Error).message}`);
+    return null;
+  }
+}
+
 function apiKey(): string {
   const key = process.env.YOUTUBE_API_KEY;
   if (!key) throw new Error("YOUTUBE_API_KEY is not set");
@@ -32,7 +41,7 @@ function apiKey(): string {
 
 async function fetchBatch(ids: string[], key: string): Promise<ApiItem[]> {
   const url = new URL(ENDPOINT);
-  url.search = new URLSearchParams({ part: "snippet,contentDetails,status", id: ids.join(","), maxResults: String(ids.length), key }).toString();
+  url.search = new URLSearchParams({ part: "snippet,contentDetails,status", id: ids.join(","), key }).toString();
   const res = await fetch(url);
   if (!res.ok) throw new Error(`YouTube videos.list failed: HTTP ${res.status}`);
   const body = (await res.json()) as { items?: ApiItem[] };
@@ -48,12 +57,7 @@ export async function fetchVideos(ids: string[]): Promise<Map<string, VideoInfo>
   const key = apiKey();
   for (let i = 0; i < unique.length; i += MAX_IDS_PER_CALL) {
     for (const item of await fetchBatch(unique.slice(i, i + MAX_IDS_PER_CALL), key)) {
-      found.set(item.id, {
-        videoId: item.id,
-        title: item.snippet.title,
-        durationSec: parseIsoDuration(item.contentDetails.duration),
-        embeddable: item.status.embeddable,
-      });
+      found.set(item.id, { videoId: item.id, title: item.snippet.title, durationSec: safeDuration(item), embeddable: item.status.embeddable });
     }
   }
   return found;

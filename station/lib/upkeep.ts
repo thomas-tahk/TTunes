@@ -16,7 +16,7 @@ type Stale = { video_id: string; title: string };
 function removalReason(info: VideoInfo | undefined): string | null {
   if (!info) return "no longer exists on YouTube";
   if (!info.embeddable) return "no longer embeddable";
-  if (info.durationSec <= 0) return "no playable duration (live or upcoming)";
+  if (info.durationSec !== null && info.durationSec <= 0) return "no playable duration (live or upcoming)";
   return null;
 }
 
@@ -49,6 +49,10 @@ export async function refreshStale(db: Db): Promise<RefreshResult> {
   for (const song of rows) {
     const info = infos.get(song.video_id);
     const reason = removalReason(info);
+    if (!reason && info!.durationSec === null) {
+      console.error(`upkeep: skipping ${song.video_id}, unparseable duration; left untouched`);
+      continue;
+    }
     if (reason) {
       await removeSong(db, song, reason);
       result.removed.push({ videoId: song.video_id, title: song.title, reason });
@@ -91,10 +95,12 @@ export async function exportLibrary(db: Db): Promise<LibraryExport> {
   };
 }
 
-/** Stores today's export, keeps only the newest 14, returns how many songs it holds. */
+/** Stores today's export, keeps only the newest 14, returns how many songs it holds.
+ * Saved exports hold only videoId + addedAt: titles and durations are YouTube API data (30-day cache rule). */
 export async function storeExport(db: Db): Promise<number> {
   const data = await exportLibrary(db);
-  await db.query("insert into library_exports (data) values ($1)", [data]);
+  const saved = { exportedAt: data.exportedAt, songs: data.songs.map(({ videoId, addedAt }) => ({ videoId, addedAt })) };
+  await db.query("insert into library_exports (data) values ($1)", [saved]);
   await db.query("delete from library_exports where id not in (select id from library_exports order by id desc limit $1)", [KEEP_EXPORTS]);
   return data.songs.length;
 }
