@@ -158,6 +158,7 @@ describe("POST /api/requests rules", () => {
     const sixth = await ask(sam, "musicVid001");
     expect(sixth.status).toBe(429);
     expect(sixth.json.code).toBe("rate_limited");
+    expect(sixth.json.error).not.toMatch(/from your network/);
   });
 
   it("refuses a song already coming up: playing now, in the owner queue, or already requested", async () => {
@@ -459,7 +460,7 @@ describe("text rules (narrowed)", () => {
     expect(ok("Sam", "e\u0301 e\u0301")).toBe(true);
   });
   it("refuses Zalgo with invisibles (ZWJ, ZWNJ, U+2061, tag chars, U+180E) between the marks", () => {
-    for (const inv of ["\u200d", "\u200c", "\u2061", "\u{E0067}", "\u180e"]) {
+    for (const inv of ["\u200d", "\u200c", "\u2061", "\u{E0067}", "\u180e", "\u2065", "\ufff0", "\u{E0080}"]) {
       expect(ok(stack(inv)), `U+${inv.codePointAt(0)!.toString(16)}`).toBe(false);
     }
   });

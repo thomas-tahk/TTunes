@@ -46,7 +46,7 @@ const HIDDEN_CHARS = /[\u0000-\u001f\u007f-\u009f\u200b\u2060\ufeff\u2028\u2029\
 // Something a reader can see: not whitespace, not a format/control/unassigned char, not a combining mark, not a blank-looking filler.
 const VISIBLE_CHAR = /[^\p{Z}\p{C}\p{M}\u3164\u2800\u115f\u1160\uffa0]/u;
 export const MAX_MARKS_PER_GRAPHEME = 4; // Burmese, pointed Hebrew and Tibetan stack up to 4; more is Zalgo
-const FORMAT_CHARS = /\p{Cf}/gu;
+const FORMAT_CHARS = /[\p{Cf}\p{Cn}]/gu; // format + unassigned: browsers draw both with zero width
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 const COMBINING_MARK = /\p{M}/gu;
 /** Zalgo check: invisibles (ZWJ, tags, U+2061...) are stripped first so they cannot split a stack, then marks are counted per grapheme. */
@@ -108,7 +108,7 @@ async function checkRules(q: Queryable, who: Who, videoId: string, now: number):
   const cutoff = at(now - WAIT_EXPIRY_MS); // a waiting request past 24h is as good as expired even before it is marked so
   const active = await q.query(`select bool_or(listener_id = $1) as by_cookie from requests where (status = 'queued' or (status = 'waiting' and created_at > $3)) and (listener_id = $1 or ip_hash = $2)`, [who.listenerId, who.ipHash, cutoff]);
   if (active.rows[0].by_cookie === true) return refuse(409, "active_request", "You already have a request waiting or lined up. Wait for it to play.");
-  if (active.rows[0].by_cookie === false) return refuse(409, "network_busy", "Someone on your network already has a request waiting. Try again once it plays.");
+  if (active.rows[0].by_cookie === false) return refuse(409, "network_busy", "Someone on your network already has a request waiting or lined up. Try again once it plays.");
   if (await alreadyComingUp(q, videoId, cutoff)) return refuse(409, "already_coming_up", "That song is already coming up.");
   return null;
 }

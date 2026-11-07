@@ -28,8 +28,11 @@ export function pacificDayStart(now: number): number {
 
 async function check(q: Pick<pg.ClientBase, "query">, who: Who, now: number): Promise<Refusal | null> {
   if ((await getMode(q)) === "off") return refuse(403, "off", "Requests are turned off right now.");
-  const hourly = await q.query("select count(*)::int as n from search_attempts where at > $3 and (listener_id = $1 or ip_hash = $2)", [who.listenerId, who.ipHash, at(now - 3600_000)]);
-  if (hourly.rows[0].n >= MAX_PER_HOUR) return refuse(429, "rate_limited", `That's ${MAX_PER_HOUR} searches this hour. Try again later.`);
+  const hourly = await q.query("select count(*) filter (where listener_id = $1)::int as mine, count(*)::int as n from search_attempts where at > $3 and (listener_id = $1 or ip_hash = $2)", [who.listenerId, who.ipHash, at(now - 3600_000)]);
+  if (hourly.rows[0].n >= MAX_PER_HOUR) {
+    const from = hourly.rows[0].mine >= MAX_PER_HOUR ? "" : " from your network"; // same wording as post requests
+    return refuse(429, "rate_limited", `That's ${MAX_PER_HOUR} searches this hour${from}. Try again later.`);
+  }
   const daily = await q.query("select count(*)::int as n from search_attempts where at >= $1", [at(pacificDayStart(now))]);
   if (daily.rows[0].n >= LISTENER_DAILY_SEARCHES) return refuse(503, "search_paused", SEARCH_PAUSED_MESSAGE);
   return null;

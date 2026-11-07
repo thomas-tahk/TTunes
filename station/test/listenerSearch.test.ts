@@ -91,13 +91,17 @@ describe("GET /api/requests/search", () => {
     expect(searchCalls).toBe(5);
     const sixth = await listenerSearch("9.9.9.9", "song", cookie);
     expect(sixth.status).toBe(429);
-    expect((await sixth.json()).code).toBe("rate_limited");
+    const body = await sixth.json();
+    expect(body.code).toBe("rate_limited");
+    expect(body.error).not.toContain("network"); // your own cookie hit the limit
     expect(searchCalls).toBe(5);
   });
 
   it("the hourly limit also holds per network when the cookie is dropped", async () => {
     for (let i = 0; i < 5; i++) expect((await listenerSearch("3.3.3.3")).status).toBe(200);
-    expect((await listenerSearch("3.3.3.3")).status).toBe(429);
+    const blocked = await listenerSearch("3.3.3.3");
+    expect(blocked.status).toBe(429);
+    expect((await blocked.json()).error).toContain("from your network"); // a fresh cookie, so only the network hit it
     expect((await listenerSearch("4.4.4.4")).status).toBe(200);
   });
 
