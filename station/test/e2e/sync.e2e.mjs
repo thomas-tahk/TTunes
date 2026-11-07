@@ -10,6 +10,7 @@ const PORT = 5199;
 const BASE = `http://localhost:${PORT}/`;
 const SHOTS = new URL("./screens/", import.meta.url).pathname;
 const MAX_SYNC_GAP_SEC = 3;
+const MAX_SCHEDULE_GAP_SEC = 2;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const fail = (msg) => { throw new Error(`E2E FAIL: ${msg}`); };
 const check = (ok, msg) => { if (!ok) fail(msg); console.log(`ok  ${msg}`); };
@@ -23,7 +24,13 @@ async function songStarts() {
   return rows[0].n;
 }
 
+function assertLocalDatabase() {
+  const host = new URL(DB_URL).hostname;
+  if (host !== "localhost" && host !== "127.0.0.1") fail(`refusing to truncate tables on non-local database host "${host}"`);
+}
+
 async function resetStation() {
+  assertLocalDatabase();
   execSync("npm run db:up && npm run db:migrate && npm run db:seed", { stdio: "inherit" });
   const db = new pg.Pool({ connectionString: DB_URL });
   await db.query("truncate queue, station_state, play_history");
@@ -40,8 +47,12 @@ async function startDevServer() {
   return fail("dev server did not start");
 }
 
-async function openListener(browser) {
+const SKEW_MS = 20_000;
+
+async function openListener(browser, { skewMs = 0 } = {}) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  // Wrong local clock, main frame only (the YouTube iframe keeps real time): the offset logic must absorb it.
+  if (skewMs) await context.addInitScript((skew) => { if (window.top === window) { const real = Date.now; Date.now = () => real() + skew; } }, skewMs);
   const page = await context.newPage();
   const listener = { page, nowRequests: 0, times: [], errors: [] };
   page.on("request", (req) => { if (new URL(req.url()).pathname === "/api/now") { listener.nowRequests++; listener.times.push(Math.round((Date.now() - T0) / 1000)); } });
@@ -59,6 +70,15 @@ async function assertInSync(a, b, label) {
   const [x, y] = await Promise.all([snapshot(a), snapshot(b)]);
   check(x.id === y.id, `${label}: same video (${x.id})`);
   check(Math.abs(x.t - y.t) < MAX_SYNC_GAP_SEC, `${label}: currentTime ${x.t.toFixed(1)}s vs ${y.t.toFixed(1)}s differ < ${MAX_SYNC_GAP_SEC}s`);
+}
+
+async function assertOnServerSchedule(l, label) {
+  const snap = await snapshot(l);
+  const now = await (await fetch(`${BASE}api/now`)).json();
+  const { serverNow } = await (await fetch(`${BASE}api/time`)).json();
+  const expected = (serverNow - now.startedAt) / 1000;
+  check(now.current.videoId === snap.id, `${label}: playing the server's current video (${snap.id})`);
+  check(Math.abs(snap.t - expected) < MAX_SCHEDULE_GAP_SEC, `${label}: currentTime ${snap.t.toFixed(1)}s vs server schedule ${expected.toFixed(1)}s differ < ${MAX_SCHEDULE_GAP_SEC}s`);
 }
 
 async function assertPlayerVisible(page, label) {
@@ -102,15 +122,19 @@ function assertRequestCounts(listeners, songChanges) {
 
 await resetStation();
 const server = await startDevServer();
-const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
+const browser = await chromium.launch();
 try {
-  const listeners = [await openListener(browser), await openListener(browser)];
+  const listeners = [await openListener(browser), await openListener(browser, { skewMs: SKEW_MS })]; // second one has a clock 20s fast
   const [first] = listeners;
   const startId = (await snapshot(first)).id;
   await assertPlayerVisible(first.page, "playing");
   await assertInSync(first, listeners[1], "before song change");
+  await assertOnServerSchedule(listeners[0], "context 1 before song change");
+  await assertOnServerSchedule(listeners[1], "context 2 (clock +20s) before song change");
   await waitForSongChange(listeners, startId);
   await assertInSync(first, listeners[1], "after song change");
+  await assertOnServerSchedule(listeners[0], "context 1 after song change");
+  await assertOnServerSchedule(listeners[1], "context 2 (clock +20s) after song change");
   check((await snapshot(first)).id !== startId, "page followed the song change");
   await screenshots(first.page);
   assertRequestCounts(listeners, (await songStarts()) - 1); // every song start after the first is a song end
