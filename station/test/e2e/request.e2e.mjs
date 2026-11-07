@@ -22,6 +22,7 @@ if (!DB_URL || !/^postgres:\/\/[^/]*(localhost|127\.0\.0\.1)/.test(DB_URL) || /t
 
 const catalog = {
   musicVid001: { title: "Neon Skyline (Official Audio)", duration: "PT3M42S", category: "10" },
+  musicVid002: { title: "Midnight Drive (Official Audio)", duration: "PT3M10S", category: "10" },
 };
 const youtubeStub = createServer((req, res) => {
   const ids = (new URL(req.url, "http://x").searchParams.get("id") ?? "").split(",");
@@ -175,6 +176,25 @@ try {
     await shot(b, `full-${w}`);
   }
   await b.setViewportSize({ width: 1280, height: 900 });
+
+  // Approve mode + frozen feed: a denied request is hidden from the feed, so our own row must not stay behind.
+  await db.query("update settings set value = 'approve' where key = 'request_mode'");
+  const c = await open({ width: 1280, height: 900 }, "203.0.113.77");
+  await c.route("**/api/requests/feed", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ mode: "approve", requests: [] }) }));
+  await c.reload();
+  await c.getByTestId("mode-chip").waitFor();
+  check((await c.locator(".request-box .hint").textContent()).includes("Every request waits for approval."), "approve mode hint says every request waits");
+  await c.getByLabel("Your name").fill("Cleo");
+  await c.getByLabel("Dedication (optional)").fill("line one\t\tline two");
+  await c.getByLabel("Song link").fill("https://youtu.be/musicVid002");
+  await c.getByRole("button", { name: "Send request" }).click();
+  await c.getByTestId("mine").waitFor();
+  await c.getByTestId("feed-row").first().waitFor();
+  check((await c.getByTestId("feed-row").first().textContent()).includes("Waiting for approval"), "C sees its own waiting row on a frozen feed");
+  await db.query("update requests set status = 'denied' where name = 'Cleo'");
+  await c.getByLabel("Your name").waitFor({ timeout: 45000 }); // the 30s re-check re-reads mine
+  check((await c.getByTestId("feed-row").count()) === 0, "denied request: the stale row is gone and the form is back");
+  await c.close();
 
   // Mode off hides the box.
   await db.query("update settings set value = 'off' where key = 'request_mode'");

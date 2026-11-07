@@ -25,7 +25,7 @@ function MineNotice({ mine, focusOnShow }: { mine: Mine; focusOnShow: boolean })
   );
 }
 
-const oneLine = (text: string) => text.replace(/\s*[\r\n]+\s*/g, " ").trim();
+const oneLine = (text: string) => text.replace(/[\s\u00a0]+/g, " ").trim();
 
 interface Props {
   mine: Mine | null;
@@ -82,7 +82,9 @@ export function RequestBox({ mine, mode, onPosted }: Props) {
       {!mine && (
         <>
           <p className="hint">
-            One request at a time. {mode === "approve" ? "Every request waits for approval." : "Music requests play on their own; others wait for approval."}
+            One request at a time.
+            {mode === "approve" && " Every request waits for approval."}
+            {mode === "open" && " Music requests play on their own; others wait for approval."}
           </p>
           <form onSubmit={submit}>
             <label htmlFor="req-name">Your name</label>
