@@ -4,8 +4,9 @@
 import { spawnSync } from "node:child_process";
 
 const { VERCEL, VERCEL_ENV, DATABASE_URL_UNPOOLED } = process.env;
-if (VERCEL && !VERCEL_ENV) {
-  console.error("migrate-on-deploy: VERCEL is set but VERCEL_ENV is not. Turn on 'Automatically expose System Environment Variables' in the Vercel project settings.");
+// With the toggle off, VERCEL and VERCEL_ENV are both unset. Neon is Production only, so DATABASE_URL_UNPOOLED means prod.
+if ((VERCEL || DATABASE_URL_UNPOOLED) && !VERCEL_ENV) {
+  console.error("migrate-on-deploy: VERCEL_ENV is not set although this looks like a Vercel build. Turn on 'Enable access to System Environment Variables' in the Vercel project settings.");
   process.exit(1);
 }
 if (VERCEL_ENV !== "production") {

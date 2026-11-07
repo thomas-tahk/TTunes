@@ -29,8 +29,8 @@ Without `DATABASE_URL` the app uses `postgres://ttunes:ttunes@localhost:55432/tt
 
 ## Migrations
 
-`npm run db:migrate` applies numbered files in `migrations/` in order, once each, in one transaction guarded by `pg_advisory_xact_lock`, so concurrent runs are safe and it works through PgBouncer. It uses `DATABASE_URL`.
-The Vercel build runs it as its **last** step, after `vite build`, only when `VERCEL_ENV=production` (`scripts/migrate-on-deploy.mjs`, which points it at `DATABASE_URL_UNPOOLED` when set). A failed migration fails the build. Preview and local builds skip it; if `VERCEL` is set without `VERCEL_ENV` the build fails (turn on "Automatically expose System Environment Variables").
+`npm run db:migrate` applies numbered files in `migrations/` in order, once each, in one transaction guarded by `pg_advisory_xact_lock`, so concurrent runs are safe. It uses a transaction-scoped lock, which Neon's docs require for pooled connections (pooled test: `npm run db:bouncer` + `BOUNCER_URL`, not yet run). It uses `DATABASE_URL`.
+The Vercel build runs it as its **last** step, after `vite build`, only when `VERCEL_ENV=production` (`scripts/migrate-on-deploy.mjs`, which points it at `DATABASE_URL_UNPOOLED` when set). A failed migration fails the build. Preview and local builds skip it; if `VERCEL` or `DATABASE_URL_UNPOOLED` is set without `VERCEL_ENV` the build fails (turn on "Enable access to System Environment Variables" in the project settings).
 
 **Rule: every migration must be additive or otherwise safe for the code that is currently live.** The old deployment keeps serving on the new schema until the new one is promoted, and Instant Rollback puts old code on the new schema later. Drop or rename in a later release, after no live code uses the old shape.
 
@@ -41,6 +41,8 @@ npm test             # starts Docker Postgres, runs vitest on a throwaway databa
 npm run typecheck
 npm run check:build  # vercel build + imports every built function, checks function count
 ```
+
+Optional pooled migrate test (PgBouncer, transaction mode): `npm run db:bouncer`, then `BOUNCER_URL=postgres://ttunes:ttunes@localhost:56432/postgres npm test`. Not yet run.
 
 Each e2e needs its own throwaway database (macOS has no `timeout`; run them one at a time):
 
@@ -55,9 +57,9 @@ Same for `test/e2e/controls.e2e.mjs` and `npm run e2e` (sync).
 ## Deploy (Vercel + Neon)
 
 1. Create the Vercel project from this repo with **Root Directory = `station`**.
-2. Add Neon through the Vercel integration, in the same region as the functions (**iad1**), and tick **Production only** for its environments. Otherwise Preview deployments would point PR code at the production database. It sets `DATABASE_URL` and `DATABASE_URL_UNPOOLED`.
+2. Add Neon through the Vercel integration, in the same region as the functions (**iad1**), and tick **Production only** for its environments. Otherwise Preview deployments would point PR code at the production database. Preview deployments therefore have no DB, and their API routes return 500 by design. It sets `DATABASE_URL` and `DATABASE_URL_UNPOOLED`.
 3. Set `YOUTUBE_API_KEY`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `SESSION_SECRET`, `CRON_SECRET`.
 4. GitHub OAuth app callback URL: `https://<prod domain>/api/auth/github/callback`.
-5. Deploy to production; the build applies migrations. **Never run `db:seed` on production.**
+5. Deploy to production; the build applies migrations. The first deploy's build log must show `Applied:` or `Database is up to date`, never `skipped`. **Never run `db:seed` on production.**
 6. After the first deploy, check the cron: Vercel dashboard, Cron Jobs, `/api/cron/refresh` (daily 09:00 UTC); run it once and confirm a 200.
 7. Share the production domain, not deployment URLs (those sit behind deployment protection).

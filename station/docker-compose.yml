@@ -18,7 +18,7 @@ services:
   # Lets the migrate test prove the lock works through a transaction-mode pooler. Port 56432.
   bouncer:
     profiles: ["bouncer"]
-    image: edoburu/pgbouncer
+    image: edoburu/pgbouncer:v1.26.1-p0
     depends_on:
       db:
         condition: service_healthy

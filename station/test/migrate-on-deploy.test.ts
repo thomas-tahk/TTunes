@@ -27,3 +27,9 @@ it("fails closed when VERCEL is set but VERCEL_ENV is not", () => {
   expect(result.status).not.toBe(0);
   expect(result.stderr).toContain("System Environment Variables");
 });
+
+it("fails closed when DATABASE_URL_UNPOOLED is set but VERCEL and VERCEL_ENV are not (system env vars toggle off)", () => {
+  const result = run({ DATABASE_URL_UNPOOLED: "postgres://nobody:x@127.0.0.1:1/none" });
+  expect(result.status).not.toBe(0);
+  expect(result.stderr).toContain("Enable access to System Environment Variables");
+});
