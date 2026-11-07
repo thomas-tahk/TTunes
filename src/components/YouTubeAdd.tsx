@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { AddChoice } from "../addChoice.ts";
+import type { AddChoice } from "../../shared/addChoice.ts";
 import type { Track } from "../types.ts";
 import { AddChoiceButtons } from "./AddChoiceButtons.tsx";
 import { formatDuration } from "../format.ts";

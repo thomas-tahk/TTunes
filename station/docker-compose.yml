@@ -1,0 +1,15 @@
+# Local Postgres for station tests and dev. Default DATABASE_URL (see lib/db.ts) points here.
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ttunes
+      POSTGRES_PASSWORD: ttunes
+      POSTGRES_DB: ttunes_station
+    ports:
+      - "55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ttunes -d ttunes_station"]
+      interval: 1s
+      timeout: 3s
+      retries: 30

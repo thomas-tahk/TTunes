@@ -1,4 +1,4 @@
-import type { AddChoice } from "../addChoice.ts";
+import type { AddChoice } from "../../shared/addChoice.ts";
 
 // The three buttons every add path ends with.
 export function AddChoiceButtons({ busy, onChoose }: { busy: boolean; onChoose: (choice: AddChoice) => void }) {

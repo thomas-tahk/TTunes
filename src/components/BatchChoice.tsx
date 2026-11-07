@@ -1,4 +1,4 @@
-import type { AddChoice } from "../addChoice.ts";
+import type { AddChoice } from "../../shared/addChoice.ts";
 import { AddChoiceButtons } from "./AddChoiceButtons.tsx";
 
 // Shown after a batch of files was added: "Added N tracks" + the three choices.
