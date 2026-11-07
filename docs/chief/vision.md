@@ -10,10 +10,11 @@ His words, 2026-11-07:
 A personal radio station on a public URL. It plays his library by itself, from any browser. Anyone with the link can tune in and hear the same song at the same moment. Listeners can request songs, and requests play without him lifting a finger.
 
 ## Goals
-- **He adds songs** by YouTube link or by typed search, picking the match. Only he can add; he logs in to do it.
+- **He adds songs** by YouTube link or by typed search, picking the match. Music category only, 15 minutes or less. Only he can add, signed in with GitHub (his account only).
+- **The look:** a small, visible YouTube player (200×200 minimum) with a decorative visualizer around it. Search prefers "Artist – Topic" art tracks, so most songs show a still album cover.
 - **Station never stops.** Requests play first, then his queue, then a shuffle of his library. No server streams anything: there is one shared schedule (which song started when), and every player seeks to the current offset.
 - **One shared stream.** A listener can pause or mute their own player, and unpausing rejoins the station live. Only he can skip, reorder, delete, or override.
-- **Requests** are auto-accepted, with limits: one queued request per listener and a length cap. He can turn requests off at any time and delete or override any one.
+- **Requests (M3)** appear in a chat-style feed that everyone sees, with name, song, an optional dedication and a status. Each request plays by default with limits (one queued per listener, plus the music filter); he can deny any one with one tap. A setting in his settings: open / approve first / off.
 - **Portfolio-ready:** public repo, README, demo video.
 
 ## Non-goals
@@ -43,6 +44,9 @@ A personal radio station on a public URL. It plays his library by itself, from a
 - **Open:** muted-autoplay and background-tab behaviour (not documented — test in M2); whether Neon deletes long-idle free projects (keep an export).
 
 ## Decisions
+- 2026-11-07: audio-only is out on the hosted station (the YouTube player must stay visible; serving the audio ourselves would be public redistribution). Album cover plus visualizer accepted. Audio-only stays in the Mac app.
+- 2026-11-07: GitHub sign-in instead of a passcode; damage control = sign out everywhere, trash with undo, daily export, activity log.
+- 2026-11-07: the request feed design (mockup in chat) and the three-way setting live in settings, with a status chip in the feed header.
 - 2026-11-07: shared stream, not per-listener (his call, on my recommendation).
 - 2026-11-07: requests are auto-accepted with limits; he can turn them off or override at any time.
 - 2026-11-07: the request-line-only pitch was rejected. It's no use with a small audience, and he'd have to manage every request.
