@@ -355,7 +355,7 @@ const notOnAir = (nowParam: string) => `not exists (select 1 from station_state 
   and s.started_at_ms + requests.duration_sec * 1000 > ${nowParam}::bigint
   and (requests.status in ('playing', 'queued') or (requests.status = 'denied' and requests.decided_at >= to_timestamp(s.started_at_ms / 1000.0))))`;
 
-/** Daily upkeep, 30-day YouTube metadata rule: no request row (title, duration, category) outlives 30 days.
+/** Daily upkeep, YouTube 30-day metadata rule (we use 28): no request row (title, duration, category) outlives 28 days.
  * Waiting and queued requests that old are marked expired first (logged) so they never play with stale data; then every finished
  * request (played, denied, expired) that old is deleted. Station lock first, like every writer. */
 export async function retireOldRequests(db: Db, clock: Clock): Promise<{ expired: number; deleted: number }> {
