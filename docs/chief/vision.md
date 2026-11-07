@@ -43,7 +43,11 @@ A personal radio station on a public URL. It plays his library by itself, from a
 - **Constraint (ToS III.I.5–9):** the video player stays visible and unmodified — no hidden, audio-only or background player, no ad interference.
 - **Open:** muted-autoplay and background-tab behaviour (not documented — test in M2); whether Neon deletes long-idle free projects (keep an export).
 
+## Later (his words 2026-11-07: "I may want to have exceptions down the line")
+- Exceptions to the request filter (e.g. trusted listeners or channels that skip approval).
+
 ## Decisions
+- 2026-11-07: M2 plan approved ("looks sound overall"); he asked to build all milestones (M2–M4) through to ready-for-check.
 - 2026-11-07: filtering depends on who adds. His adds have no category filter (game soundtracks); listener requests outside the Music category wait for his approval.
 - 2026-11-07: audio-only is out on the hosted station (the YouTube player must stay visible; serving the audio ourselves would be public redistribution). Album cover plus visualizer accepted. Audio-only stays in the Mac app.
 - 2026-11-07: GitHub sign-in instead of a passcode; damage control = sign out everywhere, trash with undo, daily export, activity log.
