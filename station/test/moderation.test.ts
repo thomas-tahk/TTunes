@@ -208,6 +208,8 @@ describe("keep", () => {
     await sharedDb().query("insert into songs (video_id, title, duration_sec, deleted_at) values ('gamingVid01', 'Old', 10, now())");
     expect((await act(id, "keep")).status).toBe(200);
     expect((await sharedDb().query("select deleted_at from songs")).rows[0].deleted_at).toBeNull();
+    const added = (await sharedDb().query("select details from activity_log where what = 'song_added'")).rows[0].details;
+    expect(added.restoredFromTrash).toBe(true);
   });
 });
 

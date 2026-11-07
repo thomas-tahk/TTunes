@@ -1,9 +1,9 @@
 import type pg from "pg";
-
-type Queryable = Pick<pg.ClientBase, "query">;
 import type { Db } from "./db.ts";
 import { lockStation } from "./lock.ts";
 import { fetchVideos, QuotaExceededError, type VideoInfo } from "./youtube.ts";
+
+type Queryable = Pick<pg.ClientBase, "query">;
 
 export const LONG_SEC = 15 * 60;
 export type Position = "next" | "queue";
@@ -86,14 +86,15 @@ export async function insertSong(db: Db, info: PlayableVideo, position: Position
 /** Library-only add (Keep), on the caller's client: no commit, no queue change, no YouTube call. The caller holds the station lock.
  * Idempotent: a live library song is left alone (false); a trashed one is restored. Returns whether the library changed. */
 export async function addToLibrary(client: Queryable, info: PlayableVideo): Promise<boolean> {
-  const live = (await client.query("select 1 from songs where video_id = $1 and deleted_at is null", [info.videoId])).rowCount === 1;
-  if (live) return false;
+  const { rows: existing } = await client.query("select deleted_at from songs where video_id = $1", [info.videoId]);
+  if (existing[0] && existing[0].deleted_at === null) return false;
+  const trashed = existing.length === 1;
   await client.query(
     `insert into songs (video_id, title, duration_sec, metadata_refreshed_at) values ($1, $2, $3, now())
      on conflict (video_id) do update set deleted_at = null`,
     [info.videoId, info.title, info.durationSec],
   );
   await client.query("delete from trash_queue where video_id = $1", [info.videoId]);
-  await client.query("insert into activity_log (who, what, details) values ('owner', 'song_added', $1)", [{ videoId: info.videoId, title: info.title, position: "library" }]);
+  await client.query("insert into activity_log (who, what, details) values ('owner', 'song_added', $1)", [{ videoId: info.videoId, title: info.title, position: "library", ...(trashed ? { restoredFromTrash: true } : {}) }]);
   return true;
 }

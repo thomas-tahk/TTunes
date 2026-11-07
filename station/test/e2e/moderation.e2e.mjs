@@ -178,10 +178,15 @@ try {
   // 5. 409 path: the request changed under the owner. Approve Dana's waiting request behind the page's back, then tap Approve.
   const dana = await newPage("203.0.113.5");
   await listenerPost(dana, "Dana", "gameVid0002");
-  await reloadOwner();
+  // Freeze the owner's list at "Dana waiting" so a background reload cannot refresh the row before the tap.
+  const [snapshot] = await Promise.all([owner.waitForResponse((r) => r.url().endsWith("/api/owner/requests") && r.request().method() === "GET"), owner.reload()]);
+  const frozen = await snapshot.text();
+  await owner.route("**/api/owner/requests", (route) => (route.request().method() === "GET" ? route.fulfill({ status: 200, contentType: "application/json", body: frozen }) : route.continue()));
+  await rowOf("Dana").getByRole("button", { name: /^Approve/ }).waitFor();
   await db.query("update requests set status = 'queued', queued_at = now() where name = 'Dana'");
   await rowOf("Dana").getByRole("button", { name: /^Approve/ }).click();
   await rowOf("Dana").getByText("Coming up").waitFor();
+  await owner.unroute("**/api/owner/requests");
   check((await owner.getByTestId("mod-note").textContent()).length > 5, "409 shows the server's message and updates the row");
   check((await badge()) === "0", "badge follows the server's count after the 409");
 
