@@ -5,7 +5,7 @@ import ownerApi from "../api/owner.ts";
 import requestsApi from "../api/requests.ts";
 import { SESSION_COOKIE, issueSession } from "../lib/auth.ts";
 import { createDb, sharedDb } from "../lib/db.ts";
-import { pacificDayStart } from "../lib/listenerSearch.ts";
+import { pacificDayStart, SEARCH_PAUSED_MESSAGE } from "../lib/listenerSearch.ts";
 import { migrate } from "../lib/migrate.ts";
 import { purgeOldIpHashes, setMode } from "../lib/requests.ts";
 
@@ -139,8 +139,18 @@ describe("GET /api/requests/search", () => {
     expect((await sharedDb().query("select count(*)::int as n from search_attempts")).rows[0].n).toBe(0);
   });
 
-  it("counts the attempt even when YouTube fails, and says youtube_unavailable", async () => {
+  it("YouTube's daily search quota used up says search_paused", async () => {
     searchStatus = { status: 403, reason: "quotaExceeded" };
+    const res = await listenerSearch("1.2.3.4");
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body.code).toBe("search_paused");
+    expect(body.error).toBe(SEARCH_PAUSED_MESSAGE);
+    expect((await sharedDb().query("select count(*)::int as n from search_attempts")).rows[0].n).toBe(1);
+  });
+
+  it("counts the attempt when YouTube is merely rate-limiting, and says youtube_unavailable", async () => {
+    searchStatus = { status: 403, reason: "rateLimitExceeded" };
     const res = await listenerSearch("1.2.3.4");
     expect(res.status).toBe(503);
     expect((await res.json()).code).toBe("youtube_unavailable");
