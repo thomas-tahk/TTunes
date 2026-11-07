@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { NowPlaying } from "../../lib/schedule.ts";
 
 export type Mode = "open" | "approve" | "off";
-export type RequestStatus = "waiting" | "queued" | "playing" | "played" | "expired";
+export type RequestStatus = "waiting" | "queued" | "playing" | "played" | "expired" | "denied";
 export interface FeedItem {
   id: number;
   name: string;

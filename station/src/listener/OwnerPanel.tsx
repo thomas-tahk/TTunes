@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import type { NowPlaying } from "../../lib/schedule.ts";
 import { OwnerControls } from "./OwnerControls.tsx";
 import { call, messageOf, minutes, NETWORK_MESSAGE } from "./ownerFetch.ts";
+import { RequestSettings } from "./RequestSettings.tsx";
 import { type SearchPick, SongSearch } from "./SongSearch.tsx";
+import type { useOwnerRequests } from "./useOwnerRequests.ts";
 
 type Preview = SearchPick;
 type Position = "next" | "queue";
@@ -39,7 +41,13 @@ export function SignInLink({ owner }: { owner: boolean }) {
   );
 }
 
-export function OwnerPanel({ playing, onPlaying }: { playing: NowPlaying | null; onPlaying: (playing: NowPlaying) => void }) {
+interface PanelProps {
+  playing: NowPlaying | null;
+  onPlaying: (playing: NowPlaying) => void;
+  requests: ReturnType<typeof useOwnerRequests>;
+}
+
+export function OwnerPanel({ playing, onPlaying, requests }: PanelProps) {
   const [adds, setAdds] = useState(0); // bumps on every successful add so the open list refetches
   const [url, setUrl] = useState("");
   const [step, setStep] = useState<Step>({ kind: "idle" });
@@ -121,7 +129,8 @@ export function OwnerPanel({ playing, onPlaying }: { playing: NowPlaying | null;
           )}
         </div>
       )}
-      <OwnerControls playing={playing} changes={adds} onPlaying={onPlaying} />
+      <RequestSettings feed={requests.feed} onMode={(mode) => void requests.setMode(mode)} onReload={() => void requests.reload()} />
+      <OwnerControls playing={playing} changes={adds + requests.changes} onPlaying={onPlaying} />
     </section>
   );
 }

@@ -16,7 +16,7 @@ export interface LogRow {
   id: string;
   what: string;
   at: string;
-  details: { title?: string | null; skipped?: { title?: string | null } } | null;
+  details: { title?: string | null; mode?: string; skipped?: { title?: string | null } } | null;
 }
 
 const LABELS: Record<string, string> = {
@@ -28,6 +28,11 @@ const LABELS: Record<string, string> = {
   queue_remove: "Removed from queue",
   song_removed: "Removed (unplayable)",
   trash_purged: "Trash emptied",
+  request_approve: "Request approved",
+  request_deny: "Request denied",
+  request_remove: "Request removed",
+  request_keep: "Request kept in library",
+  request_mode: "Request mode changed",
 };
 
 const Meta = ({ title, sub }: { title: string; sub: string }) => (
@@ -99,7 +104,7 @@ export function LogList({ rows }: { rows: LogRow[] }) {
     <ul className="owner-list" data-testid="list-log">
       {rows.map((r) => (
         <li key={r.id}>
-          <Meta title={LABELS[r.what] ?? r.what} sub={`${r.details?.title ?? r.details?.skipped?.title ?? ""} · ${new Date(r.at).toLocaleString()}`} />
+          <Meta title={LABELS[r.what] ?? r.what} sub={`${r.details?.title ?? r.details?.skipped?.title ?? r.details?.mode ?? ""} · ${new Date(r.at).toLocaleString()}`} />
         </li>
       ))}
     </ul>

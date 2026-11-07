@@ -4,6 +4,7 @@ import { OwnerPanel, SignInLink, useOwner } from "./OwnerPanel.tsx";
 import { Player } from "./Player.tsx";
 import { RequestBox } from "./RequestBox.tsx";
 import { RequestFeed } from "./RequestFeed.tsx";
+import { type Action, useOwnerRequests } from "./useOwnerRequests.ts";
 import { useRequests } from "./useRequests.ts";
 import { useStation } from "./useStation.ts";
 import { Visualizer } from "./Visualizer.tsx";
@@ -38,7 +39,10 @@ export function App() {
   const { view, serverTime, retry, show } = useStation();
   const [started, setStarted] = useState(false);
   const owner = useOwner();
-  const { feed, mine, afterPost, reloadFeed } = useRequests(view.status === "ready" ? view.playing : null);
+  const playingNow = view.status === "ready" ? view.playing : null;
+  const { feed, mine, afterPost, reloadFeed } = useRequests(playingNow);
+  const ownerRequests = useOwnerRequests(owner, playingNow);
+  const moderation = { note: ownerRequests.note, kept: ownerRequests.kept, busyId: ownerRequests.busyId, onAct: (id: number, action: Action) => void ownerRequests.moderate(id, action) };
 
   let body;
   if (view.status === "loading") body = <Message title="Tuning in" body="Finding out what's on air." />;
@@ -73,9 +77,13 @@ export function App() {
       <main>{body}</main>
       <div className="requests">
         {!(feed.status === "ready" && feed.mode === "off") && <RequestBox mine={mine} mode={feed.status === "ready" ? feed.mode : null} onPosted={afterPost} />}
-        <RequestFeed feed={feed} retry={() => void reloadFeed()} />
+        {owner ? (
+          <RequestFeed feed={ownerRequests.feed} retry={() => void ownerRequests.reload()} moderation={moderation} />
+        ) : (
+          <RequestFeed feed={feed} retry={() => void reloadFeed()} />
+        )}
       </div>
-      {owner && <OwnerPanel playing={view.status === "ready" ? view.playing : null} onPlaying={(playing) => void show(playing)} />}
+      {owner && <OwnerPanel playing={playingNow} onPlaying={(playing) => void show(playing)} requests={ownerRequests} />}
     </div>
   );
 }
