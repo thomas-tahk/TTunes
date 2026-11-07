@@ -2,6 +2,9 @@ import { useState } from "react";
 import type { NowPlaying } from "../../lib/schedule.ts";
 import { OwnerPanel, SignInLink, useOwner } from "./OwnerPanel.tsx";
 import { Player } from "./Player.tsx";
+import { RequestBox } from "./RequestBox.tsx";
+import { RequestFeed } from "./RequestFeed.tsx";
+import { useRequests } from "./useRequests.ts";
 import { useStation } from "./useStation.ts";
 import { Visualizer } from "./Visualizer.tsx";
 
@@ -35,6 +38,7 @@ export function App() {
   const { view, serverTime, retry, show } = useStation();
   const [started, setStarted] = useState(false);
   const owner = useOwner();
+  const { feed, mine, reload } = useRequests(view.status === "ready" ? view.playing : null);
 
   let body;
   if (view.status === "loading") body = <Message title="Tuning in" body="Finding out what's on air." />;
@@ -67,6 +71,10 @@ export function App() {
         <SignInLink owner={owner} />
       </header>
       <main>{body}</main>
+      <div className="requests">
+        {!(feed.status === "ready" && feed.mode === "off") && <RequestBox mine={mine} onPosted={reload} />}
+        <RequestFeed feed={feed} retry={() => void reload()} />
+      </div>
       {owner && <OwnerPanel playing={view.status === "ready" ? view.playing : null} onPlaying={(playing) => void show(playing)} />}
     </div>
   );

@@ -1,0 +1,177 @@
+// Done check for the request box + feed: two listener browsers, YouTube stubbed server-side, search stubbed in the browser.
+// Run from station/ with a FRESH local database:
+//   docker compose exec -T db createdb -U ttunes <name>
+//   DATABASE_URL=postgres://ttunes:ttunes@localhost:55432/<name> node test/e2e/request.e2e.mjs
+import { spawn } from "node:child_process";
+import { createServer } from "node:http";
+import { mkdirSync } from "node:fs";
+import pg from "pg";
+import { chromium } from "playwright";
+
+const PORT = 5197;
+const BASE = `http://localhost:${PORT}/`;
+const SHOTS = new URL("./screens/", import.meta.url).pathname;
+const DB_URL = process.env.DATABASE_URL;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const check = (ok, msg) => { if (!ok) throw new Error(`E2E FAIL: ${msg}`); console.log(`ok  ${msg}`); };
+
+if (!DB_URL || !/^postgres:\/\/[^/]*(localhost|127\.0\.0\.1)/.test(DB_URL) || /ttunes_station$/.test(DB_URL)) {
+  throw new Error("set DATABASE_URL to a fresh local database (not the shared ttunes_station)");
+}
+
+const catalog = {
+  musicVid001: { title: "Neon Skyline (Official Audio)", duration: "PT3M42S", category: "10" },
+};
+const youtubeStub = createServer((req, res) => {
+  const ids = (new URL(req.url, "http://x").searchParams.get("id") ?? "").split(",");
+  const items = ids.filter((id) => catalog[id]).map((id) => ({
+    id,
+    snippet: { title: catalog[id].title, categoryId: catalog[id].category },
+    contentDetails: { duration: catalog[id].duration },
+    status: { embeddable: true },
+  }));
+  res.setHeader("Content-Type", "application/json");
+  res.end(JSON.stringify({ items }));
+});
+await new Promise((r) => youtubeStub.listen(0, "127.0.0.1", r));
+const stubUrl = `http://127.0.0.1:${youtubeStub.address().port}/youtube/v3`;
+
+const env = { ...process.env, DATABASE_URL: DB_URL, SESSION_SECRET: "e2e-secret-e2e-secret-e2e-secret-0123", YOUTUBE_API_KEY: "stub", YOUTUBE_API_BASE_URL: stubUrl };
+const run = (cmd) => new Promise((ok, bad) => spawn("npm", ["run", cmd], { env, stdio: "ignore" }).on("exit", (c) => (c === 0 ? ok() : bad(new Error(`${cmd} failed`)))));
+await run("db:migrate");
+const db = new pg.Pool({ connectionString: DB_URL });
+await db.query("truncate queue, station_state, play_history, activity_log, songs, requests, request_attempts cascade");
+await db.query("update settings set value = 'open' where key = 'request_mode'");
+await db.query("insert into songs (video_id, title, duration_sec) values ('seedSong001','Seed Song One',300),('seedSong002','Seed Song Two',300)");
+
+const server = spawn("npx", ["vite", "--port", String(PORT), "--strictPort"], { env, stdio: "ignore" });
+for (let i = 0; ; i++) {
+  if (await fetch(BASE).then((r) => r.ok, () => false)) break;
+  if (i > 60) throw new Error("dev server did not start");
+  await sleep(500);
+}
+
+const PIXEL = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+const DEDICATION = "For Mom, happy birthday! <b>not bold</b>";
+const browser = await chromium.launch();
+const errors = [];
+const open = async (viewport, ip) => {
+  const context = await browser.newContext({ viewport, extraHTTPHeaders: ip ? { "x-forwarded-for": ip } : {} });
+  await context.route("https://i.ytimg.com/**", (route) => route.fulfill({ contentType: "image/png", body: PIXEL }));
+  const page = await context.newPage();
+  page.on("pageerror", (e) => errors.push(String(e)));
+  page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+  await page.goto(BASE);
+  await page.getByTestId("next-title").waitFor();
+  return page;
+};
+const noScroll = (page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+const playerClear = async (page, label) => {
+  const frame = await page.locator(".player-frame").boundingBox();
+  const box = await page.locator(".requests").boundingBox();
+  check(frame.width >= 200 && frame.height >= 200, `${label}: player ${frame.width}x${frame.height} >= 200x200`);
+  check(frame.y + frame.height <= box.y, `${label}: requests sit below the player, covering nothing`);
+  check(await noScroll(page), `${label}: no horizontal scroll`);
+};
+const shot = async (page, name) => {
+  for (const [tag, w, h] of [["desktop-1280", 1280, 900], ["phone-375", 375, 812]]) {
+    await page.setViewportSize({ width: w, height: h });
+    await sleep(300);
+    await page.screenshot({ path: `${SHOTS}request-${name}-${tag}.png`, fullPage: true });
+    console.log(`screenshot ${SHOTS}request-${name}-${tag}.png`);
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
+};
+
+try {
+  mkdirSync(SHOTS, { recursive: true });
+  const a = await open({ width: 1280, height: 900 });
+  const b = await open({ width: 1280, height: 900 }, "203.0.113.9"); // another network, like a second listener
+
+  // Empty feed + open chip.
+  await a.getByText("No requests yet. Be the first.").waitFor();
+  check((await a.getByTestId("mode-chip").textContent()) === "Open", "mode chip says Open");
+  await shot(a, "empty");
+
+  // Counter, name memory, post by link.
+  await a.getByLabel("Your name").fill("Thomas");
+  await a.getByLabel("Dedication (optional)").fill(DEDICATION);
+  check((await a.getByTestId("counter").textContent()) === `${DEDICATION.length}/140`, "dedication counter is live");
+  check(await a.getByRole("button", { name: "Send request" }).isDisabled(), "send is disabled with no song chosen");
+  await a.getByLabel("Song link").fill("https://youtu.be/musicVid001");
+  await shot(a, "filled");
+  await a.getByRole("button", { name: "Send request" }).click();
+  await a.getByTestId("mine").waitFor();
+  check((await a.getByTestId("mine").textContent()).includes("queued"), "A sees its request as queued");
+  check((await a.getByLabel("Your name").count()) === 0, "box shows one-at-a-time notice instead of the form");
+  const row = a.getByTestId("feed-row").first();
+  check((await row.textContent()).includes(DEDICATION), "A's feed row shows the dedication as plain text");
+  check((await row.locator("b").count()) === 0, "HTML in the dedication was not rendered");
+  check((await row.textContent()).includes("Coming up"), "feed chip says Coming up");
+  await shot(a, "posted");
+  check(await a.evaluate(() => localStorage.getItem("ttunes_listener_name")) === "Thomas", "name remembered in localStorage");
+
+  // B joins fresh: sees it in the feed, can still request (its own slot).
+  await b.reload();
+  await b.getByTestId("feed-row").first().waitFor();
+  const bText = await b.getByTestId("feed-row").first().textContent();
+  check(bText.includes("Thomas") && bText.includes("Neon Skyline") && bText.includes(DEDICATION), "B sees name, title and dedication in the feed");
+  check((await b.getByLabel("Your name").count()) === 1, "B still has its own request box");
+  check((await b.getByTestId("next-title").textContent()) === catalog.musicVid001.title, "B sees the request as Up next");
+
+  // Song ends: the request becomes now playing for both.
+  await db.query("update station_state set started_at_ms = started_at_ms - 400000");
+  await b.reload();
+  await b.waitForFunction((t) => document.querySelector('[data-testid="now-title"]')?.textContent === t, catalog.musicVid001.title);
+  check(true, "B hears the request: it is now playing");
+  check((await b.getByTestId("feed-row").first().textContent()).includes("Playing now"), "feed chip says Playing now");
+  await a.reload();
+  await a.waitForFunction((t) => document.querySelector('[data-testid="now-title"]')?.textContent === t, catalog.musicVid001.title);
+  check(true, "A hears its own request playing too");
+  await playerClear(b, "desktop");
+  await b.setViewportSize({ width: 375, height: 812 });
+  await playerClear(b, "phone");
+  await shot(b, "playing");
+
+  // Search path (listener search is stubbed in the browser; it is built in a parallel task).
+  await b.route("**/api/requests/search?**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ results: [{ videoId: "musicVid001", title: "Neon Skyline (Official Audio)", channelTitle: "Neon", durationSec: 222, thumbnail: "https://i.ytimg.com/vi/musicVid001/hqdefault.jpg" }] }) }));
+  await b.setViewportSize({ width: 1280, height: 900 });
+  check((await b.getByLabel("Your name").inputValue()) === "", "B has no remembered name (separate browser)");
+  await b.getByRole("button", { name: "Search by name" }).click();
+  await b.getByLabel("Song or artist to find").fill("neon");
+  await b.getByRole("button", { name: "Find", exact: true }).click();
+  await b.getByTestId("search-results").waitFor();
+  await b.getByRole("button", { name: /Choose Neon Skyline/ }).click();
+  check((await b.getByTestId("picked").textContent()).includes("Neon Skyline"), "picking a search result shows the choice");
+  await shot(b, "search");
+
+  // Refusal text from the server is shown (already coming up / playing).
+  await b.getByLabel("Your name").fill("Bea");
+  await b.getByRole("button", { name: "Send request" }).click();
+  await b.getByRole("alert").filter({ hasText: /./ }).first().waitFor();
+  check((await b.getByRole("alert").first().textContent()).length > 5, "server refusal text is shown, not swallowed");
+  await shot(b, "refused");
+
+  // Mode off hides the box.
+  await db.query("update settings set value = 'off' where key = 'request_mode'");
+  await b.reload();
+  await b.getByTestId("mode-chip").waitFor();
+  check((await b.getByTestId("mode-chip").textContent()) === "Requests off", "mode chip says Requests off");
+  check((await b.getByRole("heading", { name: "Request a song" }).count()) === 0, "request box is hidden when off");
+  await shot(b, "off");
+
+  // Feed load failure is an error, not "nothing here".
+  await b.route("**/api/requests/feed", (route) => route.fulfill({ status: 500, body: "{}" }));
+  await b.reload();
+  await b.getByRole("alert").filter({ hasText: "didn't load" }).waitFor();
+  check(true, "feed failure shows an error with Try again");
+
+  const real = errors.filter((e) => !/favicon|youtube|googlevideo|google|ERR_BLOCKED|Failed to load resource/i.test(e));
+  check(real.length === 0, `no app console errors ${real.join(" | ")}`);
+  console.log("E2E PASS");
+} finally {
+  await browser.close();
+  server.kill();
+  youtubeStub.close();
+  await db.end();
+}
