@@ -52,13 +52,12 @@ export function useOwnerRequests(enabled: boolean, playing: NowPlaying | null) {
       setNote(null);
       guard.current.actionStarted();
       let gone = false;
-      const before = feed.status === "ready" ? feed.requests.find((r) => r.id === id)?.status : undefined;
       try {
         const { status, body } = await call("POST", "/api/owner/requests/moderate", { id, action });
         if (status === 200 || status === 409) patch(body.request as FeedItem, body.waitingCount as number);
         if (status === 200) {
           if (action === "keep") setKept((k) => new Set(k).add(id));
-          setNote({ text: body.alreadyInLibrary ? "That song was already in the library." : doneNote(action, before) });
+          setNote({ text: body.alreadyInLibrary ? "That song was already in the library." : doneNote(action, body.wasStatus as string | undefined) });
         } else {
           setNote({ text: messageOf(body), error: true });
           gone = status === 404;
@@ -72,7 +71,7 @@ export function useOwnerRequests(enabled: boolean, playing: NowPlaying | null) {
       }
       if (gone) void load(); // after the guard bump, so this reload is not dropped as stale
     },
-    [load, feed],
+    [load],
   );
 
   const setMode = useCallback(async (mode: Mode) => {

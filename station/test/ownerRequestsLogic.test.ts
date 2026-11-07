@@ -29,6 +29,7 @@ describe("doneNote", () => {
     expect(doneNote("remove", "waiting")).toBe("Removed. It will not play.");
     expect(doneNote("remove", "played")).toBe("Removed from the feed.");
     expect(doneNote("remove", "playing")).toBe("Removed from the feed.");
+    expect(doneNote("remove", undefined)).toBe("Removed from the feed.");
     expect(doneNote("keep", "played")).toBe("Added to the library.");
   });
 });

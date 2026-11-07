@@ -281,10 +281,10 @@ it("keeps only the last 14 exports", async () => {
   expect(rows[13].data.songs).toEqual([{ videoId: "a", addedAt: expect.any(String) }]); // no title/duration saved
 });
 
-it("daily cron strips YouTube titles from activity_log rows older than 30 days, keeps newer ones", async () => {
+it("daily cron strips YouTube titles from activity_log rows older than 28 days, keeps newer ones", async () => {
   const db = sharedDb();
   await db.query("delete from activity_log");
-  const old = "now() - interval '31 days'";
+  const old = "now() - interval '29 days'";
   await db.query(`insert into activity_log (who, what, at, details) values
     ('owner','queue_move', ${old}, '{"videoId":"a","title":"Old Song","from":1}'),
     ('owner','skip', ${old}, '{"skipped":{"videoId":"a","title":"Old"},"next":{"videoId":"b","title":"Next"}}'),
@@ -302,7 +302,7 @@ it("purging an expired trashed song logs its videoId only, no title", async () =
   const db = sharedDb();
   await db.query("delete from activity_log");
   await addSong("gone", 1);
-  await db.query("update songs set deleted_at = now() - interval '31 days' where video_id = 'gone'");
+  await db.query("update songs set deleted_at = now() - interval '29 days' where video_id = 'gone'");
   expect(await purgeTrash(db)).toEqual(["gone"]);
   const { rows } = await db.query("select details from activity_log where what = 'trash_purged'");
   expect(rows).toEqual([{ details: { videoId: "gone" } }]);

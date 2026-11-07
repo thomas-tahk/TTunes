@@ -184,6 +184,18 @@ describe("remove", () => {
   });
 });
 
+describe("wasStatus", () => {
+  it("remove reports the status the request had under the lock: playing, then queued", async () => {
+    const a = await listen("gamingVid01");
+    await act(a, "approve");
+    await getNowPlaying(sharedDb(), Date.now);
+    expect((await act(a, "remove")).json.wasStatus).toBe("playing");
+    const b = await listen("gamingVid02");
+    await act(b, "approve");
+    expect((await act(b, "remove")).json.wasStatus).toBe("queued");
+  });
+});
+
 describe("keep", () => {
   it("a newly kept song counts as heard this shuffle cycle, so it is not replayed at once", async () => {
     const id = await listen("gamingVid01");

@@ -4,8 +4,8 @@ import { fetchVideos, type VideoInfo } from "./youtube.ts";
 
 export const STALE_AFTER_DAYS = 25; // YouTube's cap is 30 days
 export const KEEP_EXPORTS = 14;
-export const TRASH_KEEP_DAYS = 30; // trash lives 30 days; YouTube's 30-day metadata cache rule also ends a trashed song (trash is never refreshed)
-export const ACTIVITY_TITLE_KEEP_DAYS = 30; // 30-day cache rule for titles in rows written before the log stopped storing them
+export const TRASH_KEEP_DAYS = 28; // trash lives 28 days (YouTube's 30-day metadata cache rule minus two: the cron fires within ±59 min of its slot); also ends a trashed song (trash is never refreshed)
+export const ACTIVITY_TITLE_KEEP_DAYS = 28; // 30-day cache rule (minus two, as above) for titles in rows written before the log stopped storing them
 export const SYSTEM_ACTOR = "system:upkeep";
 
 export interface RefreshResult {

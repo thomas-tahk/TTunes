@@ -245,7 +245,7 @@ const MODERATION: Record<Exclude<Moderation, "keep">, StatusMove> = {
 };
 
 export type ModerationResult =
-  | { ok: true; request: FeedItem; alreadyInLibrary?: true }
+  | { ok: true; request: FeedItem; alreadyInLibrary?: true; wasStatus?: string }
   | { ok: false; status: number; error: string; request?: FeedItem; code?: "already_coming_up" };
 
 const REQUEST_COLUMNS = "id, name, dedication, video_id, title, duration_sec, created_at, status";
@@ -272,6 +272,7 @@ async function moveRequest(db: Db, id: number, action: Exclude<Moderation, "keep
       await client.query("commit");
       return request ? { ok: false, status: 409, error: "That song is already coming up.", code: "already_coming_up", request } : { ok: false, status: 404, error: "No such request." };
     }
+    const wasStatus: string | undefined = (await client.query("select status from requests where id = $1", [id])).rows[0]?.status;
     const { rows } = await client.query(
       `update requests set status = $2::text, decided_at = $3, queued_at = case when $2::text = 'queued' then $3::timestamptz else queued_at end where id = $1 and status = any($4::text[]) returning video_id, name`,
       [id, rule.to, at(now), rule.from],
@@ -279,7 +280,7 @@ async function moveRequest(db: Db, id: number, action: Exclude<Moderation, "keep
     if (rows[0]) await client.query("insert into activity_log (who, what, details) values ('owner', $1, $2)", [`request_${action}`, { id, videoId: rows[0].video_id, name: rows[0].name }]);
     const request = await readRequest(client, id);
     await client.query("commit");
-    if (rows[0] && request) return { ok: true, request };
+    if (rows[0] && request) return { ok: true, request, wasStatus };
     return request ? { ok: false, status: 409, error: `That request is ${request.status}; ${action} doesn't apply.`, request } : { ok: false, status: 404, error: "No such request." };
   } catch (error) {
     await client.query("rollback").catch(() => undefined);
@@ -335,7 +336,7 @@ async function keepFetched(db: Db, id: number, info: PlayableVideo): Promise<Mod
       return keepRefusal(db, id);
     }
     const added = await addToLibrary(client, info);
-    if (added) await client.query("update station_state set cycle = jsonb_set(cycle, '{played}', coalesce(cycle->'played', '[]'::jsonb) || to_jsonb($1::text)) where id = 1", [info.videoId]); // heard this cycle: the shuffle must not put a just-kept song first
+    if (added) await client.query("update station_state set cycle = jsonb_set(cycle, '{played}', coalesce(cycle->'played', '[]'::jsonb) || to_jsonb($1::text)) where id = 1 and not (cycle->'played' ? $1::text) and not (cycle->'unplayed' ? $1::text)", [info.videoId]); // heard this cycle: the shuffle must not put a just-kept song first
     await client.query("insert into activity_log (who, what, details) values ('owner', 'request_keep', $1)", [{ id, videoId: info.videoId, alreadyInLibrary: !added }]);
     const request = (await readRequest(client, id))!;
     await client.query("commit");

@@ -206,6 +206,18 @@ it("concurrent queue edits leave one consistent order", async () => {
   expect(new Set(after)).toEqual(new Set(["aaa", "bbb", "ddd"]));
 });
 
+it("restore after delete does not re-queue a song a listener request has lined up, and says so", async () => {
+  await enqueue("bbb");
+  expect((await trashIt("bbb")).status).toBe(200);
+  await sharedDb().query("insert into requests (video_id, title, duration_sec, name, status, listener_id) values ('bbb', 'T', 100, 'Sam', 'queued', 'l')");
+  const res = await restoreIt("bbb");
+  expect(res.status).toBe(200);
+  expect(res.json).toMatchObject({ restoredToQueue: 0, message: "Restored to the library, but not re-queued: it is already coming up as a request." });
+  expect(await queueIds()).toEqual([]);
+  expect((await call("GET", "/api/owner/library")).json.songs.map((s: any) => s.videoId)).toContain("bbb");
+  await sharedDb().query("truncate requests cascade");
+});
+
 it("a deleted song leaves library and queue; restore brings it back with its queue spots", async () => {
   await enqueue("bbb", "ccc", "bbb", "ddd");
   expect((await trashIt("bbb")).json).toMatchObject({ videoId: "bbb", title: "Song bbb", removedFromQueue: 2 });
@@ -300,13 +312,13 @@ it("re-adding a trashed song restores it to the library, clears its trash record
   expect((await call("GET", "/api/owner/log")).json.entries[0].details.restoredFromTrash).toBeUndefined();
 });
 
-it("upkeep purges trash older than 30 days, or with YouTube metadata older than 30 days, and cascades to trash_queue", async () => {
+it("upkeep purges trash older than 28 days, or with YouTube metadata older than 28 days, and cascades to trash_queue", async () => {
   await enqueue("aaa", "bbb", "ccc", "ddd");
   for (const id of ["aaa", "bbb", "ccc", "ddd"]) await trashIt(id);
   const q = (sql: string) => sharedDb().query(sql);
-  await q("update songs set deleted_at = now() - interval '31 days' where video_id = 'aaa'"); // trashed too long
-  await q("update songs set metadata_refreshed_at = now() - interval '31 days' where video_id = 'bbb'"); // YouTube cache rule
-  await q("update songs set deleted_at = now() - interval '29 days', metadata_refreshed_at = now() - interval '29 days' where video_id = 'ccc'");
+  await q("update songs set deleted_at = now() - interval '29 days' where video_id = 'aaa'"); // trashed too long
+  await q("update songs set metadata_refreshed_at = now() - interval '29 days' where video_id = 'bbb'"); // YouTube cache rule
+  await q("update songs set deleted_at = now() - interval '27 days', metadata_refreshed_at = now() - interval '27 days' where video_id = 'ccc'");
   expect((await purgeTrash(sharedDb())).sort()).toEqual(["aaa", "bbb"]);
   expect((await q("select video_id from songs where deleted_at is not null order by 1")).rows).toEqual([{ video_id: "ccc" }, { video_id: "ddd" }]);
   expect((await q("select distinct video_id from trash_queue order by 1")).rows).toEqual([{ video_id: "ccc" }, { video_id: "ddd" }]);
