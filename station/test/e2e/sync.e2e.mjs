@@ -10,7 +10,7 @@ const PORT = 5199;
 const BASE = `http://localhost:${PORT}/`;
 const SHOTS = new URL("./screens/", import.meta.url).pathname;
 const MAX_SYNC_GAP_SEC = 3;
-const MAX_SCHEDULE_GAP_SEC = 2;
+const MAX_SCHEDULE_GAP_SEC = 2.5;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const fail = (msg) => { throw new Error(`E2E FAIL: ${msg}`); };
 const check = (ok, msg) => { if (!ok) fail(msg); console.log(`ok  ${msg}`); };

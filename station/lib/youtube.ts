@@ -1,5 +1,7 @@
 // YouTube Data API v3 client. videos.list costs 1 quota unit per call and takes up to 50 ids.
-const ENDPOINT = "https://www.googleapis.com/youtube/v3/videos";
+const DEFAULT_ENDPOINT = "https://www.googleapis.com/youtube/v3/videos";
+// Tests point this at a local stub; production never sets it.
+const endpoint = (): string => (process.env.VERCEL ? undefined : process.env.YOUTUBE_API_BASE_URL) || DEFAULT_ENDPOINT;
 export const MAX_IDS_PER_CALL = 50;
 
 export interface VideoInfo {
@@ -40,7 +42,7 @@ function apiKey(): string {
 }
 
 async function fetchBatch(ids: string[], key: string): Promise<ApiItem[]> {
-  const url = new URL(ENDPOINT);
+  const url = new URL(endpoint());
   url.search = new URLSearchParams({ part: "snippet,contentDetails,status", id: ids.join(","), key }).toString();
   const res = await fetch(url);
   if (!res.ok) throw new Error(`YouTube videos.list failed: HTTP ${res.status}`);

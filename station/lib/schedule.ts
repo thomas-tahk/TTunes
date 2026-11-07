@@ -55,7 +55,7 @@ async function loadState(q: Queryable, lock: boolean): Promise<StateRow> {
 }
 
 async function loadStation(q: Queryable, state: StateRow, library: string[]): Promise<Station> {
-  const { rows } = await q.query("select video_id from queue order by id");
+  const { rows } = await q.query("select video_id from queue order by position, id");
   return {
     queue: rows.map((row) => row.video_id),
     unplayed: state.cycle.unplayed,
@@ -122,7 +122,7 @@ async function writeAdvance(client: Queryable, state: StateRow, songs: Map<strin
 
 async function consumeQueueHead(client: Queryable, before: Station, playedId: string): Promise<void> {
   if (before.queue[0] !== playedId) return;
-  await client.query("delete from queue where id = (select min(id) from queue where video_id = $1)", [playedId]);
+  await client.query("delete from queue where id = (select id from queue where video_id = $1 order by position, id limit 1)", [playedId]);
 }
 
 export async function getNowPlaying(db: Db, clock: Clock): Promise<NowPlaying> {

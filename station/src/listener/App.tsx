@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { NowPlaying } from "../../lib/schedule.ts";
+import { OwnerPanel, SignInLink, useOwner } from "./OwnerPanel.tsx";
 import { Player } from "./Player.tsx";
 import { useStation } from "./useStation.ts";
 import { Visualizer } from "./Visualizer.tsx";
@@ -31,8 +32,9 @@ function Message({ title, body, action }: { title: string; body: string; action?
 }
 
 export function App() {
-  const { view, serverTime, retry } = useStation();
+  const { view, serverTime, retry, show } = useStation();
   const [started, setStarted] = useState(false);
+  const owner = useOwner();
 
   let body;
   if (view.status === "loading") body = <Message title="Tuning in" body="Finding out what's on air." />;
@@ -62,8 +64,10 @@ export function App() {
         <span className="on-air">
           <i aria-hidden="true" /> Live
         </span>
+        <SignInLink owner={owner} />
       </header>
       <main>{body}</main>
+      {owner && <OwnerPanel onAdded={(playing) => void show(playing)} />}
     </div>
   );
 }

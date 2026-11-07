@@ -31,18 +31,18 @@ export function useStation() {
     offset.current = await fetchOffset().catch(() => offset.current);
   }, []);
 
-  const refresh = useCallback(async (): Promise<void> => {
+  const refresh = useCallback(async (known?: NowPlaying): Promise<void> => {
     window.clearTimeout(timer.current);
     try {
-      const playing = await fetchNow();
+      const playing = known ?? (await fetchNow()); // `known`: a response the page already holds (owner add), skipping the CDN-cached /api/now
       // Re-measures the clock first if the response looks ended, so the page never starts a song at its end.
       const plan = await planNextFetch(playing, { serverTime, remeasure }, staleRetries.current);
       staleRetries.current = plan.staleRetries;
       setView({ status: "ready", playing });
-      timer.current = window.setTimeout(refresh, plan.delayMs);
+      timer.current = window.setTimeout(() => void refresh(), plan.delayMs);
     } catch {
       setView((prev) => (prev.status === "ready" ? prev : { status: "error" }));
-      timer.current = window.setTimeout(refresh, RECHECK_MS);
+      timer.current = window.setTimeout(() => void refresh(), RECHECK_MS);
     }
   }, [serverTime, remeasure]);
 
@@ -61,5 +61,5 @@ export function useStation() {
     };
   }, [refresh]);
 
-  return { view, serverTime, retry: refresh };
+  return { view, serverTime, retry: refresh, show: (playing: NowPlaying) => refresh(playing) };
 }
