@@ -33,12 +33,14 @@ A personal radio station on a public URL. It plays his library by itself, from a
 - **M3 — Requests.** Done-gate: a listener requests a song and it plays to everyone without him touching anything; he turns requests off and the request box disappears.
 - **M4 — Portfolio polish.** README, demo video, public repo.
 
-## Assumptions (for Research)
-- **Assumption:** the YouTube IFrame Player API can start a video at an offset and report when it ends, reliably enough to keep listeners within a few seconds of each other.
-- **Assumption:** each song's length and whether it can be embedded can be read when it's added (YouTube Data API v3 `videos.list`: `contentDetails.duration`, `status.embeddable`).
-- **Assumption:** typed search fits inside the Data API free quota (a search costs 100 units; the quota is 10,000 a day, so about 100 searches a day).
-- **Assumption:** hosting on Vercel plus a small Postgres (Neon) costs $0 and never pauses in a way listeners would notice. Not Supabase's free tier.
-- **Assumption:** the "one queued request per listener" limit can work without accounts, using a browser cookie or IP. That's good enough for friends and family, not abuse-proof.
+## Assumptions (researched 2026-11-07 — docs/chief/research/youtube.md, hosting.md)
+- **Verified:** IFrame API starts at an offset (`start`/`seekTo`, keyframe-approximate) and reports end (state 0); embed-blocked = error 101/150, handled at play time too.
+- **Verified:** `videos.list` (1 unit, API key only) gives duration + embeddable. Metadata may be cached ≤30 days (ToS III.E.4) → store video ID, refresh metadata.
+- **Verified (wording fixed):** typed search has its own cap of 100 searches/day.
+- **Verified:** Vercel Hobby + Neon free cover it, IF clients fetch the schedule once and compute the offset themselves (no per-second polling; DB touched only on song change). Hobby cron is daily-only → advance songs lazily on request.
+- **Verified:** request limit = signed httpOnly cookie + IP backstop; admin = passcode env var → signed session cookie, rate-limited login.
+- **Constraint (ToS III.I.5–9):** the video player stays visible and unmodified — no hidden, audio-only or background player, no ad interference.
+- **Open:** muted-autoplay and background-tab behaviour (not documented — test in M2); whether Neon deletes long-idle free projects (keep an export).
 
 ## Decisions
 - 2026-11-07: shared stream, not per-listener (his call, on my recommendation).
