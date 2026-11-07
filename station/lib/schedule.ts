@@ -53,9 +53,11 @@ async function loadSongs(q: Queryable): Promise<Catalog> {
   const { rows } = await q.query("select video_id, title, duration_sec, deleted_at is not null as trashed from songs order by added_at, video_id");
   const songs = new Map<string, Song>(rows.map((row) => [row.video_id, songOf(row)]));
   // Requested songs are not in the library but must resolve while queued or playing (library entries win on a shared id).
-  // A request the owner removed (denied) while it plays still resolves until the station moves on, so removing it never cuts the song.
+  // A request the owner removed (denied) after this song started still resolves until the station moves on (older denied rows for the same video do not), so removing it never cuts the song.
   const requested = await q.query(
-    "select video_id, title, duration_sec from requests where status in ('queued', 'playing') or video_id = (select current_video_id from station_state where id = 1)",
+    `select video_id, title, duration_sec from requests where status in ('queued', 'playing')
+        or (status = 'denied' and video_id = (select current_video_id from station_state where id = 1)
+            and decided_at >= (select to_timestamp(started_at_ms / 1000.0) from station_state where id = 1))`,
   );
   for (const row of requested.rows) if (!songs.has(row.video_id)) songs.set(row.video_id, songOf(row));
   return { songs, library: rows.filter((row) => !row.trashed).map((row) => row.video_id) };
