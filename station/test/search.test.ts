@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
-import search from "../api/owner/search.ts";
+import search from "../api/owner.ts";
 import { issueSession, SESSION_COOKIE } from "../lib/auth.ts";
 import { createDb, sharedDb } from "../lib/db.ts";
 import { migrate } from "../lib/migrate.ts";
@@ -15,6 +15,7 @@ const calls: URL[] = [];
 let order: string[] = []; // video ids search.list returns, in order
 let videos: Record<string, Vid> = {};
 let searchStatus: { status: number; reason: string } | null = null;
+let videosStatus: { status: number; reason: string } | null = null;
 
 beforeAll(async () => {
   process.env.SESSION_SECRET = "test-secret-test-secret-test-secret";
@@ -35,6 +36,7 @@ beforeEach(() => {
   order = [];
   videos = {};
   searchStatus = null;
+  videosStatus = null;
   vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input));
     if (url.hostname !== "www.googleapis.com") {
@@ -46,6 +48,7 @@ beforeEach(() => {
       if (searchStatus) return Response.json({ error: { errors: [{ reason: searchStatus.reason }] } }, { status: searchStatus.status });
       return Response.json({ items: order.map((videoId) => ({ id: { videoId }, snippet: { thumbnails: { medium: { url: `https://t/${videoId}` } } } })) });
     }
+    if (videosStatus) return Response.json({ error: { errors: [{ reason: videosStatus.reason }] } }, { status: videosStatus.status });
     const ids = url.searchParams.get("id")!.split(",").filter((id) => videos[id]);
     return Response.json({
       items: ids.map((id) => ({
@@ -102,6 +105,44 @@ it("maps a quota error to 429 with the plain message", async () => {
   expect(res.status).toBe(429);
   expect((await res.json()).error).toBe("Search limit for today is used up — paste a YouTube link instead, or try again tomorrow.");
   expect(res.headers.get("cache-control")).toBe("no-store");
+});
+
+it("a rate limit or a videos.list quota error says YouTube is busy, not that the daily search limit is used up", async () => {
+  searchStatus = { status: 403, reason: "rateLimitExceeded" };
+  const rate = await get("q");
+  expect(rate.status).toBe(503);
+  expect((await rate.json()).error).toBe("YouTube is busy — try again shortly.");
+  searchStatus = null;
+  order = ["ok"];
+  videosStatus = { status: 403, reason: "quotaExceeded" };
+  const detail = await get("q");
+  expect(detail.status).toBe(503);
+  expect((await detail.json()).error).toBe("YouTube is busy — try again shortly.");
+});
+
+it("drops a result whose duration YouTube sent in an unparseable form", async () => {
+  order = ["ok", "weird"];
+  videos = {
+    ok: { title: "ok", channel: "c", category: "10", duration: "PT1M" },
+    weird: { title: "w", channel: "c", category: "10", duration: "garbage" },
+  };
+  const err = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  try {
+    const body = await (await get("q")).json();
+    expect(body.results.map((r: { videoId: string }) => r.videoId)).toEqual(["ok"]);
+  } finally {
+    err.mockRestore();
+  }
+});
+
+it("a channel called 'Topic Records' is not an art-track Topic channel", async () => {
+  order = ["rec", "topic"];
+  videos = {
+    rec: { title: "Song", channel: "Topic Records", category: "20", duration: "PT3M" },
+    topic: { title: "Song", channel: "Artist - Topic", category: "20", duration: "PT3M" },
+  };
+  const body = await (await get("q")).json();
+  expect(body.results.map((r: { videoId: string; isTopic: boolean }) => [r.videoId, r.isTopic])).toEqual([["topic", true], ["rec", false]]);
 });
 
 it("a non-quota YouTube failure is a 500, not a quota message", async () => {

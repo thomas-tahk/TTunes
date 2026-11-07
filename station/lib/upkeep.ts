@@ -1,8 +1,10 @@
 import type { Db } from "./db.ts";
+import { lockStation } from "./lock.ts";
 import { fetchVideos, type VideoInfo } from "./youtube.ts";
 
 export const STALE_AFTER_DAYS = 25; // YouTube's cap is 30 days
 export const KEEP_EXPORTS = 14;
+export const TRASH_KEEP_DAYS = 30; // trash lives 30 days; YouTube's 30-day metadata cache rule also ends a trashed song (trash is never refreshed)
 export const SYSTEM_ACTOR = "system:upkeep";
 
 export interface RefreshResult {
@@ -24,6 +26,7 @@ async function removeSong(db: Db, song: Stale, reason: string): Promise<void> {
   const client = await db.connect();
   try {
     await client.query("begin");
+    await lockStation(client); // station lock first, like every other writer
     await client.query("delete from songs where video_id = $1", [song.video_id]); // queue rows cascade
     await client.query("insert into activity_log (who, what, details) values ($1, 'song_removed', $2)", [
       SYSTEM_ACTOR,
@@ -41,7 +44,7 @@ async function removeSong(db: Db, song: Stale, reason: string): Promise<void> {
 /** Refreshes metadata older than 25 days; removes songs YouTube no longer returns or allows embedding. */
 export async function refreshStale(db: Db): Promise<RefreshResult> {
   const { rows } = await db.query<Stale>(
-    "select video_id, title from songs where metadata_refreshed_at < now() - make_interval(days => $1) order by video_id",
+    "select video_id, title from songs where deleted_at is null and metadata_refreshed_at < now() - make_interval(days => $1) order by video_id",
     [STALE_AFTER_DAYS],
   );
   const result: RefreshResult = { checked: rows.length, refreshed: 0, removed: [] };
@@ -82,7 +85,7 @@ export interface LibraryExport {
 }
 
 export async function exportLibrary(db: Db): Promise<LibraryExport> {
-  const { rows } = await db.query("select video_id, title, duration_sec, added_at, metadata_refreshed_at from songs order by added_at, video_id");
+  const { rows } = await db.query("select video_id, title, duration_sec, added_at, metadata_refreshed_at from songs where deleted_at is null order by added_at, video_id");
   return {
     exportedAt: new Date().toISOString(),
     songs: rows.map((r) => ({
@@ -103,4 +106,33 @@ export async function storeExport(db: Db): Promise<number> {
   await db.query("insert into library_exports (data) values ($1)", [saved]);
   await db.query("delete from library_exports where id not in (select id from library_exports order by id desc limit $1)", [KEEP_EXPORTS]);
   return data.songs.length;
+}
+
+/** Permanently deletes trashed songs trashed over 30 days ago OR whose YouTube metadata is over 30 days old, logging each.
+ * Cascades to trash_queue. Returns the ids. */
+export async function purgeTrash(db: Db): Promise<string[]> {
+  const client = await db.connect();
+  try {
+    await client.query("begin");
+    await lockStation(client);
+    const { rows } = await client.query(
+      `delete from songs where deleted_at is not null
+         and (deleted_at < now() - make_interval(days => $1) or metadata_refreshed_at < now() - make_interval(days => $1))
+       returning video_id, title`,
+      [TRASH_KEEP_DAYS],
+    );
+    for (const row of rows) {
+      await client.query("insert into activity_log (who, what, details) values ($1, 'trash_purged', $2)", [
+        SYSTEM_ACTOR,
+        { videoId: row.video_id, title: row.title },
+      ]);
+    }
+    await client.query("commit");
+    return rows.map((row) => row.video_id);
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }

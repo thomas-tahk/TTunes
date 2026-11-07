@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { requireOwner, sendJson } from "../../lib/auth.ts";
-import { sharedDb } from "../../lib/db.ts";
-import { exportLibrary } from "../../lib/upkeep.ts";
+import { requireOwner, sendJson } from "../../auth.ts";
+import { sharedDb } from "../../db.ts";
+import { exportLibrary } from "../../upkeep.ts";
 
 // GET /api/owner/export (owner only): the whole library as a JSON download.
 export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {

@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { cookieHeader, newState, redirect, sendJson, STATE_COOKIE } from "../../../lib/auth.ts";
+import { cookieHeader, newState, redirect, sendJson, STATE_COOKIE } from "../../auth.ts";
 
 // GET /api/auth/github/login: start the OAuth authorization-code flow with a fresh `state`.
 export default function handler(_req: IncomingMessage, res: ServerResponse): void {

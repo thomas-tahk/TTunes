@@ -43,9 +43,18 @@ const songOf = (row: { video_id: string; title: string; duration_sec: number }):
   durationSec: row.duration_sec,
 });
 
-async function loadSongs(q: Queryable): Promise<Map<string, Song>> {
-  const { rows } = await q.query("select video_id, title, duration_sec from songs order by added_at, video_id");
-  return new Map(rows.map((row) => [row.video_id, songOf(row)]));
+// Every song, trashed ones too (a trashed song that is playing now still finishes), plus the live library ids.
+interface Catalog {
+  songs: Map<string, Song>;
+  library: string[];
+}
+
+async function loadSongs(q: Queryable): Promise<Catalog> {
+  const { rows } = await q.query("select video_id, title, duration_sec, deleted_at is not null as trashed from songs order by added_at, video_id");
+  return {
+    songs: new Map(rows.map((row) => [row.video_id, songOf(row)])),
+    library: rows.filter((row) => !row.trashed).map((row) => row.video_id),
+  };
 }
 
 async function loadState(q: Queryable, lock: boolean): Promise<StateRow> {
@@ -67,18 +76,19 @@ async function loadStation(q: Queryable, state: StateRow, library: string[]): Pr
 
 const startedAtOf = (state: StateRow): number | null => (state.started_at_ms === null ? null : Number(state.started_at_ms));
 
-function hasEnded(state: StateRow, songs: Map<string, Song>, now: number): boolean {
-  const song = state.current_video_id ? songs.get(state.current_video_id) : undefined;
+function hasEnded(state: StateRow, catalog: Catalog, now: number): boolean {
+  const song = state.current_video_id ? catalog.songs.get(state.current_video_id) : undefined;
   const startedAt = startedAtOf(state);
   if (!song || startedAt === null) return true;
   return now >= startedAt + song.durationSec * 1000;
 }
 
-async function describe(q: Queryable, state: StateRow, songs: Map<string, Song>, now: number): Promise<NowPlaying> {
+async function describe(q: Queryable, state: StateRow, catalog: Catalog, now: number): Promise<NowPlaying> {
+  const { songs } = catalog;
   const startedAt = startedAtOf(state);
   const current = state.current_video_id ? (songs.get(state.current_video_id) ?? null) : null;
   if (!current || startedAt === null) return { current: null, startedAt: null, next: null, serverNow: now };
-  const station = await loadStation(q, state, [...songs.keys()]);
+  const station = await loadStation(q, state, catalog.library);
   const nextId = advance(station, station.library, seededRandom(startedAt)).id;
   return { current, startedAt, next: nextId ? (songs.get(nextId) ?? null) : null, serverNow: now };
 }
@@ -91,12 +101,12 @@ async function advanceOnce(db: Db, clock: Clock): Promise<NowPlaying> {
     await client.query("begin");
     const state = await loadState(client, true);
     const now = clock(); // read after the lock: a waiter must not report a time before the winner's startedAt
-    const songs = await loadSongs(client);
-    if (!hasEnded(state, songs, now)) {
+    const catalog = await loadSongs(client);
+    if (!hasEnded(state, catalog, now)) {
       await client.query("commit");
-      return await describe(client, state, songs, now);
+      return await describe(client, state, catalog, now);
     }
-    const next = await writeAdvance(client, state, songs, now);
+    const next = await writeAdvance(client, state, catalog, now);
     await client.query("commit");
     return next;
   } catch (error) {
@@ -107,8 +117,8 @@ async function advanceOnce(db: Db, clock: Clock): Promise<NowPlaying> {
   }
 }
 
-async function writeAdvance(client: Queryable, state: StateRow, songs: Map<string, Song>, now: number): Promise<NowPlaying> {
-  const station = await loadStation(client, state, [...songs.keys()]);
+async function writeAdvance(client: Queryable, state: StateRow, catalog: Catalog, now: number): Promise<NowPlaying> {
+  const station = await loadStation(client, state, catalog.library);
   const seed = startedAtOf(state) ?? now;
   const step = advance(station, station.library, seededRandom(seed));
   if (step.id !== null) await consumeQueueHead(client, station, step.id);
@@ -117,7 +127,7 @@ async function writeAdvance(client: Queryable, state: StateRow, songs: Map<strin
   await client.query("update station_state set current_video_id = $1, started_at_ms = $2, cycle = $3 where id = 1", [step.id, startedAt, cycle]);
   if (step.id !== null) await client.query("insert into play_history (video_id, started_at_ms) values ($1, $2)", [step.id, now]);
   const fresh: StateRow = { current_video_id: step.id, started_at_ms: startedAt === null ? null : String(startedAt), cycle };
-  return describe(client, fresh, songs, now);
+  return describe(client, fresh, catalog, now);
 }
 
 async function consumeQueueHead(client: Queryable, before: Station, playedId: string): Promise<void> {
@@ -128,9 +138,39 @@ async function consumeQueueHead(client: Queryable, before: Station, playedId: st
 export async function getNowPlaying(db: Db, clock: Clock): Promise<NowPlaying> {
   const now = clock();
   const state = await loadState(db, false);
-  const songs = await loadSongs(db);
-  if (!hasEnded(state, songs, now)) return describe(db, state, songs, now);
+  const catalog = await loadSongs(db);
+  if (!hasEnded(state, catalog, now)) return describe(db, state, catalog, now);
   return advanceOnce(db, clock);
+}
+
+export type SkipResult = { skipped: true; now: NowPlaying; from: Song | null } | { skipped: false; current: string | null };
+
+/** Owner skip. Takes the same row lock as the lazy advance, so a skip and a natural advance move the
+ * station once between them: whoever is second sees a different current song and changes nothing. */
+export async function skipCurrent(db: Db, expectedVideoId: string, clock: Clock): Promise<SkipResult> {
+  const client = await db.connect();
+  try {
+    await client.query("begin");
+    const state = await loadState(client, true);
+    if (state.current_video_id !== expectedVideoId) {
+      await client.query("rollback");
+      return { skipped: false, current: state.current_video_id };
+    }
+    const now = clock();
+    const catalog = await loadSongs(client);
+    const from = catalog.songs.get(expectedVideoId) ?? null; // null: the playing song was hard-deleted (upkeep)
+    const next = await writeAdvance(client, state, catalog, now);
+    await client.query("insert into activity_log (who, what, details) values ('owner', 'skip', $1)", [
+      { skipped: { videoId: expectedVideoId, title: from?.title ?? null }, next: next.current && { videoId: next.current.videoId, title: next.current.title } },
+    ]);
+    await client.query("commit");
+    return { skipped: true, now: next, from };
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export const MAX_CACHE_SECONDS = 15; // listeners re-check about every 30s, so owner skips show up quickly

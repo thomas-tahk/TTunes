@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { cookieHeader, isOwnerId, issueSession, parseCookies, redirect, sendJson, SESSION_COOKIE, SESSION_SECONDS, STATE_COOKIE, statesMatch } from "../../../lib/auth.ts";
-import { sharedDb } from "../../../lib/db.ts";
+import { cookieHeader, isOwnerId, issueSession, parseCookies, redirect, sendJson, SESSION_COOKIE, SESSION_SECONDS, STATE_COOKIE, statesMatch } from "../../auth.ts";
+import { sharedDb } from "../../db.ts";
 
 async function githubUserId(code: string): Promise<number> {
   const tokenRes = await fetch("https://github.com/login/oauth/access_token", {

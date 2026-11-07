@@ -1,5 +1,6 @@
 import type { Db } from "./db.ts";
-import { fetchVideos, type VideoInfo } from "./youtube.ts";
+import { lockStation } from "./lock.ts";
+import { fetchVideos, QuotaExceededError, type VideoInfo } from "./youtube.ts";
 
 export const LONG_SEC = 15 * 60;
 export type Position = "next" | "queue";
@@ -18,7 +19,7 @@ export async function lookupVideo(videoId: string): Promise<Lookup> {
     info = (await fetchVideos([videoId])).get(videoId);
   } catch (error) {
     console.error("YouTube lookup failed", error);
-    if (isQuotaError(error)) return refuse(503, "YouTube's daily limit is used up — try again tomorrow.");
+    if (error instanceof QuotaExceededError) return refuse(503, "YouTube's daily limit is used up — try again tomorrow.");
     return refuse(502, "Couldn't reach YouTube. Try again in a moment.");
   }
   if (!info) return refuse(404, "YouTube has no public video with that link.");
@@ -30,9 +31,6 @@ export async function lookupVideo(videoId: string): Promise<Lookup> {
 
 export type Inserted = { ok: true } | { ok: false; status: number; message: string };
 
-// Quota errors: match by name or HTTP 403 text so this merges cleanly with the QuotaExceededError class from the search branch.
-const isQuotaError = (error: unknown): boolean => error instanceof Error && (error.name === "QuotaExceededError" || /HTTP 403/.test(error.message));
-
 /**
  * Adds to the library and queue in one transaction; the station_state row lock (as in schedule.ts) serialises concurrent adds.
  * Mirrors the Mac rules (shared/station.ts): the song playing now is refused; a song already queued moves instead of duplicating.
@@ -41,23 +39,24 @@ export async function insertSong(db: Db, info: PlayableVideo, position: Position
   const client = await db.connect();
   try {
     await client.query("begin");
-    await client.query("insert into station_state (id) values (1) on conflict do nothing");
-    const { rows } = await client.query("select current_video_id from station_state where id = 1 for update");
+    await lockStation(client);
+    const { rows } = await client.query("select current_video_id from station_state where id = 1");
     if (rows[0]?.current_video_id === info.videoId) {
       await client.query("rollback");
       return { ok: false, status: 422, message: "That's playing right now." };
     }
-    // TODO(controls branch): when songs gets deleted_at, also set deleted_at = null here so re-adding a trashed song restores it.
+    const trashed = (await client.query("select 1 from songs where video_id = $1 and deleted_at is not null", [info.videoId])).rowCount === 1;
     await client.query(
       `insert into songs (video_id, title, duration_sec, metadata_refreshed_at) values ($1, $2, $3, now())
-       on conflict (video_id) do update set title = excluded.title, duration_sec = excluded.duration_sec, metadata_refreshed_at = now()`,
+       on conflict (video_id) do update set title = excluded.title, duration_sec = excluded.duration_sec, metadata_refreshed_at = now(), deleted_at = null`,
       [info.videoId, info.title, info.durationSec],
     );
+    await client.query("delete from trash_queue where video_id = $1", [info.videoId]); // re-adding a trashed song is its restore
     await client.query("delete from queue where video_id = $1", [info.videoId]);
     const place = position === "next" ? "coalesce(min(position) - 1, 0)" : "coalesce(max(position) + 1, 0)";
     await client.query(`insert into queue (video_id, position) select $1::text, ${place} from queue`, [info.videoId]);
     await client.query("insert into activity_log (who, what, details) values ('owner', 'song_added', $1)", [
-      { videoId: info.videoId, title: info.title, position },
+      { videoId: info.videoId, title: info.title, position, ...(trashed ? { restoredFromTrash: true } : {}) },
     ]);
     await client.query("commit");
     return { ok: true };

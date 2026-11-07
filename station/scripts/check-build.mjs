@@ -21,7 +21,14 @@ function funcDirs(dir) {
     return e.name.endsWith(".func") ? [full] : funcDirs(full);
   });
 }
-for (const dir of funcDirs(resolve(functionsRoot, "api"))) {
+const MAX_FUNCTIONS = 12; // Vercel Hobby: 12 functions per deployment, one per file in api/
+const dirs = funcDirs(resolve(functionsRoot, "api"));
+if (dirs.length > MAX_FUNCTIONS) {
+  console.error(`FAIL: ${dirs.length} functions built, Vercel Hobby allows ${MAX_FUNCTIONS}. Fold endpoints into a router (api/owner.ts).`);
+  process.exit(1);
+}
+console.log(`function count: ${dirs.length} (limit ${MAX_FUNCTIONS})`);
+for (const dir of dirs) {
   const file = resolve(dir, `${dir.slice(functionsRoot.length + 1).replace(/\.func$/, "")}.js`);
   const mod = await import(pathToFileURL(file).href);
   if (typeof mod.default !== "function") throw new Error(`${file} has no default handler`);

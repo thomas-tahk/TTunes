@@ -2,10 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from "node:net";
 import { SignJWT } from "jose";
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
-import callback from "../api/auth/github/callback.ts";
-import login from "../api/auth/github/login.ts";
-import me from "../api/auth/me.ts";
-import signoutAll from "../api/auth/signout-all.ts";
+import authApi from "../api/auth.ts";
 import { currentSessionVersion, requireOwner } from "../lib/auth.ts";
 import { createDb, sharedDb } from "../lib/db.ts";
 import { migrate } from "../lib/migrate.ts";
@@ -17,10 +14,10 @@ const realFetch = globalThis.fetch;
 
 type H = (req: IncomingMessage, res: ServerResponse) => unknown;
 const routes: Record<string, H> = {
-  "/api/auth/github/login": login,
-  "/api/auth/github/callback": callback,
-  "/api/auth/me": me,
-  "/api/auth/signout-all": signoutAll,
+  "/api/auth/github/login": authApi,
+  "/api/auth/github/callback": authApi,
+  "/api/auth/me": authApi,
+  "/api/auth/signout-all": authApi,
 };
 
 beforeAll(async () => {

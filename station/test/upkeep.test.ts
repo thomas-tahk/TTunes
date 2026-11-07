@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import refresh from "../api/cron/refresh.ts";
-import ownerExport from "../api/owner/export.ts";
+import ownerApi from "../api/owner.ts";
 import { issueSession, SESSION_COOKIE } from "../lib/auth.ts";
 import { createDb, sharedDb } from "../lib/db.ts";
 import { migrate } from "../lib/migrate.ts";
@@ -17,7 +17,7 @@ const youtubeCalls: URL[] = [];
 let youtube: Record<string, { title: string; duration: string; embeddable: boolean }> = {};
 
 type H = (req: IncomingMessage, res: ServerResponse) => unknown;
-const routes: Record<string, H> = { "/api/cron/refresh": refresh, "/api/owner/export": ownerExport };
+const routes: Record<string, H> = { "/api/cron/refresh": refresh, "/api/owner/export": ownerApi };
 
 beforeAll(async () => {
   process.env.SESSION_SECRET = "test-secret-test-secret-test-secret";

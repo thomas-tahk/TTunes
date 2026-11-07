@@ -31,6 +31,8 @@ const catalog = {
 let youtubeCalls = 0;
 const youtubeStub = createServer((req, res) => {
   youtubeCalls++;
+  res.setHeader("Content-Type", "application/json");
+  if (new URL(req.url, "http://x").pathname.endsWith("/search")) return res.end(JSON.stringify({ items: [] }));
   const ids = new URL(req.url, "http://x").searchParams.get("id").split(",");
   const items = ids.filter((id) => catalog[id]).map((id) => ({
     id,
@@ -42,7 +44,7 @@ const youtubeStub = createServer((req, res) => {
   res.end(JSON.stringify({ items }));
 });
 await new Promise((r) => youtubeStub.listen(0, "127.0.0.1", r));
-const stubUrl = `http://127.0.0.1:${youtubeStub.address().port}/youtube/v3/videos`;
+const stubUrl = `http://127.0.0.1:${youtubeStub.address().port}/youtube/v3`;
 
 const env = { ...process.env, DATABASE_URL: DB_URL, SESSION_SECRET: SECRET, YOUTUBE_API_KEY: "stub", YOUTUBE_API_BASE_URL: stubUrl };
 const run = (cmd) => new Promise((ok, bad) => spawn("npm", ["run", cmd], { env, stdio: "ignore" }).on("exit", (c) => (c === 0 ? ok() : bad(new Error(`${cmd} failed`)))));
