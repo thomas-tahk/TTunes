@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { NowPlaying } from "../../lib/schedule.ts";
 import { OwnerPanel, SignInLink, useOwner } from "./OwnerPanel.tsx";
 import { Player } from "./Player.tsx";
+import { shouldPoll } from "./timing.ts";
 import { useStation } from "./useStation.ts";
 import { Visualizer } from "./Visualizer.tsx";
 
@@ -32,9 +33,10 @@ function Message({ title, body, action }: { title: string; body: string; action?
 }
 
 export function App() {
-  const { view, serverTime, retry, show } = useStation();
   const [started, setStarted] = useState(false);
+  const [paused, setPaused] = useState(false);
   const owner = useOwner();
+  const { view, serverTime, retry, show } = useStation(shouldPoll({ started, paused, owner }));
 
   let body;
   if (view.status === "loading") body = <Message title="Tuning in" body="Finding out what's on air." />;
@@ -45,7 +47,7 @@ export function App() {
     body = (
       <>
         <Visualizer active={started}>
-          {started ? <Player playing={view.playing} serverTime={serverTime} /> : <div className="player-frame idle" />}
+          {started ? <Player playing={view.playing} serverTime={serverTime} onPausedChange={setPaused} /> : <div className="player-frame idle" />}
         </Visualizer>
         <Titles playing={view.playing} />
         {!started && (

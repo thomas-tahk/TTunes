@@ -19,6 +19,15 @@ export function hasEnded(p: NowPlaying, serverTime: number): boolean {
   return end === null || serverTime >= end;
 }
 
+/** The 30s re-check and song-end fetches run only while someone is actually listening (Play clicked, not paused), or on an owner tab,
+ * whose Skip/Move/Remove need a current view. A forgotten listener tab must not keep the DB awake. */
+export const shouldPoll = (s: { started: boolean; paused: boolean; owner?: boolean }): boolean => s.owner === true || (s.started && !s.paused);
+
+export const FRESH_MS = 5_000; // a response this young needs no refetch on resume; the player flips pause/play while it loads each song
+
+/** On Play or unpause: refetch to rejoin live, unless the last response is only seconds old (then just keep its schedule). */
+export const refetchOnResume = (sinceLastFetchMs: number): boolean => sinceLastFetchMs >= FRESH_MS;
+
 export const MAX_STALE_RETRIES = 3;
 
 export interface FetchPlanIo {

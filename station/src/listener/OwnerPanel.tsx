@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { NowPlaying } from "../../lib/schedule.ts";
+import { OwnerAccount } from "./OwnerAccount.tsx";
 import { OwnerControls } from "./OwnerControls.tsx";
 import { call, messageOf, minutes, NETWORK_MESSAGE } from "./ownerFetch.ts";
 import { OwnerSearch, type SearchPick } from "./OwnerSearch.tsx";
@@ -110,7 +111,7 @@ export function OwnerPanel({ playing, onPlaying }: { playing: NowPlaying | null;
             <div className="owner-confirm" role="alert">
               <p>{step.question}</p>
               <div className="owner-actions">
-                <button type="button" className="btn small" onClick={() => void add(preview, step.position, true)}>
+                <button type="button" className="btn small" autoFocus onClick={() => void add(preview, step.position, true)}>
                   Add anyway
                 </button>
                 <button type="button" className="btn small ghost" onClick={() => setStep({ kind: "preview", preview })}>
@@ -122,6 +123,7 @@ export function OwnerPanel({ playing, onPlaying }: { playing: NowPlaying | null;
         </div>
       )}
       <OwnerControls playing={playing} changes={adds} onPlaying={onPlaying} />
+      <OwnerAccount />
     </section>
   );
 }

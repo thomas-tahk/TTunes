@@ -66,7 +66,12 @@ export function OwnerControls({ playing, changes, onPlaying }: Props) {
   }
 
   const current = playing?.current?.videoId;
-  const skip = () => act(() => call("POST", "/api/owner/skip", { expectedVideoId: current }), { text: "Skipped." }, "That song had already moved on. Refreshed.");
+  // /api/owner/skip answers with the bare NowPlaying on 200 (the others wrap it as {playing}), so wrap it for apply().
+  const skipCall = async (): Promise<Reply> => {
+    const reply = await call("POST", "/api/owner/skip", { expectedVideoId: current });
+    return reply.status === 200 ? { status: 200, body: { playing: reply.body } } : reply;
+  };
+  const skip = () => act(skipCall, { text: "Skipped." }, "That song had already moved on. Refreshed.");
   const move = (r: QueueRow, toIndex: number) => act(() => call("POST", "/api/owner/queue/move", { queueId: r.queueId, toIndex }), null);
   const unqueue = (r: QueueRow) => act(() => call("DELETE", "/api/owner/queue", { queueId: r.queueId }), { text: `Removed "${r.title}" from the queue.` });
   const trash = (s: SongRow) => act(() => call("DELETE", "/api/owner/songs", { videoId: s.videoId }), { text: `Deleted "${s.title}".`, undo: s });
