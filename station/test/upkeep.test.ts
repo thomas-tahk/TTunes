@@ -39,7 +39,7 @@ beforeEach(async () => {
   youtubeCalls.length = 0;
   youtube = {};
   const db = sharedDb();
-  await db.query("truncate songs, queue, activity_log, library_exports restart identity cascade");
+  await db.query("truncate songs, queue, activity_log, library_exports, requests, request_attempts, station_state, play_history restart identity cascade");
   vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input));
     if (url.hostname === "www.googleapis.com") {
@@ -209,7 +209,26 @@ it("a 40-day-old playing request whose song ended is gone after the cron", async
   await db.query("insert into station_state (id, current_video_id, started_at_ms) values (1, 'endedPlay01', $1) on conflict (id) do update set current_video_id = 'endedPlay01', started_at_ms = $1", [Date.now() - 3600_000]);
   expect((await cron("Bearer cron-secret-123")).status).toBe(200);
   expect((await db.query("select 1 from requests")).rowCount).toBe(0);
-  await db.query("truncate requests, request_attempts, station_state cascade");
+  await addSong("nextSong001", 1); // the next visit moves the station on cleanly, even though the ended song's row is gone
+  const now = await getNowPlaying(db, Date.now);
+  expect(now.current?.videoId).toBe("nextSong001");
+});
+
+it("an old played or expired row retires even when its video is on air", async () => {
+  const db = sharedDb();
+  for (const status of ["played", "expired"]) {
+    await db.query("insert into requests (video_id, title, duration_sec, name, status, listener_id, created_at) values ('onAirSong01', 'T', 1000, 'Sam', $1, 'l', now() - interval '40 days')", [status]);
+  }
+  await db.query("insert into station_state (id, current_video_id, started_at_ms) values (1, 'onAirSong01', $1)", [Date.now() - 1000]);
+  expect((await cron("Bearer cron-secret-123")).status).toBe(200);
+  expect((await db.query("select 1 from requests")).rowCount).toBe(0);
+});
+
+it("an old waiting request is expired and deleted by the retirement itself", async () => {
+  const db = sharedDb();
+  await db.query("insert into requests (video_id, title, duration_sec, name, status, listener_id, created_at) values ('oldWait0001', 'T', 100, 'Sam', 'waiting', 'l', now() - interval '31 days')");
+  expect((await cron("Bearer cron-secret-123")).status).toBe(200);
+  expect((await db.query("select 1 from requests")).rowCount).toBe(0);
 });
 
 it("the request on air is never deleted or expired mid-song, whatever its status", async () => {

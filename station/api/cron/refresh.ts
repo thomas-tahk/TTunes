@@ -3,7 +3,6 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { sendJson } from "../../lib/auth.ts";
 import { sharedDb } from "../../lib/db.ts";
 import { expireStale, purgeOldIpHashes, retireOldRequests } from "../../lib/requests.ts";
-import { getNowPlaying } from "../../lib/schedule.ts";
 import { purgeTrash, refreshStale, storeExport, stripOldActivityTitles } from "../../lib/upkeep.ts";
 
 // Vercel sends `Authorization: Bearer ${CRON_SECRET}` on cron invocations. No secret configured = nobody gets in.
@@ -57,12 +56,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     failures.push("requests");
   }
   try {
-    await retireOldRequests(db, Date.now); // first, so the advance below can never start a stale queued request
-    const onAir = (await db.query("select 1 from station_state where current_video_id is not null")).rowCount;
-    if (onAir) {
-      await getNowPlaying(db, Date.now); // moves the station on if the song has ended, so an ended request is `played`...
-      await retireOldRequests(db, Date.now); // ...and then retires
-    }
+    await retireOldRequests(db, Date.now);
   } catch (error) {
     console.error("cron old-request retirement failed", error);
     failures.push("old-requests");
