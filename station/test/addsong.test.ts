@@ -250,4 +250,35 @@ describe("owner endpoints", () => {
     const odd = await post("/api/owner/preview", { url: "nullLength1" });
     expect(((await odd.json()) as { error: string }).error).toBe("YouTube didn't give a usable length for that video.");
   });
+
+  const stubYoutube403 = (reason?: string) =>
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) =>
+      String(input).startsWith("https://www.googleapis.com")
+        ? Response.json(reason ? { error: { errors: [{ reason }] } } : { error: {} }, { status: 403 })
+        : realFetch(input, init));
+
+  it("a rate limit (not the daily quota) says busy, not 'daily limit'", async () => {
+    for (const reason of ["rateLimitExceeded", "userRateLimitExceeded"]) {
+      stubYoutube403(reason);
+      const res = await post("/api/owner/preview", { url: ID });
+      expect(res.status).toBe(503);
+      expect(((await res.json()) as { error: string }).error).toBe("YouTube is busy — try again shortly.");
+    }
+  });
+
+  it("a plain 403 on preview is a 502", async () => {
+    stubYoutube403();
+    expect((await post("/api/owner/preview", { url: ID })).status).toBe(502);
+  });
+
+  it("re-adding a trashed song that is playing restores it to the library", async () => {
+    await sharedDb().query("insert into songs (video_id, title, duration_sec) values ('seedSong001','Seed',100)");
+    const current = (await nowJson()).current!.videoId;
+    await sharedDb().query("update songs set deleted_at = now() where video_id = $1", [current]);
+    catalog[current] = { title: "Seed", duration: "PT1M40S" };
+    expect((await add(current, "queue")).status).toBe(200);
+    expect((await sharedDb().query("select deleted_at from songs where video_id = $1", [current])).rows[0].deleted_at).toBeNull();
+    expect((await sharedDb().query("select count(*)::int as n from queue")).rows[0].n).toBe(0);
+    delete catalog[current];
+  });
 });
