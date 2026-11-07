@@ -318,10 +318,10 @@ describe("expiry, moderation, purge (fake clock)", () => {
     await ask(newListener("1.1.1.1"), "gamingVid01");
     await ask(newListener("1.1.1.2"), "musicTwelve");
     const [gaming, twelve] = (await db.query("select id from requests order by id")).rows.map((r) => Number(r.id));
-    expect(await moderate(db, twelve, "deny", Date.now)).toBe(true);
-    expect(await moderate(db, twelve, "deny", Date.now)).toBe(false); // already decided
-    expect(await moderate(db, gaming, "remove", Date.now)).toBe(false); // not queued yet
-    expect(await moderate(db, gaming, "approve", Date.now)).toBe(true);
+    expect((await moderate(db, twelve, "deny", Date.now)).ok).toBe(true);
+    expect((await moderate(db, twelve, "deny", Date.now)).ok).toBe(false); // already decided
+    expect((await moderate(db, gaming, "keep", Date.now)).ok).toBe(false); // not played yet
+    expect((await moderate(db, gaming, "approve", Date.now)).ok).toBe(true);
     expect((await nowJson()).current?.videoId).toBe("gamingVid01");
     expect(await statuses()).toEqual(["gamingVid01:playing", "musicTwelve:denied"]);
     expect((await db.query("select what from activity_log order by id")).rows.map((r) => r.what)).toEqual(["request_deny", "request_approve"]);

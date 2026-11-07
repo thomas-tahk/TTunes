@@ -1,5 +1,5 @@
 import type pg from "pg";
-import { LONG_SEC, lookupVideo, thumbnailOf } from "./addSong.ts";
+import { addToLibrary, LONG_SEC, lookupVideo, thumbnailOf } from "./addSong.ts";
 import type { Db } from "./db.ts";
 import { lockStation } from "./lock.ts";
 import type { Clock } from "./schedule.ts";
@@ -233,34 +233,116 @@ export async function setMode(db: Db, mode: Mode): Promise<void> {
   }
 }
 
-export type Moderation = "approve" | "deny" | "remove";
-const MODERATION: Record<Moderation, { from: string; to: string }> = {
-  approve: { from: "waiting", to: "queued" },
-  deny: { from: "waiting", to: "denied" },
-  remove: { from: "queued", to: "denied" },
+export type Moderation = "approve" | "deny" | "remove" | "keep";
+export const MODERATIONS: readonly Moderation[] = ["approve", "deny", "remove", "keep"];
+type StatusMove = { from: string[]; to: string };
+const MODERATION: Record<Exclude<Moderation, "keep">, StatusMove> = {
+  approve: { from: ["waiting"], to: "queued" }, // joins the back of the requests line (queued_at = now)
+  deny: { from: ["waiting"], to: "denied" },
+  remove: { from: ["waiting", "queued", "playing", "played", "expired"], to: "denied" }, // takes down any text; a playing song keeps playing, only its row leaves the feed
 };
 
-/** approve (waiting -> queued), deny (waiting -> denied) or remove (queued -> denied). False when the request is not in the right state. */
-export async function moderate(db: Db, id: number, action: Moderation, clock: Clock): Promise<boolean> {
+export type ModerationResult =
+  | { ok: true; request: FeedItem; alreadyInLibrary?: true }
+  | { ok: false; status: 404 | 409; error: string; request?: FeedItem; code?: "already_coming_up" };
+
+const REQUEST_COLUMNS = "id, name, dedication, video_id, title, duration_sec, created_at, status";
+async function readRequest(q: Queryable, id: number): Promise<FeedItem | null> {
+  const { rows } = await q.query(`select ${REQUEST_COLUMNS} from requests where id = $1`, [id]);
+  return rows[0] ? toFeedItem(rows[0]) : null;
+}
+
+/** approve (waiting -> queued), deny (waiting -> denied), remove (anything not denied -> denied), keep (played or playing: song joins the library). 409 with the current request when its state does not allow the action. */
+export async function moderate(db: Db, id: number, action: Moderation, clock: Clock): Promise<ModerationResult> {
+  return action === "keep" ? keepRequest(db, id) : moveRequest(db, id, action, clock);
+}
+
+async function moveRequest(db: Db, id: number, action: Exclude<Moderation, "keep">, clock: Clock): Promise<ModerationResult> {
   const rule = MODERATION[action];
   const client = await db.connect();
   try {
     await client.query("begin");
     await lockStation(client);
-    const now = at(clock());
+    const now = clock();
+    await expireWaiting(client, now); // a 25h-old waiting request is expired, not approvable
+    if (action === "approve" && (await comingUpElsewhere(client, id))) {
+      const request = await readRequest(client, id);
+      await client.query("commit");
+      return request ? { ok: false, status: 409, error: "That song is already coming up.", code: "already_coming_up", request } : { ok: false, status: 404, error: "No such request." };
+    }
     const { rows } = await client.query(
-      "update requests set status = $2::text, decided_at = $3, queued_at = case when $2::text = 'queued' then $3::timestamptz else queued_at end where id = $1 and status = $4 returning video_id, title, name",
-      [id, rule.to, now, rule.from],
+      `update requests set status = $2::text, decided_at = $3, queued_at = case when $2::text = 'queued' then $3::timestamptz else queued_at end where id = $1 and status = any($4::text[]) returning video_id, title, name`,
+      [id, rule.to, at(now), rule.from],
     );
     if (rows[0]) await client.query("insert into activity_log (who, what, details) values ('owner', $1, $2)", [`request_${action}`, { id, videoId: rows[0].video_id, title: rows[0].title, name: rows[0].name }]);
+    const request = await readRequest(client, id);
     await client.query("commit");
-    return rows.length === 1;
+    if (rows[0] && request) return { ok: true, request };
+    return request ? { ok: false, status: 409, error: `That request is ${request.status}; ${action} doesn't apply.`, request } : { ok: false, status: 404, error: "No such request." };
   } catch (error) {
     await client.query("rollback").catch(() => undefined);
     throw error;
   } finally {
     client.release();
   }
+}
+
+/** The listeners' "already coming up" rule for an approval: the waiting request's song is playing now, in the owner queue, or queued as another request. */
+async function comingUpElsewhere(q: Queryable, id: number): Promise<boolean> {
+  const { rowCount } = await q.query(
+    `select 1 from requests r where r.id = $1 and r.status = 'waiting' and (
+       r.video_id = (select current_video_id from station_state where id = 1)
+       or exists (select 1 from queue where video_id = r.video_id)
+       or exists (select 1 from requests o where o.video_id = r.video_id and o.id <> r.id and o.status in ('queued', 'playing')))`,
+    [id],
+  );
+  return (rowCount ?? 0) > 0;
+}
+
+/** Keep: a played or playing request's song joins the library, in one transaction with the status re-check and the logs (idempotent; stored metadata, no YouTube call). */
+async function keepRequest(db: Db, id: number): Promise<ModerationResult> {
+  const client = await db.connect();
+  try {
+    await client.query("begin");
+    await lockStation(client);
+    const { rows } = await client.query("select status, video_id, title, duration_sec from requests where id = $1", [id]);
+    const row = rows[0];
+    if (!row || (row.status !== "played" && row.status !== "playing")) {
+      const request = await readRequest(client, id);
+      await client.query("commit");
+      return request ? { ok: false, status: 409, error: `That request is ${request.status}; only played ones can be kept.`, request } : { ok: false, status: 404, error: "No such request." };
+    }
+    const added = await addToLibrary(client, { videoId: row.video_id, title: row.title, durationSec: row.duration_sec, embeddable: true, categoryId: "", channelTitle: "" });
+    await client.query("insert into activity_log (who, what, details) values ('owner', 'request_keep', $1)", [{ id, videoId: row.video_id, title: row.title, alreadyInLibrary: !added }]);
+    const request = (await readRequest(client, id))!;
+    await client.query("commit");
+    return { ok: true, request, ...(!added && { alreadyInLibrary: true as const }) };
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/** Live waiting requests, one count query (for the badge in every moderate response). */
+export async function countWaiting(q: Queryable, clock: Clock): Promise<number> {
+  const { rows } = await q.query("select count(*)::int as n from requests where status = 'waiting' and created_at > $1", [at(clock() - WAIT_EXPIRY_MS)]);
+  return rows[0].n;
+}
+
+export interface ModerationList {
+  mode: Mode;
+  waitingCount: number;
+  waiting: FeedItem[];
+  requests: FeedItem[];
+}
+
+/** For the owner: every live waiting request (oldest first, with its count) plus the public feed's recent requests, all with ids and statuses. */
+export async function listForModeration(db: Db, clock: Clock): Promise<ModerationList> {
+  const { rows } = await db.query(`select ${REQUEST_COLUMNS} from requests where status = 'waiting' and created_at > $1 order by id`, [at(clock() - WAIT_EXPIRY_MS)]);
+  const waiting = rows.map(toFeedItem);
+  return { ...(await listFeed(db, clock)), waitingCount: waiting.length, waiting };
 }
 
 // --- public reads (#30). Read-only: a waiting request past 24h shows as expired before the daily cron marks it.
@@ -279,6 +361,18 @@ export interface FeedItem {
   createdAt: string;
 }
 
+const toFeedItem = (r: any): FeedItem => ({
+  id: Number(r.id),
+  name: r.name,
+  dedication: r.dedication,
+  videoId: r.video_id,
+  title: r.title,
+  durationSec: r.duration_sec,
+  thumbnail: thumbnailOf(r.video_id),
+  status: r.status,
+  createdAt: r.created_at.toISOString(),
+});
+
 /** The last 30 requests, newest first, public fields only. Denied requests are left out. */
 export async function listFeed(db: Db, clock: Clock): Promise<{ mode: Mode; requests: FeedItem[] }> {
   const { rows } = await db.query(
@@ -287,18 +381,7 @@ export async function listFeed(db: Db, clock: Clock): Promise<{ mode: Mode; requ
        from requests where status <> 'denied' order by id desc limit $2`,
     [at(clock() - WAIT_EXPIRY_MS), FEED_LIMIT],
   );
-  const requests = rows.map((r) => ({
-    id: Number(r.id),
-    name: r.name,
-    dedication: r.dedication,
-    videoId: r.video_id,
-    title: r.title,
-    durationSec: r.duration_sec,
-    thumbnail: thumbnailOf(r.video_id),
-    status: r.status,
-    createdAt: r.created_at.toISOString(),
-  }));
-  return { mode: await getMode(db), requests };
+  return { mode: await getMode(db), requests: rows.map(toFeedItem) };
 }
 
 export interface MyRequest {
