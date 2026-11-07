@@ -6,7 +6,7 @@ import callback from "../api/auth/github/callback.ts";
 import login from "../api/auth/github/login.ts";
 import me from "../api/auth/me.ts";
 import signoutAll from "../api/auth/signout-all.ts";
-import { requireOwner } from "../lib/auth.ts";
+import { currentSessionVersion, requireOwner } from "../lib/auth.ts";
 import { createDb, sharedDb } from "../lib/db.ts";
 import { migrate } from "../lib/migrate.ts";
 
@@ -67,6 +67,7 @@ async function ownerCookie(): Promise<string> {
   return res.headers.getSetCookie().find((c) => c.startsWith("ttunes_session="))!.split(";")[0]!;
 }
 
+const ver = () => currentSessionVersion(sharedDb());
 const post = (cookie?: string) => fetch(`${base}/api/auth/signout-all`, { method: "POST", headers: cookie ? { cookie } : {} });
 
 it("refuses a different GitHub account and sets no session cookie", async () => {
@@ -105,7 +106,7 @@ it("signout-all is 401 with no cookie, a tampered cookie, or a forged one", asyn
   expect((await post()).status).toBe(401);
   const good = await ownerCookie();
   expect((await post(good.slice(0, -3) + "AAA")).status).toBe(401);
-  const forged = await new SignJWT({ ver: 1 }).setProtectedHeader({ alg: "HS256" }).setSubject("10647431").setExpirationTime("1h").sign(new TextEncoder().encode("other-secret-other-secret-other"));
+  const forged = await new SignJWT({ ver: await ver() }).setProtectedHeader({ alg: "HS256" }).setSubject("10647431").setExpirationTime("1h").sign(new TextEncoder().encode("other-secret-other-secret-other"));
   expect((await post(`ttunes_session=${forged}`)).status).toBe(401);
 });
 
@@ -139,12 +140,17 @@ it("login redirects to GitHub with client_id and a state matching the cookie", a
 const secret = () => new TextEncoder().encode(process.env.SESSION_SECRET);
 const meWith = async (cookie: string) => (await (await fetch(`${base}/api/auth/me`, { headers: { cookie } })).json()) as { owner: boolean };
 
+it("control: a hand-signed HS256 token with owner sub, current version and exp is accepted", async () => {
+  const good = await new SignJWT({ ver: await ver() }).setProtectedHeader({ alg: "HS256" }).setSubject("10647431").setExpirationTime("1h").sign(secret());
+  expect(await meWith(`ttunes_session=${good}`)).toEqual({ owner: true });
+});
+
 it("refuses alg:none, wrong-alg, expired and exp-less tokens without a 500", async () => {
   const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString("base64url");
-  const none = `${b64({ alg: "none", typ: "JWT" })}.${b64({ sub: "10647431", ver: 1, exp: 9999999999 })}.`;
-  const hs512 = await new SignJWT({ ver: 1 }).setProtectedHeader({ alg: "HS512" }).setSubject("10647431").setExpirationTime("1h").sign(secret());
-  const expired = await new SignJWT({ ver: 1 }).setProtectedHeader({ alg: "HS256" }).setSubject("10647431").setExpirationTime(Math.floor(Date.now() / 1000) - 60).sign(secret());
-  const noExp = await new SignJWT({ ver: 1 }).setProtectedHeader({ alg: "HS256" }).setSubject("10647431").sign(secret());
+  const none = `${b64({ alg: "none", typ: "JWT" })}.${b64({ sub: "10647431", ver: await ver(), exp: 9999999999 })}.`;
+  const hs512 = await new SignJWT({ ver: await ver() }).setProtectedHeader({ alg: "HS512" }).setSubject("10647431").setExpirationTime("1h").sign(secret());
+  const expired = await new SignJWT({ ver: await ver() }).setProtectedHeader({ alg: "HS256" }).setSubject("10647431").setExpirationTime(Math.floor(Date.now() / 1000) - 60).sign(secret());
+  const noExp = await new SignJWT({ ver: await ver() }).setProtectedHeader({ alg: "HS256" }).setSubject("10647431").sign(secret());
   for (const token of [none, hs512, expired, noExp]) {
     expect(await meWith(`ttunes_session=${token}`)).toEqual({ owner: false });
     expect((await post(`ttunes_session=${token}`)).status).toBe(401);
@@ -169,7 +175,7 @@ it("rejects a SESSION_SECRET shorter than 32 bytes", async () => {
 });
 
 it("refuses a correctly signed token for a different subject", async () => {
-  const other = await new SignJWT({ ver: 1 }).setProtectedHeader({ alg: "HS256" }).setSubject("1").setExpirationTime("1h").sign(secret());
+  const other = await new SignJWT({ ver: await ver() }).setProtectedHeader({ alg: "HS256" }).setSubject("1").setExpirationTime("1h").sign(secret());
   expect(await meWith(`ttunes_session=${other}`)).toEqual({ owner: false });
   expect((await post(`ttunes_session=${other}`)).status).toBe(401);
 });
