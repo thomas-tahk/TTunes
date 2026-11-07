@@ -12,7 +12,7 @@ import { migrate } from "../lib/migrate.ts";
 
 let server: Server;
 let base: string;
-let githubUser = "thomas-tahk";
+let githubUser = { login: "thomas-tahk", id: 10647431 };
 const realFetch = globalThis.fetch;
 
 type H = (req: IncomingMessage, res: ServerResponse) => unknown;
@@ -39,12 +39,12 @@ afterAll(async () => {
   await sharedDb().end();
 });
 beforeEach(() => {
-  githubUser = "thomas-tahk";
+  githubUser = { login: "thomas-tahk", id: 10647431 };
   // GitHub is stubbed; local calls pass through.
   vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.startsWith("https://github.com/login/oauth/access_token")) return Response.json({ access_token: "tok" });
-    if (url.startsWith("https://api.github.com/user")) return Response.json({ login: githubUser });
+    if (url.startsWith("https://api.github.com/user")) return Response.json(githubUser);
     if (!url.startsWith(base)) throw new Error(`unstubbed network call: ${url}`);
     return realFetch(input, init);
   });
@@ -70,14 +70,21 @@ async function ownerCookie(): Promise<string> {
 const post = (cookie?: string) => fetch(`${base}/api/auth/signout-all`, { method: "POST", headers: cookie ? { cookie } : {} });
 
 it("refuses a different GitHub account and sets no session cookie", async () => {
-  githubUser = "someone-else";
+  githubUser = { login: "someone-else", id: 1 };
   const res = await doCallback((s) => `code=abc&state=${s}`);
   expect(res.status).toBe(403);
   expect(res.headers.getSetCookie().some((c) => c.startsWith("ttunes_session="))).toBe(false);
 });
 
-it("accepts thomas-tahk case-insensitively with a hardened cookie that passes requireOwner", async () => {
-  githubUser = "Thomas-Tahk";
+it("refuses a user named thomas-tahk with a different id", async () => {
+  githubUser = { login: "thomas-tahk", id: 999 };
+  const res = await doCallback((s) => `code=abc&state=${s}`);
+  expect(res.status).toBe(403);
+  expect(res.headers.getSetCookie().some((c) => c.startsWith("ttunes_session="))).toBe(false);
+});
+
+it("accepts the owner id with a hardened cookie that passes requireOwner", async () => {
+  githubUser = { login: "Thomas-Tahk", id: 10647431 };
   const res = await doCallback((s) => `code=abc&state=${s}`);
   expect(res.status).toBe(302);
   const set = res.headers.getSetCookie().find((c) => c.startsWith("ttunes_session="))!;
@@ -98,7 +105,7 @@ it("signout-all is 401 with no cookie, a tampered cookie, or a forged one", asyn
   expect((await post()).status).toBe(401);
   const good = await ownerCookie();
   expect((await post(good.slice(0, -3) + "AAA")).status).toBe(401);
-  const forged = await new SignJWT({ ver: 1 }).setProtectedHeader({ alg: "HS256" }).setSubject("thomas-tahk").sign(new TextEncoder().encode("other-secret-other-secret-other"));
+  const forged = await new SignJWT({ ver: 1 }).setProtectedHeader({ alg: "HS256" }).setSubject("10647431").setExpirationTime("1h").sign(new TextEncoder().encode("other-secret-other-secret-other"));
   expect((await post(`ttunes_session=${forged}`)).status).toBe(401);
 });
 
@@ -127,4 +134,42 @@ it("login redirects to GitHub with client_id and a state matching the cookie", a
   expect(loc.origin + loc.pathname).toBe("https://github.com/login/oauth/authorize");
   expect(loc.searchParams.get("client_id")).toBe("cid");
   expect(res.headers.get("set-cookie")).toContain(`ttunes_oauth_state=${loc.searchParams.get("state")}`);
+});
+
+const secret = () => new TextEncoder().encode(process.env.SESSION_SECRET);
+const meWith = async (cookie: string) => (await (await fetch(`${base}/api/auth/me`, { headers: { cookie } })).json()) as { owner: boolean };
+
+it("refuses alg:none, wrong-alg, expired and exp-less tokens without a 500", async () => {
+  const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString("base64url");
+  const none = `${b64({ alg: "none", typ: "JWT" })}.${b64({ sub: "10647431", ver: 1, exp: 9999999999 })}.`;
+  const hs512 = await new SignJWT({ ver: 1 }).setProtectedHeader({ alg: "HS512" }).setSubject("10647431").setExpirationTime("1h").sign(secret());
+  const expired = await new SignJWT({ ver: 1 }).setProtectedHeader({ alg: "HS256" }).setSubject("10647431").setExpirationTime(Math.floor(Date.now() / 1000) - 60).sign(secret());
+  const noExp = await new SignJWT({ ver: 1 }).setProtectedHeader({ alg: "HS256" }).setSubject("10647431").sign(secret());
+  for (const token of [none, hs512, expired, noExp]) {
+    expect(await meWith(`ttunes_session=${token}`)).toEqual({ owner: false });
+    expect((await post(`ttunes_session=${token}`)).status).toBe(401);
+  }
+});
+
+it("a malformed cookie value is ignored, not a 500", async () => {
+  expect(await meWith("ttunes_session=%E0%A4%A; other=%")).toEqual({ owner: false });
+  const { state } = await startLogin();
+  const res = await fetch(`${base}/api/auth/github/callback?code=abc&state=${state}`, { headers: { cookie: "x=%; ttunes_oauth_state=%zz" } });
+  expect(res.status).toBe(400);
+});
+
+it("rejects a SESSION_SECRET shorter than 32 bytes", async () => {
+  const saved = process.env.SESSION_SECRET;
+  process.env.SESSION_SECRET = "short";
+  try {
+    await expect(requireOwner({ headers: { cookie: "ttunes_session=abc" } } as IncomingMessage)).rejects.toThrow(/32 bytes/);
+  } finally {
+    process.env.SESSION_SECRET = saved;
+  }
+});
+
+it("refuses a correctly signed token for a different subject", async () => {
+  const other = await new SignJWT({ ver: 1 }).setProtectedHeader({ alg: "HS256" }).setSubject("1").setExpirationTime("1h").sign(secret());
+  expect(await meWith(`ttunes_session=${other}`)).toEqual({ owner: false });
+  expect((await post(`ttunes_session=${other}`)).status).toBe(401);
 });

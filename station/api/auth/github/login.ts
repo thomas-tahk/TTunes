@@ -10,6 +10,5 @@ export default function handler(_req: IncomingMessage, res: ServerResponse): voi
   const url = new URL("https://github.com/login/oauth/authorize");
   url.searchParams.set("client_id", clientId);
   url.searchParams.set("state", state);
-  url.searchParams.set("scope", "read:user");
   redirect(res, url.toString());
 }

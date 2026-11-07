@@ -1,9 +1,10 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { jwtVerify, SignJWT } from "jose";
+import { errors, jwtVerify, SignJWT } from "jose";
 import { sharedDb, type Db } from "./db.ts";
 
-export const OWNER_LOGIN = "thomas-tahk";
+// Pinned by numeric GitHub id (login names can be renamed and reclaimed).
+export const OWNER_GITHUB_ID = 10647431;
 export const SESSION_COOKIE = "ttunes_session";
 export const STATE_COOKIE = "ttunes_oauth_state";
 export const SESSION_SECONDS = 7 * 24 * 3600;
@@ -11,18 +12,24 @@ export const SESSION_SECONDS = 7 * 24 * 3600;
 function key(): Uint8Array {
   const secret = process.env.SESSION_SECRET;
   if (!secret) throw new Error("SESSION_SECRET is not set");
+  if (Buffer.byteLength(secret) < 32) throw new Error("SESSION_SECRET must be at least 32 bytes");
   return new TextEncoder().encode(secret);
 }
 
-export function isOwnerLogin(login: unknown): boolean {
-  return typeof login === "string" && login.toLowerCase() === OWNER_LOGIN;
+export function isOwnerId(id: unknown): boolean {
+  return id === OWNER_GITHUB_ID;
 }
 
 export function parseCookies(header: string | undefined): Record<string, string> {
   const out: Record<string, string> = {};
   for (const part of (header ?? "").split(";")) {
     const i = part.indexOf("=");
-    if (i > 0) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+    if (i <= 0) continue;
+    try {
+      out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+    } catch {
+      // malformed percent-encoding: skip this cookie
+    }
   }
   return out;
 }
@@ -47,7 +54,7 @@ export async function issueSession(db: Db): Promise<string> {
   const ver = await currentSessionVersion(db);
   return new SignJWT({ ver })
     .setProtectedHeader({ alg: "HS256" })
-    .setSubject(OWNER_LOGIN)
+    .setSubject(String(OWNER_GITHUB_ID))
     .setIssuedAt()
     .setExpirationTime(`${SESSION_SECONDS}s`)
     .sign(key());
@@ -58,11 +65,11 @@ export async function requireOwner(req: IncomingMessage, db: Db = sharedDb()): P
   const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
   if (!token) return false;
   try {
-    const { payload } = await jwtVerify(token, key(), { algorithms: ["HS256"] });
-    if (!isOwnerLogin(payload.sub)) return false;
+    const { payload } = await jwtVerify(token, key(), { algorithms: ["HS256"], requiredClaims: ["exp"] });
+    if (payload.sub !== String(OWNER_GITHUB_ID)) return false;
     return payload.ver === (await currentSessionVersion(db));
   } catch (error) {
-    if (error instanceof Error && error.name.startsWith("JW")) return false; // bad or expired token
+    if (error instanceof errors.JOSEError) return false; // bad, expired or wrong-alg token
     throw error; // config or DB failure must not look like "not owner"
   }
 }

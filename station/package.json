@@ -3,9 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "engines": {
-    "node": "22.x"
-  },
+  "engines": { "node": "22.x" },
   "scripts": {
     "sync:shared": "node scripts/copy-shared.mjs",
     "dev": "npm run sync:shared && vite",
