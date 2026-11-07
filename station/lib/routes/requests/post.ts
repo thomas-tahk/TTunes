@@ -8,7 +8,7 @@ import { parseVideoId } from "../../ytlink.ts";
 
 // POST /api/requests {link, name, dedication?} (public). `link` is any YouTube link or a bare video id; unknown fields are ignored.
 // 201 {ok, request:{id,status:"waiting"|"queued",videoId,title,durationSec,thumbnail,name,dedication}}
-// Refusals: {error, code} with 400 bad input, 403 off, 409 active_request / already_coming_up, 422 too_long / video_unavailable, 429 rate_limited, 5xx YouTube trouble.
+// Refusals: {error, code} with 400 bad input, 403 off, 409 active_request / network_busy / already_coming_up, 422 too_long / video_unavailable, 429 rate_limited, 5xx YouTube trouble.
 export default async function post(req: IncomingMessage, res: ServerResponse): Promise<void> {
   if (req.method !== "POST") return sendJson(res, 405, { error: "POST only" });
   try {
