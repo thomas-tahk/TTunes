@@ -8,9 +8,10 @@ import { mkdirSync } from "node:fs";
 import { SignJWT } from "jose";
 import pg from "pg";
 import { chromium } from "playwright";
+import { freePort, startDevServer } from "./devServer.mjs";
 
-const PORT = 5197;
-const BASE = `http://localhost:${PORT}/`;
+const PORT = await freePort();
+const BASE = `http://127.0.0.1:${PORT}/`;
 const SHOTS = new URL("./screens/", import.meta.url).pathname;
 const SECRET = "e2e-secret-e2e-secret-e2e-secret-0123";
 const OWNER_ID = 10647431;
@@ -56,12 +57,7 @@ const db = new pg.Pool({ connectionString: DB_URL });
 await db.query("truncate queue, station_state, play_history, activity_log, songs cascade");
 await db.query("insert into songs (video_id, title, duration_sec) values ('seedSong001','Seed Song One',300),('seedSong002','Seed Song Two',300)");
 
-const server = spawn("npx", ["vite", "--port", String(PORT), "--strictPort"], { env, stdio: "ignore" });
-for (let i = 0; ; i++) {
-  if (await fetch(BASE).then((r) => r.ok, () => false)) break;
-  if (i > 60) throw new Error("dev server did not start");
-  await sleep(500);
-}
+const server = await startDevServer(PORT, env);
 
 const { rows: [{ session_version: ver }] } = await db.query("select session_version from auth_state where id = 1");
 const token = await new SignJWT({ ver }).setProtectedHeader({ alg: "HS256" }).setSubject(String(OWNER_ID)).setIssuedAt().setExpirationTime("1h").sign(new TextEncoder().encode(SECRET));
@@ -224,12 +220,15 @@ try {
 
   // 10. Account: export link, in-page confirm (no window.confirm), sign out everywhere ends the session.
   page.on("dialog", () => { throw new Error("E2E FAIL: window.confirm used"); });
-  const exportHref = await page.getByRole("link", { name: "Export library" }).getAttribute("href");
-  check(exportHref === "/api/owner/export", "Export library links to /api/owner/export");
+  const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Export library" }).click()]);
+  check(/^ttunes-library-.*\.json$/.test(download.suggestedFilename()), `Export library downloads ${download.suggestedFilename()}`);
+  const confirmFocus = async () => page.evaluate(() => document.activeElement?.textContent);
   await page.getByRole("button", { name: "Sign out everywhere" }).click();
   await page.getByRole("button", { name: "Yes, sign out everywhere" }).waitFor();
+  check((await confirmFocus()) === "Yes, sign out everywhere", "opening the confirm focuses its Yes button");
   await shot("signout-confirm");
   await page.getByRole("button", { name: "Cancel" }).last().click();
+  check((await confirmFocus()) === "Sign out everywhere", "Cancel returns focus to the Sign out everywhere button");
   check((await page.getByRole("button", { name: "Yes, sign out everywhere" }).count()) === 0, "Cancel closes the confirm");
   await page.getByRole("button", { name: "Sign out everywhere" }).click();
   await page.getByRole("button", { name: "Yes, sign out everywhere" }).click();

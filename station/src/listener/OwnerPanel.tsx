@@ -111,7 +111,7 @@ export function OwnerPanel({ playing, onPlaying }: { playing: NowPlaying | null;
             <div className="owner-confirm" role="alert">
               <p>{step.question}</p>
               <div className="owner-actions">
-                <button type="button" className="btn small" onClick={() => void add(preview, step.position, true)}>
+                <button type="button" className="btn small" autoFocus onClick={() => void add(preview, step.position, true)}>
                   Add anyway
                 </button>
                 <button type="button" className="btn small ghost" onClick={() => setStep({ kind: "preview", preview })}>

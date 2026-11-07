@@ -42,6 +42,10 @@ describe("polling decision", () => {
   it("polls while playing", () => {
     expect(shouldPoll({ started: true, paused: false })).toBe(true);
   });
+  it("keeps polling on an owner tab that never pressed Play or is paused", () => {
+    expect(shouldPoll({ started: false, paused: false, owner: true })).toBe(true);
+    expect(shouldPoll({ started: true, paused: true, owner: true })).toBe(true);
+  });
   it("stops while paused, including a hidden paused tab", () => {
     expect(shouldPoll({ started: true, paused: true })).toBe(false);
   });

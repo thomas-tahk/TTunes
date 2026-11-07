@@ -35,8 +35,8 @@ function Message({ title, body, action }: { title: string; body: string; action?
 export function App() {
   const [started, setStarted] = useState(false);
   const [paused, setPaused] = useState(false);
-  const { view, serverTime, retry, show } = useStation(shouldPoll({ started, paused }));
   const owner = useOwner();
+  const { view, serverTime, retry, show } = useStation(shouldPoll({ started, paused, owner }));
 
   let body;
   if (view.status === "loading") body = <Message title="Tuning in" body="Finding out what's on air." />;

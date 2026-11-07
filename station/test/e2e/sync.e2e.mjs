@@ -4,10 +4,11 @@ import { execSync, spawn } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import pg from "pg";
 import { chromium } from "playwright";
+import { freePort, startDevServer } from "./devServer.mjs";
 
 const T0 = Date.now();
-const PORT = 5199;
-const BASE = `http://localhost:${PORT}/`;
+const PORT = await freePort();
+const BASE = `http://127.0.0.1:${PORT}/`;
 const SHOTS = new URL("./screens/", import.meta.url).pathname;
 const MAX_SYNC_GAP_SEC = 3;
 const MAX_SCHEDULE_GAP_SEC = 2.5;
@@ -37,19 +38,9 @@ async function resetStation() {
   await db.end();
 }
 
-async function startDevServer() {
-  const server = spawn("npx", ["vite", "--port", String(PORT), "--strictPort"], { stdio: "ignore" });
-  for (let i = 0; i < 60; i++) {
-    if (await fetch(BASE).then((r) => r.ok, () => false)) return server;
-    await sleep(500);
-  }
-  server.kill();
-  return fail("dev server did not start");
-}
-
 const SKEW_MS = 20_000;
 
-async function openListener(browser, { skewMs = 0 } = {}) {
+async function openListener(browser, { skewMs = 0, play = true } = {}) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   // Wrong local clock, main frame only (the YouTube iframe keeps real time): the offset logic must absorb it.
   if (skewMs) await context.addInitScript((skew) => { if (window.top === window) { const real = Date.now; Date.now = () => real() + skew; } }, skewMs);
@@ -59,6 +50,10 @@ async function openListener(browser, { skewMs = 0 } = {}) {
   page.on("pageerror", (e) => listener.errors.push(String(e)));
   page.on("console", (m) => m.type() === "error" && listener.errors.push(m.text()));
   await page.goto(BASE);
+  if (!play) {
+    await page.getByTestId("now-title").waitFor();
+    return listener;
+  }
   await page.getByRole("button", { name: "Play" }).click(); // the real path: one click
   await page.waitForFunction(() => window.__ttunes && window.__ttunes.currentTime() > 0.5, null, { timeout: 30_000 });
   return listener;
@@ -110,6 +105,20 @@ async function screenshots(page) {
   }
 }
 
+const youtubeFrame = (page) => page.frames().find((f) => /youtube/.test(f.url()));
+
+/** Pause the real player past the 30s re-check: no /api/now while paused, one right after unpause (rejoin live). */
+async function assertPauseLeg(l) {
+  await youtubeFrame(l.page).evaluate(() => document.querySelector("video").pause());
+  await sleep(1500); // let the pause event land
+  const pausedCount = l.nowRequests;
+  await sleep(35_000);
+  check(l.nowRequests === pausedCount, `paused 35s: 0 /api/now (got ${l.nowRequests - pausedCount})`);
+  await youtubeFrame(l.page).evaluate(() => document.querySelector("video").play());
+  await sleep(4000);
+  check(l.nowRequests === pausedCount + 1, `1 /api/now right after unpause (got ${l.nowRequests - pausedCount})`);
+}
+
 function assertRequestCounts(listeners, songChanges) {
   for (const [i, l] of listeners.entries()) {
     const expected = 1 + songChanges; // join + one per song end
@@ -121,9 +130,10 @@ function assertRequestCounts(listeners, songChanges) {
 }
 
 await resetStation();
-const server = await startDevServer();
+const server = await startDevServer(PORT);
 const browser = await chromium.launch();
 try {
+  const idle = await openListener(browser, { play: false }); // never presses Play: must cost exactly one /api/now
   const listeners = [await openListener(browser), await openListener(browser, { skewMs: SKEW_MS })]; // second one has a clock 20s fast
   const [first] = listeners;
   const startId = (await snapshot(first)).id;
@@ -138,6 +148,8 @@ try {
   check((await snapshot(first)).id !== startId, "page followed the song change");
   await screenshots(first.page);
   assertRequestCounts(listeners, (await songStarts()) - 1); // every song start after the first is a song end
+  await assertPauseLeg(first);
+  check(idle.nowRequests === 1, `a tab that never pressed Play made exactly 1 /api/now over ${Math.round((Date.now() - T0) / 1000)}s (got ${idle.nowRequests})`);
   const errors = listeners.flatMap((l) => l.errors).filter((e) => !/favicon|youtube|googlevideo|google|doubleclick|ERR_BLOCKED|Failed to load resource/i.test(e));
   check(errors.length === 0, `no app console errors ${errors.join(" | ")}`);
   console.log("E2E PASS");

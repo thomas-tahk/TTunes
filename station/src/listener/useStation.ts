@@ -66,7 +66,10 @@ export function useStation(listening: boolean) {
   }, [refresh]);
 
   useEffect(() => {
-    if (!listening) return window.clearTimeout(timer.current);
+    if (!listening) {
+      window.clearTimeout(timer.current);
+      return;
+    }
     // Play or unpause: rejoin live, then the timer resumes
     if (refetchOnResume(Date.now() - fetched.current.at)) void refresh();
     else timer.current = window.setTimeout(() => void refresh(), Math.max(0, fetched.current.dueAt - Date.now()));
