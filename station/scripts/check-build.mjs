@@ -13,9 +13,16 @@ if (!existsSync(".vercel/project.json")) {
 }
 execFileSync("npx", ["vercel", "build"], { stdio: "inherit" });
 
-const functionsDir = ".vercel/output/functions/api";
-for (const dir of readdirSync(functionsDir).filter((d) => d.endsWith(".func"))) {
-  const file = resolve(functionsDir, dir, "api", dir.replace(".func", ".js"));
+const functionsRoot = resolve(".vercel/output/functions");
+function funcDirs(dir) {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const full = resolve(dir, e.name);
+    if (!e.isDirectory()) return [];
+    return e.name.endsWith(".func") ? [full] : funcDirs(full);
+  });
+}
+for (const dir of funcDirs(resolve(functionsRoot, "api"))) {
+  const file = resolve(dir, `${dir.slice(functionsRoot.length + 1).replace(/\.func$/, "")}.js`);
   const mod = await import(pathToFileURL(file).href);
   if (typeof mod.default !== "function") throw new Error(`${file} has no default handler`);
   console.log(`OK loads: ${file}`);
