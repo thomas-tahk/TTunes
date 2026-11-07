@@ -144,6 +144,7 @@ try {
   await page.getByRole("button", { name: "Add to queue" }).click();
   await page.getByText(/Add anyway\?/).waitFor();
   check((await db.query("select 1 from songs where video_id = 'longVideo01'")).rowCount === 0, "2-hour result not added before confirming");
+  check(await page.getByRole("button", { name: "Add anyway" }).evaluate((el) => el === document.activeElement), "focus lands on Add anyway");
   await page.getByRole("button", { name: "Add anyway" }).click();
   await page.waitForFunction(() => document.querySelectorAll('[data-testid="list-queue"] li').length === 3);
   check(true, "queue list shows the confirmed long add without clicking a tab");
@@ -166,8 +167,9 @@ try {
   await page.waitForFunction(() => document.querySelectorAll('[data-testid="list-queue"] li').length === 2);
   check(true, "Remove takes the long song out of the queue list");
 
-  // 6. Skip: the owner's screen updates at once, both listeners follow at their 30s re-check.
+  // 6. Skip: the owner's screen updates at once, both listeners (after pressing Play) follow at their 30s re-check.
   const before = await Promise.all(listeners.map((p) => p.getByTestId("now-title").textContent()));
+  for (const l of listeners) await l.getByRole("button", { name: "Play" }).click(); // only a listening tab re-checks every 30s
   await page.getByRole("button", { name: "Skip song" }).click();
   await waitText("now-title", "Neon Skyline");
   check(true, "owner's screen shows the skipped-to song immediately");
@@ -216,6 +218,24 @@ try {
   check(labels.join("|") === want.join("|"), `log, newest first: ${labels.join(", ")}`);
   await shot("activity");
   await assertPlayerClear("after actions");
+
+  // 10. Account: export link, in-page confirm (no window.confirm), sign out everywhere ends the session.
+  page.on("dialog", () => { throw new Error("E2E FAIL: window.confirm used"); });
+  const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Export library" }).click()]);
+  check(/^ttunes-library-.*\.json$/.test(download.suggestedFilename()), `Export library downloads ${download.suggestedFilename()}`);
+  const confirmFocus = async () => page.evaluate(() => document.activeElement?.textContent);
+  await page.getByRole("button", { name: "Sign out everywhere" }).click();
+  await page.getByRole("button", { name: "Yes, sign out everywhere" }).waitFor();
+  check((await confirmFocus()) === "Yes, sign out everywhere", "opening the confirm focuses its Yes button");
+  await shot("signout-confirm");
+  await page.getByRole("button", { name: "Cancel" }).last().click();
+  check((await confirmFocus()) === "Sign out everywhere", "Cancel returns focus to the Sign out everywhere button");
+  check((await page.getByRole("button", { name: "Yes, sign out everywhere" }).count()) === 0, "Cancel closes the confirm");
+  await page.getByRole("button", { name: "Sign out everywhere" }).click();
+  await page.getByRole("button", { name: "Yes, sign out everywhere" }).click();
+  await page.getByRole("link", { name: "Sign in" }).waitFor();
+  check((await page.locator(".owner-panel").count()) === 0, "after sign out everywhere the page is signed out");
+  check((await page.request.get(`${BASE}api/owner/queue`)).status() === 401, "the old session cookie is refused");
 
   const real = errors.filter((e) => !/favicon|youtube|googlevideo|google|ERR_BLOCKED|Failed to load resource/i.test(e));
   check(real.length === 0, `no app console errors ${real.join(" | ")}`);

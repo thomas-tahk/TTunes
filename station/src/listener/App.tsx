@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { NowPlaying } from "../../lib/schedule.ts";
 import { OwnerPanel, SignInLink, useOwner } from "./OwnerPanel.tsx";
 import { Player } from "./Player.tsx";
 import { RequestBox } from "./RequestBox.tsx";
 import { RequestFeed } from "./RequestFeed.tsx";
 import { type Action, useOwnerRequests } from "./useOwnerRequests.ts";
-import { type PostedRequest, useRequests } from "./useRequests.ts";
+import { type PostedRequest, requestActive, useRequests } from "./useRequests.ts";
+import { shouldPoll } from "./timing.ts";
 import { useStation } from "./useStation.ts";
 import { Visualizer } from "./Visualizer.tsx";
 
@@ -36,11 +37,14 @@ function Message({ title, body, action }: { title: string; body: string; action?
 }
 
 export function App() {
-  const { view, serverTime, retry, show } = useStation();
   const [started, setStarted] = useState(false);
+  const [paused, setPaused] = useState(false);
   const owner = useOwner();
+  const [waitingOnRequest, setWaitingOnRequest] = useState(false); // mirrors `mine`, which needs the station's view first
+  const { view, serverTime, retry, show } = useStation(shouldPoll({ started, paused, owner, requestActive: waitingOnRequest }));
   const playingNow = view.status === "ready" ? view.playing : null;
   const { feed, mine, afterPost, reloadFeed } = useRequests(playingNow);
+  useEffect(() => setWaitingOnRequest(requestActive(mine)), [mine]);
   const ownerRequests = useOwnerRequests(owner, playingNow);
   const moderation = { note: ownerRequests.note, kept: ownerRequests.kept, busyId: ownerRequests.busyId, onAct: (id: number, action: Action) => void ownerRequests.moderate(id, action) };
 
@@ -61,7 +65,7 @@ export function App() {
     body = (
       <>
         <Visualizer active={started}>
-          {started ? <Player playing={view.playing} serverTime={serverTime} /> : <div className="player-frame idle" />}
+          {started ? <Player playing={view.playing} serverTime={serverTime} onPausedChange={setPaused} /> : <div className="player-frame idle" />}
         </Visualizer>
         <Titles playing={view.playing} />
         {!started && (

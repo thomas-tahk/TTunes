@@ -43,6 +43,8 @@ export interface PostedRequest {
 }
 const POSTED_TTL_MS = 20_000; // feed cache is s-maxage 10 + swr 5; 5s margin
 const ACTIVE = new Set(["waiting", "queued", "playing"]);
+/** The listener's own request is still in flight: the page keeps re-checking so its status updates, even without Play pressed. */
+export const requestActive = (mine: Mine | null): boolean => mine !== null && ACTIVE.has(mine.status);
 
 /**
  * Feed + the listener's own request. The feed reloads whenever `playing` changes identity: on join, on song change
@@ -105,7 +107,7 @@ export function useRequests(playing: NowPlaying | null) {
     void loadFeed();
     const first = !joined.current;
     joined.current = true;
-    if (first || (mineRef.current && ACTIVE.has(mineRef.current.status))) void loadMine();
+    if (first || requestActive(mineRef.current)) void loadMine();
   }, [loadFeed, loadMine, playing]);
 
   return { feed, mine, afterPost, reloadFeed: loadFeed };

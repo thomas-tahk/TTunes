@@ -67,7 +67,7 @@ export async function moveQueueItem(db: Db, queueId: unknown, toIndex: unknown):
     const [moved] = items.splice(from, 1);
     items.splice(toIndex, 0, moved!);
     await renumber(client, items.map((item) => item.queueId));
-    await log(client, "queue_move", { videoId: moved!.videoId, title: moved!.title, from, to: toIndex });
+    await log(client, "queue_move", { videoId: moved!.videoId, from, to: toIndex });
     return { ok: true, value: await listQueue(client) };
   });
 }
@@ -78,7 +78,7 @@ export async function removeQueueItem(db: Db, queueId: unknown): Promise<Outcome
     const item = (await listQueue(client)).find((i) => i.queueId === String(queueId));
     if (!item) return fail(404, "not in the queue");
     await client.query("delete from queue where id = $1", [item.queueId]);
-    await log(client, "queue_remove", { videoId: item.videoId, title: item.title, index: item.index });
+    await log(client, "queue_remove", { videoId: item.videoId, index: item.index });
     return { ok: true, value: await listQueue(client) };
   });
 }
@@ -119,7 +119,7 @@ export async function trashSong(db: Db, videoId: unknown): Promise<Outcome<{ vid
     }
     await client.query("delete from queue where video_id = $1", [videoId]);
     await client.query("update songs set deleted_at = now() where video_id = $1", [videoId]);
-    await log(client, "song_trashed", { videoId, title: song.title, removedFromQueue: spots });
+    await log(client, "song_trashed", { videoId, removedFromQueue: spots });
     return { ok: true, value: { videoId, title: song.title, removedFromQueue: spots } };
   });
 }
@@ -149,7 +149,7 @@ export async function restoreSong(db: Db, videoId: unknown): Promise<Outcome<{ v
     await renumber(client, order);
     await client.query("delete from trash_queue where video_id = $1", [videoId]);
     await client.query("update songs set deleted_at = null where video_id = $1", [videoId]);
-    await log(client, "song_restored", { videoId, title: song.title, restoredToQueue: spots.length });
+    await log(client, "song_restored", { videoId, restoredToQueue: spots.length });
     return { ok: true, value: { videoId, title: song.title, restoredToQueue: spots.length } };
   });
 }
@@ -166,5 +166,29 @@ export async function listLibrary(db: Db) {
 
 export async function readLog(db: Db, limit: number) {
   const { rows } = await db.query("select id::text as id, who, what, at, details from activity_log order by activity_log.id desc limit $1", [limit]);
-  return rows.map((r) => ({ id: r.id, who: r.who, what: r.what, at: r.at.toISOString(), details: r.details }));
+  const titles = await currentTitles(db, rows.map((r) => r.details));
+  return rows.map((r) => ({ id: r.id, who: r.who, what: r.what, at: r.at.toISOString(), details: withCurrentTitles(r.details, titles) }));
+}
+
+// The log stores only videoIds (titles are YouTube data under the 30-day cache rule); titles are joined from songs on read.
+const SONG_REFS = ["skipped", "next"] as const;
+type Details = Record<string, any>;
+const refsOf = (d: Details): Details[] => [d, ...SONG_REFS.map((k) => d[k]).filter((v) => v && typeof v === "object")];
+
+async function currentTitles(db: Db, all: Details[]): Promise<Map<string, string>> {
+  const ids = [...new Set(all.flatMap((d) => refsOf(d ?? {}).map((r) => r.videoId).filter((v) => typeof v === "string")))];
+  if (!ids.length) return new Map();
+  const { rows } = await db.query("select video_id, title from songs where video_id = any($1)", [ids]);
+  return new Map(rows.map((r) => [r.video_id, r.title]));
+}
+
+function withCurrentTitles(details: Details | null, titles: Map<string, string>): Details | null {
+  if (!details) return details;
+  const out: Details = { ...details };
+  delete out.title; // legacy rows may still carry a stored title until the daily strip
+  for (const key of SONG_REFS) {
+    if (out[key] && typeof out[key] === "object") out[key] = withCurrentTitles(out[key], titles);
+  }
+  const title = typeof out.videoId === "string" ? titles.get(out.videoId) : undefined;
+  return title === undefined ? out : { ...out, title };
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { NowPlaying } from "../lib/schedule.ts";
-import { clockOffset, hasEnded, MAX_STALE_RETRIES, nextFetchDelayMs, planNextFetch, RECHECK_MS } from "../src/listener/timing.ts";
+import { clockOffset, FRESH_MS, refetchOnResume, hasEnded, MAX_STALE_RETRIES, nextFetchDelayMs, planNextFetch, RECHECK_MS, shouldPoll } from "../src/listener/timing.ts";
 
 const song = { videoId: "a", title: "A", durationSec: 20 };
 const playing = (startedAt: number): NowPlaying => ({ current: song, startedAt, next: null, serverNow: startedAt });
@@ -27,5 +27,31 @@ describe("listener timing", () => {
   it("fetches just after the song ends, never later than 30s", () => {
     expect(nextFetchDelayMs(playing(0), 5_000)).toBe(15_000 + 300);
     expect(nextFetchDelayMs({ ...playing(0), current: { ...song, durationSec: 300 } }, 5_000)).toBe(RECHECK_MS);
+  });
+});
+
+describe("polling decision", () => {
+  it("refetches on resume unless the last response is only seconds old", () => {
+    expect(refetchOnResume(FRESH_MS - 1)).toBe(false);
+    expect(refetchOnResume(FRESH_MS)).toBe(true);
+    expect(refetchOnResume(10 * 60_000)).toBe(true);
+  });
+  it("never polls before Play is clicked", () => {
+    expect(shouldPoll({ started: false, paused: false })).toBe(false);
+  });
+  it("polls while playing", () => {
+    expect(shouldPoll({ started: true, paused: false })).toBe(true);
+  });
+  it("keeps polling on an owner tab that never pressed Play or is paused", () => {
+    expect(shouldPoll({ started: false, paused: false, owner: true })).toBe(true);
+    expect(shouldPoll({ started: true, paused: true, owner: true })).toBe(true);
+  });
+  it("keeps polling while the listener's own request is in flight, Play or not", () => {
+    expect(shouldPoll({ started: false, paused: false, requestActive: true })).toBe(true);
+    expect(shouldPoll({ started: true, paused: true, requestActive: true })).toBe(true);
+    expect(shouldPoll({ started: false, paused: false, requestActive: false })).toBe(false);
+  });
+  it("stops while paused, including a hidden paused tab", () => {
+    expect(shouldPoll({ started: true, paused: true })).toBe(false);
   });
 });

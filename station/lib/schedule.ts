@@ -161,11 +161,21 @@ async function consumeQueueHead(client: Queryable, before: Station, playedId: st
   await client.query("delete from queue where id = (select id from queue where video_id = $1 order by position, id limit 1)", [playedId]);
 }
 
+// Already off air and nothing to play (no request, queue or library): an advance would change nothing, so skip the write transaction.
+// A song or queue entry added since this read is picked up by the next poll.
+async function staysOffAir(q: Queryable, state: StateRow, catalog: Catalog): Promise<boolean> {
+  if (state.current_video_id !== null) return false;
+  if ((await queuedRequestId(q)) !== null) return false; // a request plays even with an empty library
+  const station = await loadStation(q, state, catalog.library);
+  return station.queue.length === 0 && station.library.length === 0;
+}
+
 export async function getNowPlaying(db: Db, clock: Clock): Promise<NowPlaying> {
   const now = clock();
   const state = await loadState(db, false);
   const catalog = await loadSongs(db);
   if (!hasEnded(state, catalog, now)) return describe(db, state, catalog, now);
+  if (await staysOffAir(db, state, catalog)) return describe(db, state, catalog, now);
   return advanceOnce(db, clock);
 }
 
@@ -187,7 +197,7 @@ export async function skipCurrent(db: Db, expectedVideoId: string, clock: Clock)
     const from = catalog.songs.get(expectedVideoId) ?? null; // null: the playing song was hard-deleted (upkeep)
     const next = await writeAdvance(client, state, catalog, now);
     await client.query("insert into activity_log (who, what, details) values ('owner', 'skip', $1)", [
-      { skipped: { videoId: expectedVideoId, title: from?.title ?? null }, next: next.current && { videoId: next.current.videoId, title: next.current.title } },
+      { skipped: { videoId: expectedVideoId }, next: next.current && { videoId: next.current.videoId } },
     ]);
     await client.query("commit");
     return { skipped: true, now: next, from };
@@ -199,11 +209,12 @@ export async function skipCurrent(db: Db, expectedVideoId: string, clock: Clock)
   }
 }
 
+export const OFF_AIR_CACHE_SECONDS = 5; // off air: a first add reaches listeners after their next poll (up to ~30s) plus this cache
 export const MAX_CACHE_SECONDS = 15; // listeners re-check about every 30s, so owner skips show up quickly
 
-/** Seconds a CDN may keep the response: never past the end of the current song, capped at 15. */
+/** Seconds a CDN may keep the response: never past the end of the current song, capped at 15; off air, 5. */
 export function cacheSeconds(playing: NowPlaying): number {
-  if (!playing.current || playing.startedAt === null) return 0;
+  if (!playing.current || playing.startedAt === null) return OFF_AIR_CACHE_SECONDS;
   const remainingMs = playing.startedAt + playing.current.durationSec * 1000 - playing.serverNow;
   return Math.min(MAX_CACHE_SECONDS, Math.max(0, Math.floor(remainingMs / 1000)));
 }

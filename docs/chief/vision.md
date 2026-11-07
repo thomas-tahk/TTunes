@@ -38,8 +38,8 @@ A personal radio station on a public URL. It plays his library by itself, from a
 - **Verified:** IFrame API starts at an offset (`start`/`seekTo`, keyframe-approximate) and reports end (state 0); embed-blocked = error 101/150, handled at play time too.
 - **Verified:** `videos.list` (1 unit, API key only) gives duration + embeddable. Metadata may be cached ≤30 days (ToS III.E.4) → store video ID, refresh metadata.
 - **Verified (wording fixed):** typed search has its own cap of 100 searches/day.
-- **Verified:** Vercel Hobby + Neon free cover it, IF clients fetch the schedule once and compute the offset themselves (no per-second polling; DB touched only on song change). Hobby cron is daily-only → advance songs lazily on request.
-- **Verified:** request limit = signed httpOnly cookie + IP backstop; admin = passcode env var → signed session cookie, rate-limited login.
+- **Verified:** Vercel Hobby + Neon free cover it, IF clients fetch the schedule once and compute the offset themselves (no per-second polling; DB touched on song change, plus a 30s re-check while playing). Hobby cron is daily-only → advance songs lazily on request.
+- **Verified:** request limit = signed httpOnly cookie + IP backstop; admin = ~~passcode env var → signed session cookie, rate-limited login~~ (superseded 2026-11-07 by GitHub sign-in, see the log below).
 - **Constraint (ToS III.I.5–9):** the video player stays visible and unmodified — no hidden, audio-only or background player, no ad interference.
 - **Open:** muted-autoplay and background-tab behaviour (not documented — test in M2); whether Neon deletes long-idle free projects (keep an export).
 

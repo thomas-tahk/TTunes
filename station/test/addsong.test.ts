@@ -133,9 +133,9 @@ describe("owner endpoints", () => {
     expect(lib.rows.length).toBe(2);
     const log = await db.query("select who, what, details from activity_log order by id");
     expect(log.rows).toEqual([
-      { who: "owner", what: "song_added", details: { videoId: "musicVid001", title: "Synth Song", position: "next" } },
-      { who: "owner", what: "song_added", details: { videoId: "gamingVid01", title: "Boss Theme (Soundtrack)", position: "next" } },
-    ]);
+      { who: "owner", what: "song_added", details: { videoId: "musicVid001", position: "next" } },
+      { who: "owner", what: "song_added", details: { videoId: "gamingVid01", position: "next" } },
+    ]); // no titles stored in the log
   });
 
   it("'queue' goes to the end, 'next' to the front, even on a non-empty queue", async () => {

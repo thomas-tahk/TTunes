@@ -3,8 +3,8 @@
   "buildCommand": "npm run build",
   "crons": [{ "path": "/api/cron/refresh", "schedule": "0 9 * * *" }],
   "rewrites": [
-    { "source": "/api/owner/:path*", "destination": "/api/owner?route=:path*" },
-    { "source": "/api/requests/:path*", "destination": "/api/requests?route=:path*" },
-    { "source": "/api/auth/:path*", "destination": "/api/auth?route=:path*" }
+    { "source": "/api/owner/(.*)", "destination": "/api/owner?route=$1" },
+    { "source": "/api/requests/(.*)", "destination": "/api/requests?route=$1" },
+    { "source": "/api/auth/(.*)", "destination": "/api/auth?route=$1" }
   ]
 }

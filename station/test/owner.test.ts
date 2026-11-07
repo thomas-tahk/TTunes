@@ -133,7 +133,8 @@ it("skip still advances and logs null fields when the playing song was hard-dele
   expect(res.status).toBe(200);
   expect(res.json.current.videoId).not.toBe(current);
   const entry = (await call("GET", "/api/owner/log")).json.entries[0];
-  expect(entry).toMatchObject({ what: "skip", details: { skipped: { videoId: current, title: null } } });
+  expect(entry).toMatchObject({ what: "skip", details: { skipped: { videoId: current } } });
+  expect(entry.details.skipped.title).toBeUndefined(); // purged song: videoId only
 });
 
 it("queue lists in order with titles; move and remove keep the order; queueIds are stable", async () => {
@@ -432,4 +433,22 @@ it("queue, trash and stale-skip responses carry the fresh playing info", async (
   const stale = await call("POST", "/api/owner/skip", { expectedVideoId: "nope" });
   expect(stale.status).toBe(409);
   expect(stale.json.playing.current.videoId).toBe((await now()).current!.videoId);
+});
+
+it("the log stores no titles; reading it joins the current title, and a purged song shows only its videoId", async () => {
+  await enqueue("aaa", "bbb", "ccc", "ddd");
+  const first = (await now()).current!.videoId;
+  await call("POST", "/api/owner/skip", { expectedVideoId: first });
+  await call("POST", "/api/owner/queue/move", { queueId: (await queueItems())[0]!.queueId, toIndex: 1 });
+  await call("DELETE", "/api/owner/songs", { videoId: "ddd" });
+  const stored = (await sharedDb().query("select details from activity_log")).rows;
+  expect(stored.length).toBeGreaterThanOrEqual(3);
+  expect(JSON.stringify(stored)).not.toContain('"title"');
+  const entries = (await call("GET", "/api/owner/log")).json.entries as { what: string; details: any }[];
+  const trashed = entries.find((e) => e.what === "song_trashed")!;
+  expect(trashed.details.title).toEqual(expect.any(String));
+  await sharedDb().query("delete from songs where video_id = 'ddd'");
+  const after = ((await call("GET", "/api/owner/log")).json.entries as { what: string; details: any }[]).find((e) => e.what === "song_trashed")!;
+  expect(after.details).toMatchObject({ videoId: "ddd" });
+  expect(after.details.title).toBeUndefined();
 });

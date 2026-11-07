@@ -219,9 +219,11 @@ try {
   check((await owner.evaluate(() => document.activeElement?.closest('[data-testid="feed-row"]')?.textContent.includes("Olga"))) === true, "focus stays on the row after a tap");
   check((await badge()) === "0", "old waiting request (beyond the newest 30) was actionable");
 
-  // 6. Mode off: the listener's box disappears at its next refresh (the 30s re-check).
+  // 6. Mode off: a tuned-in listener's box disappears at its next refresh (the 30s re-check runs while playing;
+  //    a tab that never pressed Play and has no request in flight doesn't poll, and sees it on its next load).
   await alice.reload();
   await alice.getByRole("heading", { name: "Request a song" }).waitFor();
+  await alice.getByRole("button", { name: "Play" }).click();
   await owner.getByRole("radio", { name: /^Off/ }).click();
   await owner.waitForFunction(() => document.querySelector('[role="radio"][aria-checked="true"]')?.textContent?.startsWith("Off"));
   check((await db.query("select value from settings where key = 'request_mode'")).rows[0].value === "off", "mode saved as off");

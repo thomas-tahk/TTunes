@@ -1,3 +1,6 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { expect, it } from "vitest";
@@ -26,3 +29,34 @@ it("migrate applies each numbered file once; seeding is separate", async () => {
   expect(await seedSongs(db)).toBeGreaterThan(0);
   await db.end();
 });
+
+async function twoRunnersMigrateOnce(viaPooler: string | null): Promise<void> {
+  const admin = createDb();
+  const name = `ttunes_mig_${Date.now()}`;
+  await admin.query(`create database ${name}`);
+  const direct = new URL(process.env.DATABASE_URL!);
+  direct.pathname = `/${name}`;
+  const runnerUrl = new URL(viaPooler ?? direct.toString());
+  runnerUrl.pathname = `/${name}`;
+  const dir = mkdtempSync(join(tmpdir(), "mig-"));
+  writeFileSync(join(dir, "001_a.sql"), "create table hits (n int); select pg_sleep(0.5);");
+  writeFileSync(join(dir, "002_b.sql"), "insert into hits values (1);");
+  const [one, two] = [createDb(runnerUrl.toString()), createDb(runnerUrl.toString())];
+  try {
+    const results = await Promise.all([migrate(one, dir), migrate(two, dir)]);
+    expect(results.map((r) => r.length).sort()).toEqual([0, 2]);
+    expect((await one.query("select count(*)::int as n from hits")).rows[0].n).toBe(1);
+  } finally {
+    await Promise.all([one.end(), two.end()]);
+    await admin.query(`drop database ${name} with (force)`);
+    await admin.end();
+  }
+}
+
+it("regression: two concurrent migrate runs apply each file exactly once (direct connection)", () => twoRunnersMigrateOnce(null));
+
+// Needs the optional PgBouncer (transaction mode): `npm run db:bouncer`, then
+// BOUNCER_URL=postgres://ttunes:ttunes@localhost:56432/postgres npm test
+const BOUNCER_URL = process.env.BOUNCER_URL;
+if (!BOUNCER_URL) console.warn("SKIPPED pooled migrate test: BOUNCER_URL not set (run `npm run db:bouncer`, then set BOUNCER_URL)");
+it.skipIf(!BOUNCER_URL)("two concurrent migrate runs apply each file exactly once through PgBouncer in transaction mode", () => twoRunnersMigrateOnce(BOUNCER_URL!));

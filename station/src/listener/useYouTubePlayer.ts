@@ -10,6 +10,7 @@ interface Input {
   expectedSec: () => number;
   onUnplayable: () => void;
   onLoadFailed: () => void;
+  onPausedChange: (paused: boolean) => void;
 }
 
 /** Owns one YouTube player inside `host`: loads it, follows the target, keeps it within MAX_DRIFT_SEC, destroys it on unmount. */
@@ -54,7 +55,12 @@ export function useYouTubePlayer(host: RefObject<HTMLDivElement | null>, input: 
               player.current = created; // methods only exist once ready
               syncToTarget();
             },
-            onStateChange: (e: { data: number }) => e.data === YT.PlayerState.PLAYING && correctDrift(),
+            onStateChange: (e: { data: number }) => {
+              if (e.data === YT.PlayerState.PAUSED) latest.current.onPausedChange(true);
+              if (e.data !== YT.PlayerState.PLAYING) return;
+              latest.current.onPausedChange(false);
+              correctDrift();
+            },
             onError: (e: { data: number }) => !dead && UNPLAYABLE.includes(e.data) && latest.current.onUnplayable(),
           },
         });

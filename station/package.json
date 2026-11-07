@@ -9,10 +9,11 @@
   "scripts": {
     "sync:shared": "node scripts/copy-shared.mjs",
     "dev": "npm run sync:shared && vite",
-    "build": "npm run sync:shared && vite build",
+    "build": "npm run sync:shared && vite build && node scripts/migrate-on-deploy.mjs",
     "typecheck": "npm run sync:shared && tsc --noEmit",
     "check:build": "node scripts/check-build.mjs",
     "db:up": "docker compose up -d --wait",
+    "db:bouncer": "docker compose --profile bouncer up -d --wait bouncer",
     "db:down": "docker compose down",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed.ts",

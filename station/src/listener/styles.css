@@ -163,3 +163,6 @@ html { background: var(--ink); }
 @media (max-width: 480px) { .segmented { grid-template-columns: 1fr; } }
 .btn[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
 .feed-row:focus-visible { outline: 3px solid var(--cyan); outline-offset: 2px; }
+.owner-account { margin-top: 20px; padding-top: 16px; border-top: 2px solid var(--muted); }
+.owner-account h2 { margin: 0 0 12px; }
+.owner-account .owner-confirm { margin-top: 12px; }

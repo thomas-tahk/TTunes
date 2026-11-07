@@ -21,7 +21,7 @@
 ## How it's built (my calls — say so only if you disagree)
 - **Same repo, new `station/` folder.** It uses Vite + React with Vercel Functions for the API, a Neon Postgres database, and `jose` for signed session cookies. The Mac app stays untouched.
 - **The "what plays next" rules are reused from the Mac app** (`src/station.ts`). They move to a shared file so both apps use them.
-- **One shared schedule.** The database holds which song started when. Each listener's page loads the schedule once and works out the right second to play. It asks again only when the song ends. The next listener to ask after a song ends moves the station on, and that is guarded so it happens only once. *(This keeps it on the free tiers; see [hosting research](research/hosting.md).)*
+- **One shared schedule.** The database holds which song started when. Each listener's page loads the schedule once and works out the right second to play. It asks again when the song ends, and re-checks every 30 seconds while playing so a skip reaches it. The next listener to ask after a song ends moves the station on, and that is guarded so it happens only once. *(This keeps it on the free tiers; see [hosting research](research/hosting.md).)*
 - **Damage control** if someone ever got into your account: one switch signs every session out, deletes go to a trash with undo, there's a daily library export, and an activity log records every change.
 - **Song details are refreshed at least every 30 days** (a YouTube rule; see [YouTube research](research/youtube.md)).
 - **Not in M2:** importing your Mac library. The Mac app never saved which YouTube video each song came from.
