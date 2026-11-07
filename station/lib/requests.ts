@@ -45,7 +45,17 @@ export type PostResult = { ok: true; request: PostedRequest } | Refusal;
 const HIDDEN_CHARS = /[\u0000-\u001f\u007f-\u009f\u200b\u2060\ufeff\u2028\u2029\u202a-\u202e\u2066-\u2069]/;
 // Something a reader can see: not whitespace, not a format/control/unassigned char, not a combining mark, not a blank-looking filler.
 const VISIBLE_CHAR = /[^\p{Z}\p{C}\p{M}\u3164\u2800\u115f\u1160\uffa0]/u;
-const STACKED_MARKS = /\p{M}{3,}/u; // more than 2 combining marks in a row is Zalgo
+export const MAX_MARKS_PER_GRAPHEME = 4; // Burmese, pointed Hebrew and Tibetan stack up to 4; more is Zalgo
+const FORMAT_CHARS = /\p{Cf}/gu;
+const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+const COMBINING_MARK = /\p{M}/gu;
+/** Zalgo check: invisibles (ZWJ, tags, U+2061...) are stripped first so they cannot split a stack, then marks are counted per grapheme. */
+function hasStackedMarks(text: string): boolean {
+  for (const { segment } of graphemes.segment(text.replace(FORMAT_CHARS, ""))) {
+    if ((segment.match(COMBINING_MARK)?.length ?? 0) > MAX_MARKS_PER_GRAPHEME) return true;
+  }
+  return false;
+}
 const length = (text: string): number => [...text].length;
 
 /** Name 1-30 and dedication 0-140 characters of plain text (no control characters), trimmed. Null body fields are rejected, unknown fields ignored by the caller. */
@@ -56,7 +66,7 @@ export function validateText(name: unknown, dedication: unknown): { ok: true; na
   if (length(cleanName) < 1 || length(cleanName) > NAME_MAX) return refuse(400, "bad_name", `Name must be 1 to ${NAME_MAX} characters.`);
   if (length(cleanDedication) > DEDICATION_MAX) return refuse(400, "bad_dedication", `Dedication can be up to ${DEDICATION_MAX} characters.`);
   if (HIDDEN_CHARS.test(name) || HIDDEN_CHARS.test(dedication ?? "")) return refuse(400, "bad_text", "Name and dedication must be plain text."); // raw input: trim() would hide a trailing BOM or separator
-  if (STACKED_MARKS.test(cleanName) || STACKED_MARKS.test(cleanDedication)) return refuse(400, "bad_text", "Too many stacked accent marks.");
+  if (hasStackedMarks(cleanName) || hasStackedMarks(cleanDedication)) return refuse(400, "bad_text", "Too many stacked accent marks.");
   if (!VISIBLE_CHAR.test(cleanName)) return refuse(400, "bad_name", "Name needs at least one visible character.");
   return { ok: true, name: cleanName, dedication: cleanDedication };
 }
@@ -96,16 +106,20 @@ export async function expireStale(db: Db, clock: Clock): Promise<number> {
 async function checkRules(q: Queryable, who: Who, videoId: string, now: number): Promise<Refusal | null> {
   if ((await getMode(q)) === "off") return refuse(403, "off", "Requests are turned off right now.");
   const cutoff = at(now - WAIT_EXPIRY_MS); // a waiting request past 24h is as good as expired even before it is marked so
-  const active = await q.query(`select 1 from requests where (status = 'queued' or (status = 'waiting' and created_at > $3)) and (listener_id = $1 or ip_hash = $2) limit 1`, [who.listenerId, who.ipHash, cutoff]);
-  if (active.rowCount) return refuse(409, "active_request", "You already have a request waiting or lined up. Wait for it to play.");
+  const active = await q.query(`select bool_or(listener_id = $1) as by_cookie from requests where (status = 'queued' or (status = 'waiting' and created_at > $3)) and (listener_id = $1 or ip_hash = $2)`, [who.listenerId, who.ipHash, cutoff]);
+  if (active.rows[0].by_cookie === true) return refuse(409, "active_request", "You already have a request waiting or lined up. Wait for it to play.");
+  if (active.rows[0].by_cookie === false) return refuse(409, "network_busy", "Someone on your network already has a request waiting. Try again once it plays.");
   if (await alreadyComingUp(q, videoId, cutoff)) return refuse(409, "already_coming_up", "That song is already coming up.");
   return null;
 }
 
 /** The rate rules, on attempts (every post that reached YouTube, accepted or not): 5/hour per listener or IP, and a global daily cap. */
 async function checkRates(q: Queryable, who: Who, now: number): Promise<Refusal | null> {
-  const hourly = await q.query("select count(*)::int as n from request_attempts where at > $3 and (listener_id = $1 or ip_hash = $2)", [who.listenerId, who.ipHash, at(now - 3600_000)]);
-  if (hourly.rows[0].n >= MAX_PER_HOUR) return refuse(429, "rate_limited", `That's ${MAX_PER_HOUR} requests this hour. Try again later.`);
+  const hourly = await q.query("select count(*) filter (where listener_id = $1)::int as mine, count(*)::int as n from request_attempts where at > $3 and (listener_id = $1 or ip_hash = $2)", [who.listenerId, who.ipHash, at(now - 3600_000)]);
+  if (hourly.rows[0].n >= MAX_PER_HOUR) {
+    const from = hourly.rows[0].mine >= MAX_PER_HOUR ? "" : " from your network";
+    return refuse(429, "rate_limited", `That's ${MAX_PER_HOUR} requests this hour${from}. Try again later.`);
+  }
   const daily = await q.query("select count(*)::int as n from request_attempts where at > $1", [at(now - 24 * 3600_000)]);
   if (daily.rows[0].n >= DAILY_LOOKUP_CAP) return refuse(503, "paused", "Requests are paused for today. Try again tomorrow.");
   return null;
@@ -296,13 +310,13 @@ export interface MyRequest {
   createdAt: string;
 }
 
-/** The caller's own waiting, queued or playing request (by cookie or network, like the posting limit), or null. */
+/** The caller's own waiting, queued or playing request (by cookie only; the network backstop is for limits, not for showing someone else's request), or null. */
 export async function findMine(db: Db, who: Who, clock: Clock): Promise<MyRequest | null> {
   const { rows } = await db.query(
     `select id, video_id, title, status, created_at from requests
-      where (status in ('queued', 'playing') or (status = 'waiting' and created_at > $3)) and (listener_id = $1 or ip_hash = $2)
+      where (status in ('queued', 'playing') or (status = 'waiting' and created_at > $2)) and listener_id = $1
       order by id desc limit 1`,
-    [who.listenerId, who.ipHash, at(clock() - WAIT_EXPIRY_MS)],
+    [who.listenerId, at(clock() - WAIT_EXPIRY_MS)],
   );
   const r = rows[0];
   if (!r) return null;

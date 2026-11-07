@@ -136,7 +136,7 @@ describe("POST /api/requests rules", () => {
     expect(again.json.code).toBe("active_request");
     const sameIp = await ask(newListener("3.3.3.3"), "musicVid003");
     expect(sameIp.status).toBe(409);
-    expect(sameIp.json.code).toBe("active_request");
+    expect(sameIp.json.code).toBe("network_busy");
     expect((await ask(newListener("4.4.4.4"), "musicVid003")).status).toBe(201); // someone else is fine
   });
 
@@ -450,11 +450,23 @@ describe("text rules (narrowed)", () => {
       expect(res.ok, `U+${blank.codePointAt(0)!.toString(16)}`).toBe(false);
     }
   });
-  it("caps stacked combining marks at 2 in a row (no Zalgo), in names and dedications", () => {
-    expect(ok("á̂")).toBe(true);
-    expect(ok("á̂̃")).toBe(false);
-    expect(ok("Sam", "é̂̃̄")).toBe(false);
-    expect(ok("Sam", "é é")).toBe(true);
+  const zalgo = "a" + "\u0301\u0302\u0303\u0304\u0305";
+  const stack = (sep: string) => "a" + ["\u0301\u0302", "\u0303\u0304", "\u0305\u0306"].join(sep);
+  it("refuses more than 4 combining marks on one letter (Zalgo), in names and dedications", () => {
+    expect(ok("a\u0301\u0302\u0303\u0304")).toBe(true);
+    expect(ok(zalgo)).toBe(false);
+    expect(ok("Sam", zalgo)).toBe(false);
+    expect(ok("Sam", "e\u0301 e\u0301")).toBe(true);
+  });
+  it("refuses Zalgo with invisibles (ZWJ, ZWNJ, U+2061, tag chars, U+180E) between the marks", () => {
+    for (const inv of ["\u200d", "\u200c", "\u2061", "\u{E0067}", "\u180e"]) {
+      expect(ok(stack(inv)), `U+${inv.codePointAt(0)!.toString(16)}`).toBe(false);
+    }
+  });
+  it("accepts real scripts that stack marks", () => {
+    const real = ["ကြို", "שָּׁלוֹם", "བསྒྲུབས", "Việt Nam".normalize("NFD"), "नमस्ते", "สวัสดี", "ก็ได้", "1\uFE0F\u20E3", "#\uFE0F\u20E3"];
+    for (const text of real) expect(ok(text), text).toBe(true);
+    for (const text of real) expect(ok("Sam", text), `dedication ${text}`).toBe(true);
   });
 });
 
@@ -470,7 +482,7 @@ describe("feed and mine", () => {
     }
     const res = await feed();
     expect(res.status).toBe(200);
-    expect(res.headers.get("cache-control")).toBe("public, s-maxage=10, stale-while-revalidate=5");
+    expect(res.headers.get("cache-control")).toBe("public, max-age=0, s-maxage=10, stale-while-revalidate=5");
     const body = await res.json();
     expect(body.mode).toBe("open");
     expect(body.requests.length).toBe(30);
@@ -504,8 +516,40 @@ describe("feed and mine", () => {
     expect((await res.json()).request).toMatchObject({ status: "waiting", videoId: "gamingVid01", title: "Boss Theme" });
     expect(Object.keys((await (await mine(sam)).json()).request).sort()).toEqual(["createdAt", "id", "status", "thumbnail", "title", "videoId"]);
     expect((await (await mine({ ip: "31.0.0.9" })).json()).request).toBeNull();
-    expect((await (await mine({ ip: "31.0.0.1" })).json()).request).toMatchObject({ status: "waiting" }); // same network counts, like the posting limit
+    expect((await (await mine({ ip: "31.0.0.1" })).json()).request).toBeNull(); // same network, other cookie: not theirs to see
     await sharedDb().query("update requests set status = 'played'");
     expect((await (await mine(sam)).json()).request).toBeNull();
+  });
+
+  it("a second cookie on the same network: mine is null and its post is refused as network_busy", async () => {
+    const sam = newListener("32.0.0.1");
+    await ask(sam, "gamingVid01");
+    const fresh = await fetch(`${base}/api/requests/mine`, { headers: { "x-forwarded-for": "32.0.0.1" } });
+    expect((await fresh.json()).request).toBeNull();
+    const res = await ask(newListener("32.0.0.1"), "musicVid001");
+    expect(res.status).toBe(409);
+    expect(res.json.code).toBe("network_busy");
+    expect(res.json.error).toMatch(/Someone on your network/);
+    const again = await ask(sam, "musicVid002");
+    expect(again.json.code).toBe("active_request");
+  });
+
+  it("the 5/hour refusal says 'from your network' only when the cookie alone is under the limit", async () => {
+    const db = sharedDb();
+    for (let i = 0; i < 5; i++) await db.query("insert into request_attempts (listener_id, ip_hash, at) values ('x', $1, now())", [hashIp("33.0.0.1")]);
+    const res = await ask(newListener("33.0.0.1"), "musicVid001");
+    expect(res.status).toBe(429);
+    expect(res.json.code).toBe("rate_limited");
+    expect(JSON.stringify(res.json)).toMatch(/from your network/);
+  });
+
+  it("a request backdated 25h is not mine, and the same listener can post again", async () => {
+    const sam = newListener("34.0.0.1");
+    await ask(sam, "gamingVid01");
+    await sharedDb().query("update requests set created_at = now() - interval '25 hours'");
+    const mine = await fetch(`${base}/api/requests/mine`, { headers: { "x-forwarded-for": sam.ip, cookie: sam.cookie! } });
+    expect((await mine.json()).request).toBeNull();
+    const res = await ask(sam, "musicVid002");
+    expect(res.status).toBe(201);
   });
 });
