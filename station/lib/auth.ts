@@ -9,11 +9,16 @@ export const SESSION_COOKIE = "ttunes_session";
 export const STATE_COOKIE = "ttunes_oauth_state";
 export const SESSION_SECONDS = 7 * 24 * 3600;
 
-function key(): Uint8Array {
+export function sessionSecret(): string {
   const secret = process.env.SESSION_SECRET;
   if (!secret) throw new Error("SESSION_SECRET is not set");
   if (Buffer.byteLength(secret) < 32) throw new Error("SESSION_SECRET must be at least 32 bytes");
-  return new TextEncoder().encode(secret);
+  return secret;
+}
+
+/** HS256 signing key shared by every signed cookie (owner session, listener id); tokens differ by claims, not by key. */
+export function sessionKey(): Uint8Array {
+  return new TextEncoder().encode(sessionSecret());
 }
 
 export function isOwnerId(id: unknown): boolean {
@@ -57,7 +62,7 @@ export async function issueSession(db: Db): Promise<string> {
     .setSubject(String(OWNER_GITHUB_ID))
     .setIssuedAt()
     .setExpirationTime(`${SESSION_SECONDS}s`)
-    .sign(key());
+    .sign(sessionKey());
 }
 
 /** True only for an untampered, unexpired cookie of the owner at the current session version. */
@@ -65,7 +70,7 @@ export async function requireOwner(req: IncomingMessage, db: Db = sharedDb()): P
   const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
   if (!token) return false;
   try {
-    const { payload } = await jwtVerify(token, key(), { algorithms: ["HS256"], requiredClaims: ["exp"] });
+    const { payload } = await jwtVerify(token, sessionKey(), { algorithms: ["HS256"], requiredClaims: ["exp"] });
     if (payload.sub !== String(OWNER_GITHUB_ID)) return false;
     return payload.ver === (await currentSessionVersion(db));
   } catch (error) {

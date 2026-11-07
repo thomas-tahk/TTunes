@@ -7,9 +7,9 @@ import ownerApi from "../api/owner.ts";
 import requestsApi from "../api/requests.ts";
 import { SESSION_COOKIE, issueSession, requireOwner } from "../lib/auth.ts";
 import { createDb, sharedDb } from "../lib/db.ts";
-import { LISTENER_COOKIE, hashIp, identifyListener } from "../lib/listener.ts";
+import { LISTENER_COOKIE, hashIp, identifyListener, ipKey } from "../lib/listener.ts";
 import { migrate } from "../lib/migrate.ts";
-import { expireStale, getMode, moderate, purgeOldIpHashes, setMode } from "../lib/requests.ts";
+import { DAILY_LOOKUP_CAP, expireStale, getMode, moderate, purgeOldIpHashes, setMode } from "../lib/requests.ts";
 import { getNowPlaying } from "../lib/schedule.ts";
 
 interface Fake { title: string; duration: string; category?: string; embeddable?: boolean }
@@ -19,6 +19,7 @@ const catalog: Record<string, Fake> = {
   musicVid003: { title: "Third Synth", duration: "PT2M", category: "10" },
   gamingVid01: { title: "Boss Theme", duration: "PT4M5S", category: "20" },
   musicTwelve: { title: "Twelve Minute Jam", duration: "PT12M", category: "10" },
+  musicTen001: { title: "Exactly Ten", duration: "PT10M", category: "10" },
   musicLong01: { title: "Twenty Minute Epic", duration: "PT20M", category: "10" },
   blockedVid1: { title: "No Embeds", duration: "PT3M", category: "10", embeddable: false },
 };
@@ -46,7 +47,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   youtubeCalls = [];
-  await sharedDb().query("truncate queue, station_state, play_history, activity_log, songs, requests cascade");
+  await sharedDb().query("truncate queue, station_state, play_history, activity_log, songs, requests, request_attempts cascade");
   await sharedDb().query("update settings set value = 'open' where key = 'request_mode'");
   vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -345,5 +346,84 @@ describe("listener identity", () => {
     await ask(who, "gamingVid01");
     const listenerToken = who.cookie!.slice(LISTENER_COOKIE.length + 1);
     expect(await requireOwner({ headers: { cookie: `${SESSION_COOKIE}=${decodeURIComponent(listenerToken)}` } } as never)).toBe(false);
+  });
+});
+
+describe("review fixes", () => {
+  it("every YouTube lookup counts toward 5/hour: the 6th failed lookup is a 429 with no YouTube call", async () => {
+    const who = newListener("20.0.0.1");
+    for (let i = 0; i < 5; i++) expect((await ask(who, "notFound001")).status).toBe(404);
+    youtubeCalls = [];
+    const sixth = await ask(who, "notFound001");
+    expect([sixth.status, sixth.json.code]).toEqual([429, "rate_limited"]);
+    expect(youtubeCalls).toEqual([]);
+    const sameIpNewCookie = await ask(newListener("20.0.0.1"), "notFound001");
+    expect(sameIpNewCookie.status).toBe(429);
+  });
+
+  it("a global daily cap on listener lookups pauses requests without calling YouTube", async () => {
+    await sharedDb().query("insert into request_attempts (listener_id, ip_hash, at) select 'x' || g, 'h' || g, now() from generate_series(1, $1) g", [DAILY_LOOKUP_CAP]);
+    const res = await ask(newListener("21.0.0.1"), "musicVid001");
+    expect([res.status, res.json.code]).toEqual([503, "paused"]);
+    expect(res.json.error).toMatch(/paused for today/);
+    expect(youtubeCalls).toEqual([]);
+  });
+
+  it("concurrent posts from one IP with fresh cookies produce exactly one request", async () => {
+    const results = await Promise.all(Array.from({ length: 10 }, () => ask(newListener("22.0.0.1"), "gamingVid01")));
+    expect(results.filter((r) => r.status === 201).length).toBe(1);
+    expect((await statuses()).length).toBe(1);
+  });
+
+  it("the IP purge takes the station lock first (waits while another writer holds it)", async () => {
+    const db = sharedDb();
+    const holder = await db.connect();
+    await holder.query("begin");
+    await holder.query("insert into station_state (id) values (1) on conflict do nothing");
+    await holder.query("select 1 from station_state where id = 1 for update");
+    let done = false;
+    const purge = purgeOldIpHashes(db, Date.now).then(() => (done = true));
+    await new Promise((r) => setTimeout(r, 300));
+    expect(done).toBe(false);
+    await holder.query("commit");
+    holder.release();
+    await purge;
+    expect(done).toBe(true);
+  });
+
+  it("rejects invisible and formatting characters, and a name with nothing visible", async () => {
+    const bad: [object, string][] = [
+      [{ name: "\u200b\u200b" }, "bad_text"],
+      [{ name: "Sam\u202e" }, "bad_text"],
+      [{ name: "Sam", dedication: "a\u200bb" }, "bad_text"],
+      [{ name: "Sam", dedication: "a\u2028b" }, "bad_text"],
+      [{ name: "Sam", dedication: "a\u2029b" }, "bad_text"],
+      [{ name: "Sam", dedication: "a\u0085b" }, "bad_text"],
+      [{ name: "Sam\u009f" }, "bad_text"],
+      [{ name: "\u00a0\u3000" }, "bad_name"],
+    ];
+    for (const [i, [fields, code]] of bad.entries()) {
+      const res = await request(newListener(`23.0.0.${i}`), { link: "musicVid001", ...fields });
+      expect([res.status, res.json.code], JSON.stringify(fields)).toEqual([400, code]);
+    }
+  });
+
+  it("exactly 10 minutes of Music waits (auto-queue is strictly under 10)", async () => {
+    expect((await ask(newListener("24.0.0.1"), "musicTen001")).json.request.status).toBe("waiting");
+  });
+
+  it("YouTube outages are youtube_unavailable; a missing video stays video_unavailable", async () => {
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => (String(input).startsWith(base) ? realFetch(input, init) : new Response("{}", { status: 500 })));
+    const res = await ask(newListener("25.0.0.1"), "musicVid001");
+    expect([res.status >= 500, res.json.code]).toEqual([true, "youtube_unavailable"]);
+  });
+
+  it("IPv6 addresses hash by their /64; IPv4 by the full address", () => {
+    expect(hashIp("2001:db8:1:2:aaaa::1")).toBe(hashIp("2001:db8:1:2:bbbb:cccc:dddd:eeee"));
+    expect(hashIp("2001:DB8:1:2::1")).toBe(hashIp("2001:db8:1:2:0:0:0:9"));
+    expect(hashIp("2001:db8:1:3::1")).not.toBe(hashIp("2001:db8:1:2::1"));
+    expect(ipKey("::ffff:1.2.3.4")).toBe("1.2.3.4");
+    expect(hashIp("1.2.3.4")).not.toBe(hashIp("1.2.3.5"));
+    expect(ipKey("1.2.3.4")).toBe("1.2.3.4");
   });
 });

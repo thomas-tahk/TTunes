@@ -11,6 +11,7 @@ export const AUTO_MAX_SEC = 10 * 60; // Music under 10 minutes plays without the
 export const MAX_PER_HOUR = 5;
 export const WAIT_EXPIRY_MS = 24 * 3600 * 1000;
 export const IP_KEEP_MS = 7 * 24 * 3600 * 1000;
+export const DAILY_LOOKUP_CAP = 2000; // listener-triggered YouTube lookups per rolling 24h, 1 quota unit each; protects the owner's 10,000-unit pool
 export const NAME_MAX = 30;
 export const DEDICATION_MAX = 140;
 
@@ -39,8 +40,9 @@ export interface PostedRequest {
 }
 export type PostResult = { ok: true; request: PostedRequest } | Refusal;
 
-// eslint-disable-next-line no-control-regex
-const CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
+// Control (Cc, incl. C1 and newlines), format (Cf: zero-width, RTL override) and the Unicode line/paragraph separators.
+const HIDDEN_CHARS = /[\p{Cc}\p{Cf}\u2028\u2029]/u;
+const VISIBLE_CHAR = /[^\p{Z}\p{C}]/u;
 const length = (text: string): number => [...text].length;
 
 /** Name 1-30 and dedication 0-140 characters of plain text (no control characters), trimmed. Null body fields are rejected, unknown fields ignored by the caller. */
@@ -50,7 +52,8 @@ export function validateText(name: unknown, dedication: unknown): { ok: true; na
   const cleanDedication = (dedication ?? "").trim();
   if (length(cleanName) < 1 || length(cleanName) > NAME_MAX) return refuse(400, "bad_name", `Name must be 1 to ${NAME_MAX} characters.`);
   if (length(cleanDedication) > DEDICATION_MAX) return refuse(400, "bad_dedication", `Dedication can be up to ${DEDICATION_MAX} characters.`);
-  if (CONTROL_CHARS.test(cleanName) || CONTROL_CHARS.test(cleanDedication)) return refuse(400, "bad_text", "Name and dedication must be plain text.");
+  if (HIDDEN_CHARS.test(cleanName) || HIDDEN_CHARS.test(cleanDedication)) return refuse(400, "bad_text", "Name and dedication must be plain text.");
+  if (!VISIBLE_CHAR.test(cleanName)) return refuse(400, "bad_name", "Name needs at least one visible character.");
   return { ok: true, name: cleanName, dedication: cleanDedication };
 }
 
@@ -85,17 +88,42 @@ export async function expireStale(db: Db, clock: Clock): Promise<number> {
   }
 }
 
-/** Every listener rule that does not need YouTube. videoId is given once the link is parsed ("already coming up"). */
-async function checkRules(q: Queryable, who: Who, videoId: string | null, now: number): Promise<Refusal | null> {
+/** The state rules (not rates): mode, one active request per listener, song already coming up. */
+async function checkRules(q: Queryable, who: Who, videoId: string, now: number): Promise<Refusal | null> {
   if ((await getMode(q)) === "off") return refuse(403, "off", "Requests are turned off right now.");
-  const mine = [who.listenerId, who.ipHash];
   const cutoff = at(now - WAIT_EXPIRY_MS); // a waiting request past 24h is as good as expired even before it is marked so
-  const active = await q.query(`select 1 from requests where (status = 'queued' or (status = 'waiting' and created_at > $3)) and (listener_id = $1 or ip_hash = $2) limit 1`, [...mine, cutoff]);
+  const active = await q.query(`select 1 from requests where (status = 'queued' or (status = 'waiting' and created_at > $3)) and (listener_id = $1 or ip_hash = $2) limit 1`, [who.listenerId, who.ipHash, cutoff]);
   if (active.rowCount) return refuse(409, "active_request", "You already have a request waiting or lined up. Wait for it to play.");
-  const { rows } = await q.query("select count(*)::int as n from requests where created_at > $3 and (listener_id = $1 or ip_hash = $2)", [...mine, at(now - 3600_000)]);
-  if (rows[0].n >= MAX_PER_HOUR) return refuse(429, "rate_limited", `That's ${MAX_PER_HOUR} requests this hour. Try again later.`);
-  if (videoId && (await alreadyComingUp(q, videoId, cutoff))) return refuse(409, "already_coming_up", "That song is already coming up.");
+  if (await alreadyComingUp(q, videoId, cutoff)) return refuse(409, "already_coming_up", "That song is already coming up.");
   return null;
+}
+
+/** The rate rules, on attempts (every post that reached YouTube, accepted or not): 5/hour per listener or IP, and a global daily cap. */
+async function checkRates(q: Queryable, who: Who, now: number): Promise<Refusal | null> {
+  const hourly = await q.query("select count(*)::int as n from request_attempts where at > $3 and (listener_id = $1 or ip_hash = $2)", [who.listenerId, who.ipHash, at(now - 3600_000)]);
+  if (hourly.rows[0].n >= MAX_PER_HOUR) return refuse(429, "rate_limited", `That's ${MAX_PER_HOUR} requests this hour. Try again later.`);
+  const daily = await q.query("select count(*)::int as n from request_attempts where at > $1", [at(now - 24 * 3600_000)]);
+  if (daily.rows[0].n >= DAILY_LOOKUP_CAP) return refuse(503, "paused", "Requests are paused for today. Try again tomorrow.");
+  return null;
+}
+
+/** Under the station lock: state and rate rules, then record the attempt BEFORE YouTube is called, so refused lookups still count. */
+async function reserveAttempt(db: Db, who: Who, videoId: string, clock: Clock): Promise<Refusal | null> {
+  const client = await db.connect();
+  try {
+    await client.query("begin");
+    await lockStation(client);
+    const now = clock();
+    const refusal = (await checkRules(client, who, videoId, now)) ?? (await checkRates(client, who, now));
+    if (!refusal) await client.query("insert into request_attempts (listener_id, ip_hash, at) values ($1, $2, $3)", [who.listenerId, who.ipHash, at(now)]);
+    await client.query("commit");
+    return refusal;
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 async function alreadyComingUp(q: Queryable, videoId: string, cutoff: Date): Promise<boolean> {
@@ -113,10 +141,10 @@ async function alreadyComingUp(q: Queryable, videoId: string, cutoff: Date): Pro
  * (so two simultaneous posts cannot both pass). Metadata is always re-fetched; the client's is never trusted.
  */
 export async function postRequest(db: Db, input: RequestInput, who: Who, clock: Clock): Promise<PostResult> {
-  const early = await checkRules(db, who, input.videoId, clock());
+  const early = await reserveAttempt(db, who, input.videoId, clock);
   if (early) return early;
   const found = await lookupVideo(input.videoId);
-  if (!found.ok) return refuse(found.status, "video_unavailable", found.message);
+  if (!found.ok) return refuse(found.status, found.status >= 500 ? "youtube_unavailable" : "video_unavailable", found.message);
   const info = found.info;
   if (info.durationSec > LONG_SEC) return refuse(422, "too_long", "That song is over 15 minutes, which is too long for requests.");
   const client = await db.connect();
@@ -125,7 +153,7 @@ export async function postRequest(db: Db, input: RequestInput, who: Who, clock: 
     await lockStation(client);
     const now = clock();
     await expireWaiting(client, now);
-    const refusal = await checkRules(client, who, input.videoId, now);
+    const refusal = await checkRules(client, who, input.videoId, now); // rates were charged at reserveAttempt
     if (refusal) {
       await client.query("commit");
       return refusal;
@@ -147,10 +175,24 @@ export async function postRequest(db: Db, input: RequestInput, who: Who, clock: 
   }
 }
 
-/** Daily upkeep: IP hashes older than 7 days are erased (the rows stay for the feed). Returns how many rows were cleared. */
+/** Daily upkeep: IP hashes older than 7 days are erased from requests (rows stay for the feed) and old attempts are deleted.
+ * Takes the station lock first like every writer. Returns how many request rows were cleared. */
 export async function purgeOldIpHashes(db: Db, clock: Clock): Promise<number> {
-  const { rowCount } = await db.query("update requests set ip_hash = null where ip_hash is not null and created_at <= $1", [at(clock() - IP_KEEP_MS)]);
-  return rowCount ?? 0;
+  const client = await db.connect();
+  try {
+    await client.query("begin");
+    await lockStation(client);
+    const cutoff = at(clock() - IP_KEEP_MS);
+    const { rowCount } = await client.query("update requests set ip_hash = null where ip_hash is not null and created_at <= $1", [cutoff]);
+    await client.query("delete from request_attempts where at <= $1", [cutoff]);
+    await client.query("commit");
+    return rowCount ?? 0;
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 // --- owner-side helpers for the moderation endpoints (#32): each runs under the station lock and writes activity_log.

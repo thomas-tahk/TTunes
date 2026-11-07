@@ -324,6 +324,27 @@ it("the daily cron purges old trash and does not refresh trashed songs", async (
   expect(body.purged).toEqual(["ccc"]);
 });
 
+it("the daily cron expires 24h-old waiting requests and clears 7-day-old IP hashes", async () => {
+  process.env.CRON_SECRET = "cron-secret-123";
+  const db = sharedDb();
+  await db.query("truncate requests");
+  const add = "insert into requests (video_id, title, duration_sec, name, status, listener_id, ip_hash, created_at) values ($1, 't', 100, 'n', $2, 'l', 'h', now() - $3::interval)";
+  await db.query(add, ["oldPlayed001", "played", "8 days"]);
+  await db.query(add, ["staleWait001", "waiting", "25 hours"]);
+  await db.query(add, ["freshWait001", "waiting", "1 hour"]);
+  const res = await fetch(`${base}/api/cron/refresh`, { headers: { authorization: "Bearer cron-secret-123" } });
+  const body = await res.json();
+  expect(res.status).toBe(200);
+  expect(body.requests).toEqual({ expired: 1, ipHashesCleared: 1 });
+  const rows = (await db.query("select video_id, status, ip_hash from requests order by video_id")).rows;
+  expect(rows).toEqual([
+    { video_id: "freshWait001", status: "waiting", ip_hash: "h" },
+    { video_id: "oldPlayed001", status: "played", ip_hash: null },
+    { video_id: "staleWait001", status: "expired", ip_hash: "h" },
+  ]);
+  await db.query("truncate requests");
+});
+
 it("the export leaves out trashed songs", async () => {
   await trashIt("bbb");
   const res = await call("GET", "/api/owner/export");
