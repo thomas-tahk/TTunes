@@ -1,34 +1,47 @@
-# TTunes — vision (reshaped 2026-11-01)
+# TTunes — vision (reshaped 2026-11-07)
 
-Replaces the cloud version (M1 "On my phone, from the cloud", PR #11, closed unmerged). His words, 2026-11-01:
+Two parts. **Part 1 (the Mac app) is built:** M1 was merged in [PR #18](https://github.com/thomas-tahk/TTunes/pull/18). **Part 2 (the hosted station) is the new work.**
 
-> A private web app or local/native app only where I can just drop a YouTube link, raw music/video files, or even type in the name of songs/artists to add songs to a playlist, and have it play whatever is on the playlist as long as I have it on. I don't care much for scaling it up. The core: tell the app or drop something in → app can play it or queue it to play later, and the library to pull from for an always-on playlist can be ever expanding (should feel like it).
+His words, 2026-11-07:
+
+> listen from anywhere, potentially, not just locally run on my mac. and yeah why not as a little portfolio piece too? … a live-request for anyone else and bit of a music library/playlist for myself that happens to be able to play to anyone else on the site and tuning in
 
 ## Intent
-A music station that runs on his own computer. Adding a song takes one action. When the queue is empty, it keeps playing from everything he has ever added.
+A personal radio station on a public URL. It plays his library by itself, from any browser. Anyone with the link can tune in and hear the same song at the same moment. Listeners can request songs, and requests play without him lifting a finger.
 
 ## Goals
-- Add by: YouTube link, dropped audio/video file, or typed "artist – song" (search YouTube, **he picks or confirms the match**).
-- Each add: play now, or queue next/last.
-- Everything added lands in the library for good (stored on disk, not streamed).
-- Queue empty → shuffle the library, never silence while the app is open.
-- Runs on his Mac. Windows PC = a second install, later.
+- **He adds songs** by YouTube link or by typed search, picking the match. Only he can add; he logs in to do it.
+- **Station never stops.** Requests play first, then his queue, then a shuffle of his library. No server streams anything: there is one shared schedule (which song started when), and every player seeks to the current offset.
+- **One shared stream.** A listener can pause or mute their own player, and unpausing rejoins the station live. Only he can skip, reorder, delete, or override.
+- **Requests** are auto-accepted, with limits: one queued request per listener and a length cap. He can turn requests off at any time and delete or override any one.
+- **Portfolio-ready:** public repo, README, demo video.
 
 ## Non-goals
-- Hosting, accounts, passwords, cloud storage, other users, scaling.
-- Playing while the app is closed.
+- Per-listener playback (everyone controls their own player). That would just be a playlist page.
+- Hosting audio files. Songs play only through YouTube's embedded player, and dropped files stay in the Mac app.
+- Listener accounts.
+- Merging the Mac app into the hosted one. The Mac app stays as it is.
 
-## Later (nice to have, not M1)
-- Phone on home wifi while the computer is on.
-- Windows install.
-- Mix in related tracks so the library "feels endless" beyond what he added.
+## Known limits (accepted 2026-11-07)
+- Every listener clicks Play once per visit, because browsers block autoplay.
+- On a phone, playback usually stops when the screen locks. Desktop background tabs keep playing.
+- Videos that block embedding are refused when added.
+- YouTube may play ads. That is out of our control.
 
-## Done-gate (M1)
-On his Mac he opens TTunes, pastes a YouTube link, drops an MP3, and types a song name and picks a match; all three play in order, and then it keeps playing from his library without him touching it.
+## Milestones
+- **M2 — Hosted station.** Done-gate: at work he opens the URL, clicks Play and hears his station, adds a song, and a friend on the same link hears the same song at the same point.
+- **M3 — Requests.** Done-gate: a listener requests a song and it plays to everyone without him touching anything; he turns requests off and the request box disappears.
+- **M4 — Portfolio polish.** README, demo video, public repo.
 
-## Decisions (2026-11-01)
-- Mac first; Windows later is fine (his answer 1).
-- Phone: not a priority, nice to have (answer 2).
-- Typed search: show matches, he selects or confirms (answer 3).
-- Builds on `main` (June local MVP: upload, shuffle, queue, delete) + branch `feat/youtube-ingest` (July: paste link → yt-dlp → confirm card → add). The cloud branch `m1-cloud-phone` is not reused, except its player screen if it's better.
-- Personal use only; YouTube audio via yt-dlp stays on his disk.
+## Assumptions (for Research)
+- **Assumption:** the YouTube IFrame Player API can start a video at an offset and report when it ends, reliably enough to keep listeners within a few seconds of each other.
+- **Assumption:** each song's length and whether it can be embedded can be read when it's added (YouTube Data API v3 `videos.list`: `contentDetails.duration`, `status.embeddable`).
+- **Assumption:** typed search fits inside the Data API free quota (a search costs 100 units; the quota is 10,000 a day, so about 100 searches a day).
+- **Assumption:** hosting on Vercel plus a small Postgres (Neon) costs $0 and never pauses in a way listeners would notice. Not Supabase's free tier.
+- **Assumption:** the "one queued request per listener" limit can work without accounts, using a browser cookie or IP. That's good enough for friends and family, not abuse-proof.
+
+## Decisions
+- 2026-11-07: shared stream, not per-listener (his call, on my recommendation).
+- 2026-11-07: requests are auto-accepted with limits; he can turn them off or override at any time.
+- 2026-11-07: the request-line-only pitch was rejected. It's no use with a small audience, and he'd have to manage every request.
+- 2026-11-01 (Part 1): Mac first; typed search shows matches and he picks; yt-dlp audio stays on his disk.
