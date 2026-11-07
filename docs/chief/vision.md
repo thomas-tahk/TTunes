@@ -15,7 +15,7 @@ A personal radio station on a public URL. It plays his library by itself, from a
 - **Station never stops.** Requests play first, then his queue, then a shuffle of his library. No server streams anything: there is one shared schedule (which song started when), and every player seeks to the current offset.
 - **One shared stream.** A listener can pause or mute their own player, and unpausing rejoins the station live. Only he can skip, reorder, delete, or override.
 - **Requests (M3)** appear in a chat-style feed that everyone sees, with name, song, an optional dedication and a status. Music-category requests play by default with limits (one queued per listener); anything else, such as game soundtracks, waits for his approval; he can deny any one with one tap. A setting in his settings: open / approve first / off.
-- **Portfolio-ready:** public repo, README, demo video.
+- **Portfolio-ready:** public repo, README, live URL anyone can open and use.
 
 ## Non-goals
 - Per-listener playback (everyone controls their own player). That would just be a playlist page.
@@ -32,7 +32,7 @@ A personal radio station on a public URL. It plays his library by itself, from a
 ## Milestones
 - **M2 — Hosted station.** Done-gate: at work he opens the URL, clicks Play and hears his station, adds a song, and a friend on the same link hears the same song at the same point.
 - **M3 — Requests.** Done-gate: a listener requests a song and it plays to everyone without him touching anything; he turns requests off and the request box disappears.
-- **M4 — Portfolio polish.** README, demo video, public repo.
+- **M4 — Portfolio polish.** README, public repo. (No demo video: "demo" = the live URL others can use.)
 
 ## Assumptions (researched 2026-11-07 — docs/chief/research/youtube.md, hosting.md)
 - **Verified:** IFrame API starts at an offset (`start`/`seekTo`, keyframe-approximate) and reports end (state 0); embed-blocked = error 101/150, handled at play time too.

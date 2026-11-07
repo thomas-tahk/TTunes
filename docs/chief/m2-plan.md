@@ -10,7 +10,7 @@
 | M1 ✅ | Mac app ([PR #18](https://github.com/thomas-tahk/TTunes/pull/18)) | done |
 | **M2** | **Hosted station** (this plan) | above |
 | M3 | Requests: a chat-style feed with dedications, each request playing by default, and a three-way setting (open / approve first / off) | A listener requests a song with a dedication and it plays for everyone without you touching anything. You deny one with one tap. With the setting on *off*, the request box disappears. |
-| M4 | Portfolio polish | Public repo, README and demo video. |
+| M4 | Portfolio polish | Public repo and README. |
 
 ## Agreed with you
 - **The look:** a small YouTube player (the minimum 200×200) with a decorative visualizer around it. Search prefers "Artist – Topic" art-track uploads, so most songs show a still album cover. YouTube's rules don't allow hiding or covering the player, and the visualizer can't follow the actual audio, because the browser won't let our page read it.
