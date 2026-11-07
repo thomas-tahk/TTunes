@@ -1,8 +1,8 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { LONG_SEC, lookupVideo, thumbnailOf } from "../../lib/addSong.ts";
-import { requireOwner, sendJson } from "../../lib/auth.ts";
-import { readJson } from "../../lib/body.ts";
-import { parseVideoId } from "../../lib/ytlink.ts";
+import { LONG_SEC, lookupVideo, thumbnailOf } from "../../addSong.ts";
+import { requireOwner, sendJson } from "../../auth.ts";
+import { readJson } from "../../body.ts";
+import { parseVideoId } from "../../ytlink.ts";
 
 // POST /api/owner/preview {url} (owner only): what the link is, or why it can't be added.
 export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {

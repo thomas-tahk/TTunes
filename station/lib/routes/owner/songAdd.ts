@@ -1,10 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { insertSong, LONG_SEC, lookupVideo } from "../../lib/addSong.ts";
-import { requireOwner, sendJson } from "../../lib/auth.ts";
-import { readJson } from "../../lib/body.ts";
-import { sharedDb } from "../../lib/db.ts";
-import { getNowPlaying } from "../../lib/schedule.ts";
-import { parseVideoId } from "../../lib/ytlink.ts";
+import { insertSong, LONG_SEC, lookupVideo } from "../../addSong.ts";
+import { requireOwner, sendJson } from "../../auth.ts";
+import { readJson } from "../../body.ts";
+import { sharedDb } from "../../db.ts";
+import { getNowPlaying } from "../../schedule.ts";
+import { parseVideoId } from "../../ytlink.ts";
 
 // POST /api/owner/songs {videoId, position, confirmLong?} (owner only): adds to library and queue.
 export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {

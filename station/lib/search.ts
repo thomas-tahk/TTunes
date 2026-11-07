@@ -1,6 +1,5 @@
-import { apiKey, fetchVideos, throwApiError } from "./youtube.ts";
+import { apiBase, apiKey, fetchVideos, throwApiError } from "./youtube.ts";
 
-const SEARCH_ENDPOINT = "https://www.googleapis.com/youtube/v3/search";
 const MUSIC_CATEGORY = "10";
 
 export interface SongResult {
@@ -27,7 +26,7 @@ interface SearchItem {
 }
 
 async function searchItems(query: string, maxResults: number): Promise<SearchItem[]> {
-  const url = new URL(SEARCH_ENDPOINT);
+  const url = new URL(`${apiBase()}/search`);
   url.search = new URLSearchParams({
     part: "snippet", type: "video", videoEmbeddable: "true", maxResults: String(maxResults), q: query, key: apiKey(),
   }).toString();

@@ -1,7 +1,7 @@
 // YouTube Data API v3 client. videos.list costs 1 quota unit per call and takes up to 50 ids.
-const DEFAULT_ENDPOINT = "https://www.googleapis.com/youtube/v3/videos";
-// Tests point this at a local stub; production never sets it.
-const endpoint = (): string => (process.env.VERCEL ? undefined : process.env.YOUTUBE_API_BASE_URL) || DEFAULT_ENDPOINT;
+const DEFAULT_BASE = "https://www.googleapis.com/youtube/v3";
+// Tests point this at a local stub base (".../youtube/v3"); production never sets it, and VERCEL ignores it.
+export const apiBase = (): string => (process.env.VERCEL ? undefined : process.env.YOUTUBE_API_BASE_URL) || DEFAULT_BASE;
 export const MAX_IDS_PER_CALL = 50;
 
 export interface VideoInfo {
@@ -15,7 +15,11 @@ export interface VideoInfo {
 
 /** YouTube refused because the daily quota or a rate limit is used up. */
 export class QuotaExceededError extends Error {
-  constructor(message = "YouTube quota exceeded") {
+  constructor(
+    message = "YouTube quota exceeded",
+    readonly reason = "quotaExceeded", // YouTube's error reason, e.g. quotaExceeded or rateLimitExceeded
+    readonly source = "", // which call failed, e.g. search.list
+  ) {
     super(message);
     this.name = "QuotaExceededError";
   }
@@ -27,7 +31,8 @@ const QUOTA_REASONS = new Set(["quotaExceeded", "rateLimitExceeded", "userRateLi
 export async function throwApiError(res: Response, what: string): Promise<never> {
   if (res.status === 403) {
     const body = (await res.json().catch(() => null)) as { error?: { errors?: { reason?: string }[] } } | null;
-    if (body?.error?.errors?.some((e) => e.reason && QUOTA_REASONS.has(e.reason))) throw new QuotaExceededError();
+    const reason = body?.error?.errors?.map((e) => e.reason).find((r) => r && QUOTA_REASONS.has(r));
+    if (reason) throw new QuotaExceededError(`YouTube ${what}: ${reason}`, reason, what);
   }
   throw new Error(`YouTube ${what} failed: HTTP ${res.status}`);
 }
@@ -63,7 +68,7 @@ export function apiKey(): string {
 }
 
 async function fetchBatch(ids: string[], key: string): Promise<ApiItem[]> {
-  const url = new URL(endpoint());
+  const url = new URL(`${apiBase()}/videos`);
   url.search = new URLSearchParams({ part: "snippet,contentDetails,status", id: ids.join(","), key }).toString();
   const res = await fetch(url);
   if (!res.ok) return throwApiError(res, "videos.list");

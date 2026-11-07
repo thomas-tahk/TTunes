@@ -2,8 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import nowApi from "../api/now.ts";
-import preview from "../api/owner/preview.ts";
-import songs from "../api/owner/songs.ts";
+import ownerApi from "../api/owner.ts";
 import { SESSION_COOKIE, issueSession } from "../lib/auth.ts";
 import { createDb, sharedDb } from "../lib/db.ts";
 import { insertSong } from "../lib/addSong.ts";
@@ -52,7 +51,7 @@ let youtubeCalls: string[] = [];
 const realFetch = globalThis.fetch;
 
 type H = (req: IncomingMessage, res: ServerResponse) => unknown;
-const routes: Record<string, H> = { "/api/owner/preview": preview, "/api/owner/songs": songs, "/api/now": nowApi };
+const routes: Record<string, H> = { "/api/owner/preview": ownerApi, "/api/owner/songs": ownerApi, "/api/now": nowApi };
 
 beforeAll(async () => {
   process.env.SESSION_SECRET = "test-secret-test-secret-test-secret";
@@ -244,7 +243,7 @@ describe("owner endpoints", () => {
   it("reports quota exhaustion and unusable lengths plainly", async () => {
     const was = globalThis.fetch;
     vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) =>
-      String(input).startsWith("https://www.googleapis.com") ? new Response("{}", { status: 403 }) : was(input, init));
+      String(input).startsWith("https://www.googleapis.com") ? Response.json({ error: { errors: [{ reason: "quotaExceeded" }] } }, { status: 403 }) : was(input, init));
     const quota = await post("/api/owner/preview", { url: ID });
     expect(((await quota.json()) as { error: string }).error).toBe("YouTube's daily limit is used up — try again tomorrow.");
     vi.stubGlobal("fetch", was);
