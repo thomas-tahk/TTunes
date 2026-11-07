@@ -13,7 +13,8 @@
     "skipLibCheck": true,
     "verbatimModuleSyntax": true,
     "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
     "types": ["node"]
   },
-  "include": ["api", "lib", "scripts", "src", "test", "vite.config.ts", "vitest.config.ts", "../shared"]
+  "include": ["api", "lib", "scripts", "src", "test", "vite.config.ts", "vitest.config.ts", "shared"]
 }

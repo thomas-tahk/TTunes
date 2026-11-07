@@ -2,7 +2,8 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import handler from "../api/now.ts";
-import { createDb, migrate, sharedDb } from "../lib/db.ts";
+import { createDb, sharedDb } from "../lib/db.ts";
+import { migrate } from "../lib/migrate.ts";
 
 let server: Server;
 
@@ -31,4 +32,6 @@ it("serves JSON that a CDN may cache until the song ends", async () => {
   const remaining = (body.startedAt + 120_000 - body.serverNow) / 1000;
   expect(Number(match![1])).toBeLessThanOrEqual(remaining);
   expect(Number(match![1])).toBeGreaterThan(0);
+  expect(Number(match![1])).toBeLessThanOrEqual(15);
+  expect(res.headers.get('cache-control')).toContain('stale-while-revalidate');
 });

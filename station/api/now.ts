@@ -12,9 +12,9 @@ function send(res: ServerResponse, status: number, body: unknown, cacheControl: 
 // GET /api/now: what plays now and next. Lazily moves the station on when the song has ended.
 export default async function handler(_req: IncomingMessage, res: ServerResponse): Promise<void> {
   try {
-    const playing = await getNowPlaying(sharedDb(), Date.now());
+    const playing = await getNowPlaying(sharedDb(), Date.now);
     const seconds = cacheSeconds(playing);
-    send(res, 200, playing, seconds > 0 ? `public, max-age=0, s-maxage=${seconds}` : "no-store");
+    send(res, 200, playing, seconds > 0 ? `public, max-age=0, s-maxage=${seconds}, stale-while-revalidate=5` : "no-store");
   } catch (error) {
     console.error("GET /api/now failed", error);
     send(res, 500, { error: "station unavailable" }, "no-store");

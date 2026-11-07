@@ -1,1 +1,1 @@
-{ "framework": "vite", "functions": { "api/*.ts": { "includeFiles": "../shared/**" } } }
+{ "framework": "vite", "buildCommand": "npm run build" }

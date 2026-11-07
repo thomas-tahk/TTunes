@@ -1,5 +1,5 @@
 import type pg from "pg";
-import { advance, type Random, type Station } from "../../shared/station.ts";
+import { advance, type Random, type Station } from "../shared/station.ts";
 import type { Db } from "./db.ts";
 
 export interface Song {
@@ -12,8 +12,10 @@ export interface NowPlaying {
   current: Song | null;
   startedAt: number | null; // epoch ms
   next: Song | null;
-  serverNow: number; // epoch ms
+  serverNow: number; // epoch ms, when this response was built (not when it was cached)
 }
+
+export type Clock = () => number; // epoch ms; tests pass a fake
 
 type Queryable = Pick<pg.ClientBase, "query">;
 
@@ -24,7 +26,7 @@ interface StateRow {
 }
 
 // Seeded so the "next" shown while a song plays is exactly what the advance later picks.
-export function seededRandom(seed: number): Random {
+function seededRandom(seed: number): Random {
   let a = seed >>> 0;
   return () => {
     a = (a + 0x6d2b79f5) >>> 0;
@@ -83,11 +85,12 @@ async function describe(q: Queryable, state: StateRow, songs: Map<string, Song>,
 
 // Moves the station on inside one transaction. The row lock makes concurrent callers queue up;
 // whoever gets the lock second sees a fresh song and changes nothing.
-async function advanceOnce(db: Db, now: number): Promise<NowPlaying> {
+async function advanceOnce(db: Db, clock: Clock): Promise<NowPlaying> {
   const client = await db.connect();
   try {
     await client.query("begin");
     const state = await loadState(client, true);
+    const now = clock(); // read after the lock: a waiter must not report a time before the winner's startedAt
     const songs = await loadSongs(client);
     if (!hasEnded(state, songs, now)) {
       await client.query("commit");
@@ -122,16 +125,19 @@ async function consumeQueueHead(client: Queryable, before: Station, playedId: st
   await client.query("delete from queue where id = (select min(id) from queue where video_id = $1)", [playedId]);
 }
 
-export async function getNowPlaying(db: Db, now: number): Promise<NowPlaying> {
+export async function getNowPlaying(db: Db, clock: Clock): Promise<NowPlaying> {
+  const now = clock();
   const state = await loadState(db, false);
   const songs = await loadSongs(db);
   if (!hasEnded(state, songs, now)) return describe(db, state, songs, now);
-  return advanceOnce(db, now);
+  return advanceOnce(db, clock);
 }
 
-/** Seconds a CDN may keep the response: never past the end of the current song. */
+export const MAX_CACHE_SECONDS = 15; // listeners re-check about every 30s, so owner skips show up quickly
+
+/** Seconds a CDN may keep the response: never past the end of the current song, capped at 15. */
 export function cacheSeconds(playing: NowPlaying): number {
   if (!playing.current || playing.startedAt === null) return 0;
   const remainingMs = playing.startedAt + playing.current.durationSec * 1000 - playing.serverNow;
-  return Math.max(0, Math.floor(remainingMs / 1000));
+  return Math.min(MAX_CACHE_SECONDS, Math.max(0, Math.floor(remainingMs / 1000)));
 }
