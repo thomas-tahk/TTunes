@@ -15,7 +15,7 @@ export const IP_KEEP_MS = 7 * 24 * 3600 * 1000;
 export const DAILY_LOOKUP_CAP = 2000; // listener-triggered YouTube lookups per rolling 24h, 1 quota unit each; protects the owner's 10,000-unit pool
 export const NAME_MAX = 30;
 export const DEDICATION_MAX = 140;
-export const REQUEST_KEEP_DAYS = 30; // YouTube's 30-day metadata cache rule
+export const REQUEST_KEEP_DAYS = 29; // YouTube's 30-day metadata cache rule, minus a day: the cron runs daily
 
 type Queryable = Pick<pg.ClientBase, "query">;
 export type Refusal = { ok: false; status: number; code: string; message: string };

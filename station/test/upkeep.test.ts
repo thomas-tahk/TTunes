@@ -170,12 +170,12 @@ it("a YouTube outage removes nothing, fails loudly, and still takes the backup",
   expect((await sharedDb().query("select 1 from library_exports")).rowCount).toBe(1);
 });
 
-it("cron deletes finished requests 30+ days old, expires old queued ones, leaves fresh rows alone", async () => {
+it("cron deletes finished requests 29+ days old, expires old queued ones, leaves fresh rows alone", async () => {
   const db = sharedDb();
   await db.query("truncate requests, request_attempts cascade");
   const rows: [string, string, number][] = [
     ["oldPlayed01", "played", 31], ["oldDenied01", "denied", 31], ["oldExpired1", "expired", 31], ["oldQueued01", "queued", 31],
-    ["freshPlay01", "played", 29], ["freshQueue1", "queued", 29],
+    ["freshPlay01", "played", 28], ["freshQueue1", "queued", 28],
   ];
   for (const [vid, status, days] of rows) {
     await db.query(
@@ -240,6 +240,16 @@ it("the request on air is never deleted or expired mid-song, whatever its status
     expect((await cron("Bearer cron-secret-123")).status).toBe(200);
     expect((await db.query("select status from requests")).rows).toEqual([{ status }]);
   }
+  await db.query("truncate requests, request_attempts, station_state cascade");
+});
+
+it("an old denied row for the song on air, decided before that song started, is still deleted", async () => {
+  const db = sharedDb();
+  await db.query("truncate requests, request_attempts, station_state, play_history, queue cascade");
+  await db.query("insert into requests (video_id, title, duration_sec, name, status, listener_id, created_at, decided_at) values ('onAirSong01', 'T', 1000, 'Sam', 'denied', 'l', now() - interval '40 days', now() - interval '40 days')");
+  await db.query("insert into station_state (id, current_video_id, started_at_ms) values (1, 'onAirSong01', $1) on conflict (id) do update set current_video_id = 'onAirSong01', started_at_ms = $1", [Date.now() - 1000]);
+  expect((await cron("Bearer cron-secret-123")).status).toBe(200);
+  expect((await db.query("select 1 from requests")).rowCount).toBe(0);
   await db.query("truncate requests, request_attempts, station_state cascade");
 });
 
