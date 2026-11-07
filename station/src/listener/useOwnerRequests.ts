@@ -58,6 +58,7 @@ export function useOwnerRequests(enabled: boolean, playing: NowPlaying | null) {
       setBusyId(id);
       setNote(null);
       guard.current.actionStarted();
+      let gone = false;
       try {
         const { status, body } = await call("POST", "/api/owner/requests/moderate", { id, action });
         if (status === 200 || status === 409) patch(body.request as FeedItem, body.waitingCount as number);
@@ -66,7 +67,7 @@ export function useOwnerRequests(enabled: boolean, playing: NowPlaying | null) {
           setNote({ text: body.alreadyInLibrary ? "That song was already in the library." : DONE[action] });
         } else {
           setNote({ text: messageOf(body), error: true });
-          if (status === 404) void load();
+          gone = status === 404;
         }
         setChanges((n) => n + 1);
       } catch {
@@ -75,6 +76,7 @@ export function useOwnerRequests(enabled: boolean, playing: NowPlaying | null) {
         guard.current.actionStarted();
         setBusyId(null);
       }
+      if (gone) void load(); // after the guard bump, so this reload is not dropped as stale
     },
     [load],
   );

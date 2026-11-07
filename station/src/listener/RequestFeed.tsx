@@ -17,11 +17,15 @@ const STATUS_LABEL: Record<RequestStatus, string> = {
 function Row({ item, moderation }: { item: FeedItem; moderation?: Moderation }) {
   const li = useRef<HTMLLIElement>(null);
   const acted = useRef(false);
-  // After a tap the pressed button may be gone (approve, deny): keep keyboard focus on the row instead of dropping it to the page.
+  const busyId = moderation?.busyId ?? null;
+  // When a tap settles, the pressed button may be gone (approve, deny, keep): put focus on the row, but only if it fell to the page.
+  // Always forget the tap here, so a later status change can never move focus.
   useEffect(() => {
-    if (acted.current && li.current && !li.current.contains(document.activeElement)) li.current.focus();
+    if (busyId !== null || !acted.current) return;
     acted.current = false;
-  }, [item.status]);
+    const active = document.activeElement;
+    if (li.current && (!active || active === document.body)) li.current.focus();
+  }, [busyId]);
   const tracked = moderation && { ...moderation, onAct: (id: number, action: Action) => { acted.current = true; moderation.onAct(id, action); } };
   return (
     <li className="feed-row" data-testid="feed-row" ref={li} tabIndex={moderation ? -1 : undefined}>

@@ -170,6 +170,12 @@ try {
   await owner.getByTestId("feed-row").filter({ hasText: "Alice" }).first().waitFor();
   await rowOf("Alice").getByRole("button", { name: /^Keep/ }).click();
   await rowOf("Alice").getByText("In library").waitFor();
+  check((await owner.evaluate(() => document.activeElement?.closest('[data-testid="feed-row"]')?.textContent.includes("Alice"))) === true, "focus stays in the row after Keep");
+  // A later status change (the 30s re-check) must not pull focus out of the field the owner is typing in.
+  await owner.getByLabel("Your name").focus();
+  await db.query("update requests set status = 'expired' where name = 'Alice'");
+  await rowOf("Alice").getByText("Expired").waitFor({ timeout: 60000 });
+  check((await owner.evaluate(() => document.activeElement?.id || document.activeElement?.getAttribute("aria-label") || document.activeElement?.tagName)) !== "LI" && (await owner.evaluate(() => document.activeElement?.closest('[data-testid="feed-row"]'))) === null, "a later status change leaves focus in the name field");
   check((await db.query("select 1 from songs where video_id = 'gameVid0001' and deleted_at is null")).rowCount === 1, "kept song is in the library table");
   await owner.getByRole("tab", { name: "Library" }).click();
   await owner.getByTestId("list-library").getByText(catalog.gameVid0001.title).waitFor();
@@ -203,8 +209,13 @@ try {
     select 'fillSong' || g, 'Filler ' || g, 100, 'Filler ' || g, 'played', 'filler' || g from generate_series(1, 31) g`);
   await reloadOwner();
   check((await badge()) === "1", "badge counts the old waiting request");
+  await rowOf("Filler 31").getByRole("button", { name: /^Remove/ }).click();
+  await owner.getByTestId("mod-note").getByText("Removed from the feed.").waitFor();
+  await owner.route("**/api/owner/requests/moderate", async (route) => { await sleep(800); await route.continue(); });
   await rowOf("Olga").getByRole("button", { name: /^Deny/ }).click();
+  check((await owner.getByTestId("mod-note").count()) === 0, "the old note clears as soon as the next action starts");
   await rowOf("Olga").getByText("Denied").waitFor();
+  await owner.unroute("**/api/owner/requests/moderate");
   check((await owner.evaluate(() => document.activeElement?.closest('[data-testid="feed-row"]')?.textContent.includes("Olga"))) === true, "focus stays on the row after a tap");
   check((await badge()) === "0", "old waiting request (beyond the newest 30) was actionable");
 
