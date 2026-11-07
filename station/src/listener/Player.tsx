@@ -6,10 +6,11 @@ import { useYouTubePlayer } from "./useYouTubePlayer.ts";
 interface Props {
   playing: NowPlaying;
   serverTime: () => number;
+  onPausedChange: (paused: boolean) => void;
 }
 
 // Mounted by the Play click, so the browser lets it start with sound. Always visible and unobstructed (YouTube policy).
-export function Player({ playing, serverTime }: Props) {
+export function Player({ playing, serverTime, onPausedChange }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const [local, setLocal] = useState<LocalSkip | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -29,6 +30,7 @@ export function Player({ playing, serverTime }: Props) {
       setLocal(skipUnplayable(p, l, now()));
     },
     onLoadFailed: () => setLoadFailed(true),
+    onPausedChange,
   });
 
   const skip = activeSkip(playing, local);

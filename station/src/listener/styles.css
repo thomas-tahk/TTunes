@@ -107,3 +107,9 @@ html { background: var(--ink); }
 .row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .owner-list .btn.small { min-width: 64px; padding: 0 12px; }
 .owner-empty { color: var(--muted); }
+
+.owner-account { margin-top: 20px; padding-top: 16px; border-top: 2px solid var(--muted); }
+.owner-account h2 { margin: 0 0 12px; }
+.owner-account .owner-confirm { margin-top: 12px; }
+a.btn:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
+a.btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }

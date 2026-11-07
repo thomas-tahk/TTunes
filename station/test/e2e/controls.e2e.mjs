@@ -170,8 +170,9 @@ try {
   await page.waitForFunction(() => document.querySelectorAll('[data-testid="list-queue"] li').length === 2);
   check(true, "Remove takes the long song out of the queue list");
 
-  // 6. Skip: the owner's screen updates at once, both listeners follow at their 30s re-check.
+  // 6. Skip: the owner's screen updates at once, both listeners (after pressing Play) follow at their 30s re-check.
   const before = await Promise.all(listeners.map((p) => p.getByTestId("now-title").textContent()));
+  for (const l of listeners) await l.getByRole("button", { name: "Play" }).click(); // only a listening tab re-checks every 30s
   await page.getByRole("button", { name: "Skip song" }).click();
   await waitText("now-title", "Neon Skyline");
   check(true, "owner's screen shows the skipped-to song immediately");
@@ -220,6 +221,21 @@ try {
   check(labels.join("|") === want.join("|"), `log, newest first: ${labels.join(", ")}`);
   await shot("activity");
   await assertPlayerClear("after actions");
+
+  // 10. Account: export link, in-page confirm (no window.confirm), sign out everywhere ends the session.
+  page.on("dialog", () => { throw new Error("E2E FAIL: window.confirm used"); });
+  const exportHref = await page.getByRole("link", { name: "Export library" }).getAttribute("href");
+  check(exportHref === "/api/owner/export", "Export library links to /api/owner/export");
+  await page.getByRole("button", { name: "Sign out everywhere" }).click();
+  await page.getByRole("button", { name: "Yes, sign out everywhere" }).waitFor();
+  await shot("signout-confirm");
+  await page.getByRole("button", { name: "Cancel" }).last().click();
+  check((await page.getByRole("button", { name: "Yes, sign out everywhere" }).count()) === 0, "Cancel closes the confirm");
+  await page.getByRole("button", { name: "Sign out everywhere" }).click();
+  await page.getByRole("button", { name: "Yes, sign out everywhere" }).click();
+  await page.getByRole("link", { name: "Sign in" }).waitFor();
+  check((await page.locator(".owner-panel").count()) === 0, "after sign out everywhere the page is signed out");
+  check((await page.request.get(`${BASE}api/owner/queue`)).status() === 401, "the old session cookie is refused");
 
   const real = errors.filter((e) => !/favicon|youtube|googlevideo|google|ERR_BLOCKED|Failed to load resource/i.test(e));
   check(real.length === 0, `no app console errors ${real.join(" | ")}`);

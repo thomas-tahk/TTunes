@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { NowPlaying } from "../../lib/schedule.ts";
+import { OwnerAccount } from "./OwnerAccount.tsx";
 import { OwnerControls } from "./OwnerControls.tsx";
 import { call, messageOf, minutes, NETWORK_MESSAGE } from "./ownerFetch.ts";
 import { OwnerSearch, type SearchPick } from "./OwnerSearch.tsx";
@@ -122,6 +123,7 @@ export function OwnerPanel({ playing, onPlaying }: { playing: NowPlaying | null;
         </div>
       )}
       <OwnerControls playing={playing} changes={adds} onPlaying={onPlaying} />
+      <OwnerAccount />
     </section>
   );
 }
