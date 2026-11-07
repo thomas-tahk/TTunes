@@ -175,7 +175,7 @@ try {
   await owner.getByLabel("Your name").focus();
   await db.query("update requests set status = 'expired' where name = 'Alice'");
   await rowOf("Alice").getByText("Expired").waitFor({ timeout: 60000 });
-  check((await owner.evaluate(() => document.activeElement?.id || document.activeElement?.getAttribute("aria-label") || document.activeElement?.tagName)) !== "LI" && (await owner.evaluate(() => document.activeElement?.closest('[data-testid="feed-row"]'))) === null, "a later status change leaves focus in the name field");
+  check((await owner.getByLabel("Your name").evaluate((el) => el === document.activeElement)) === true, "a later status change leaves focus in the name field");
   check((await db.query("select 1 from songs where video_id = 'gameVid0001' and deleted_at is null")).rowCount === 1, "kept song is in the library table");
   await owner.getByRole("tab", { name: "Library" }).click();
   await owner.getByTestId("list-library").getByText(catalog.gameVid0001.title).waitFor();
