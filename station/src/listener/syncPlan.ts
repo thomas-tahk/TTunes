@@ -34,3 +34,13 @@ export function nextPauseState(s: PauseState, event: PauseEvent): PauseState {
   if (event === "playing") return { listenerPaused: false, loading: false };
   return { ...s, loading: false }; // cued, error
 }
+
+export interface LiveSettle {
+  pending: boolean; // the next PLAYING is the first since mount or one of our loads/cues
+  forced: boolean; // a cue: always land on live, however close
+}
+export const LIVE_TOLERANCE_SEC = 1;
+
+/** On that first PLAYING, buffering has put the player behind the schedule: seek to live unless it is already within a second. */
+export const shouldSeekToLive = (currentSec: number, expectedSec: number, forced: boolean): boolean =>
+  forced || Math.abs(currentSec - expectedSec) > LIVE_TOLERANCE_SEC;

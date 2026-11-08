@@ -42,6 +42,9 @@ try {
   await sleep(20_000); // the station is ~20s into the song before Play, so "live" is far from 0 and a never-syncing build fails the check below
   await page.getByRole("button", { name: "Play" }).click();
   await page.waitForFunction(() => window.__ttunes && window.__ttunes.currentTime() > 0.5, null, { timeout: 30_000 });
+  // currentTime is already the start position before the video really plays: wait until it advances, so the pause below is a pause of a playing video.
+  const t0 = (await snap(page)).t;
+  await page.waitForFunction((from) => window.__ttunes.currentTime() > from + 1.5, t0, { timeout: 20_000 });
   const startId = (await snap(page)).id;
   check(startId === "ViGb-oiEYS0", "the long song plays first");
   const live = await serverLive();

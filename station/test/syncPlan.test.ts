@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextPauseState, planSync, type PauseEvent } from "../src/listener/syncPlan.ts";
+import { nextPauseState, shouldSeekToLive, planSync, type PauseEvent } from "../src/listener/syncPlan.ts";
 
 const prev = { loadedVideoId: "a", syncedStartedAt: 1000, wasLocalStart: false };
 const live = { listenerPaused: false, ended: false };
@@ -48,4 +48,10 @@ describe("nextPauseState", () => {
   it("after a cue, the next song change still sees the pause", () => {
     expect(run(["playing", "paused", "cue", "cued"]).listenerPaused).toBe(true);
   });
+});
+
+describe("shouldSeekToLive", () => {
+  it("seeks when buffering left the player behind live", () => expect(shouldSeekToLive(3.6, 8.2, false)).toBe(true));
+  it("leaves a player already within a second of live", () => expect(shouldSeekToLive(8.0, 8.5, false)).toBe(false));
+  it("a cue always seeks", () => expect(shouldSeekToLive(8.0, 8.1, true)).toBe(true));
 });

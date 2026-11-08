@@ -1,5 +1,5 @@
 import { useEffect, useRef, type RefObject } from "react";
-import { nextPauseState, planSync, type PauseEvent, type PauseState } from "./syncPlan.ts";
+import { nextPauseState, planSync, shouldSeekToLive, type LiveSettle, type PauseEvent, type PauseState } from "./syncPlan.ts";
 import { MAX_DRIFT_SEC } from "./timing.ts";
 import { loadYouTubeApi, type YTPlayer } from "./youtube.ts";
 
@@ -23,7 +23,7 @@ export function useYouTubePlayer(host: RefObject<HTMLDivElement | null>, input: 
   const loaded = useRef(input.videoId);
   const syncedStart = useRef(input.startedAt);
   const syncedLocal = useRef(input.isLocalStart);
-  const cuedPaused = useRef(false);
+  const settle = useRef<LiveSettle>({ pending: true, forced: false }); // the first PLAYING after mount or one of our loads lands on live; later pauses and seeks are the listener's
   const pause = useRef<PauseState>({ listenerPaused: false, loading: false }); // the listener's pause, not YouTube's own PAUSED while it swaps a video
   const step = (event: PauseEvent) => { pause.current = nextPauseState(pause.current, event); };
 
@@ -45,9 +45,10 @@ export function useYouTubePlayer(host: RefObject<HTMLDivElement | null>, input: 
     syncedLocal.current = isLocalStart;
     if (action === "drift") correctDrift();
     if (action === "load" || action === "cue") step(action);
+    if (action === "load") settle.current = { pending: true, forced: false };
     if (action === "load") p.loadVideoById({ videoId, startSeconds: expectedSec() });
     if (action === "cue") {
-      cuedPaused.current = true; // the first PLAYING after this is the listener pressing play: start at live then
+      settle.current = { pending: true, forced: true }; // the first PLAYING after a cue is the listener pressing play: start at live
       p.cueVideoById({ videoId, startSeconds: expectedSec() });
     }
   };
@@ -80,9 +81,11 @@ export function useYouTubePlayer(host: RefObject<HTMLDivElement | null>, input: 
               if (e.data !== YT.PlayerState.PLAYING) return;
               step("playing");
               latest.current.onPausedChange(false);
-              if (!cuedPaused.current) return;
-              cuedPaused.current = false;
-              player.current?.seekTo(latest.current.expectedSec(), true);
+              if (!settle.current.pending) return;
+              const { forced } = settle.current;
+              settle.current = { pending: false, forced: false };
+              const expected = latest.current.expectedSec();
+              if (shouldSeekToLive(player.current?.getCurrentTime() ?? expected, expected, forced)) player.current?.seekTo(expected, true);
             },
             onError: (e: { data: number }) => {
               step("error");
