@@ -1,5 +1,5 @@
 import { useEffect, useRef, type RefObject } from "react";
-import { planSync } from "./syncPlan.ts";
+import { nextPauseState, planSync, type PauseEvent, type PauseState } from "./syncPlan.ts";
 import { MAX_DRIFT_SEC } from "./timing.ts";
 import { loadYouTubeApi, type YTPlayer } from "./youtube.ts";
 
@@ -24,7 +24,8 @@ export function useYouTubePlayer(host: RefObject<HTMLDivElement | null>, input: 
   const syncedStart = useRef(input.startedAt);
   const syncedLocal = useRef(input.isLocalStart);
   const cuedPaused = useRef(false);
-  const listenerPaused = useRef(false); // set by YouTube's pause, cleared by play; a cued song keeps it, so it can't be read off the player state
+  const pause = useRef<PauseState>({ listenerPaused: false, loading: false }); // the listener's pause, not YouTube's own PAUSED while it swaps a video
+  const step = (event: PauseEvent) => { pause.current = nextPauseState(pause.current, event); };
 
   const correctDrift = () => {
     const p = player.current;
@@ -38,11 +39,12 @@ export function useYouTubePlayer(host: RefObject<HTMLDivElement | null>, input: 
     const { videoId, startedAt, isLocalStart, expectedSec } = latest.current;
     if (!p) return;
     const ended = p.getPlayerState() === window.YT?.PlayerState.ENDED;
-    const action = planSync({ loadedVideoId: loaded.current, syncedStartedAt: syncedStart.current, wasLocalStart: syncedLocal.current }, { videoId, startedAt, isLocalStart }, { listenerPaused: listenerPaused.current, ended });
+    const action = planSync({ loadedVideoId: loaded.current, syncedStartedAt: syncedStart.current, wasLocalStart: syncedLocal.current }, { videoId, startedAt, isLocalStart }, { listenerPaused: pause.current.listenerPaused, ended });
     loaded.current = videoId;
     syncedStart.current = startedAt;
     syncedLocal.current = isLocalStart;
     if (action === "drift") correctDrift();
+    if (action === "load" || action === "cue") step(action);
     if (action === "load") p.loadVideoById({ videoId, startSeconds: expectedSec() });
     if (action === "cue") {
       cuedPaused.current = true; // the first PLAYING after this is the listener pressing play: start at live then
@@ -71,17 +73,21 @@ export function useYouTubePlayer(host: RefObject<HTMLDivElement | null>, input: 
             },
             onStateChange: (e: { data: number }) => {
               if (e.data === YT.PlayerState.PAUSED) {
-                listenerPaused.current = true;
-                latest.current.onPausedChange(true);
+                step("paused");
+                if (pause.current.listenerPaused) latest.current.onPausedChange(true);
               }
+              if (e.data === YT.PlayerState.CUED) step("cued");
               if (e.data !== YT.PlayerState.PLAYING) return;
-              listenerPaused.current = false;
+              step("playing");
               latest.current.onPausedChange(false);
               if (!cuedPaused.current) return;
               cuedPaused.current = false;
               player.current?.seekTo(latest.current.expectedSec(), true);
             },
-            onError: (e: { data: number }) => !dead && UNPLAYABLE.includes(e.data) && latest.current.onUnplayable(),
+            onError: (e: { data: number }) => {
+              step("error");
+              if (!dead && UNPLAYABLE.includes(e.data)) latest.current.onUnplayable();
+            },
           },
         });
         if (import.meta.env.DEV) {

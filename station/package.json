@@ -21,6 +21,7 @@
     "e2e": "npm run sync:shared && node test/e2e/sync.e2e.mjs",
     "e2e:playback": "npm run sync:shared && node test/e2e/playback.e2e.mjs",
     "e2e:paused": "npm run sync:shared && node test/e2e/pausedowner.e2e.mjs",
+    "e2e:unplayable": "npm run sync:shared && node test/e2e/unplayable.e2e.mjs",
     "pretest": "npm run sync:shared && npm run db:up",
     "test": "vitest run"
   },

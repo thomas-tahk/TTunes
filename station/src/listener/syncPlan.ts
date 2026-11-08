@@ -19,3 +19,18 @@ export function planSync(prev: SyncState, next: SyncTarget, player: { listenerPa
   if (!newVideo && !newStart) return "drift";
   return player.listenerPaused ? "cue" : "load";
 }
+
+export interface PauseState {
+  listenerPaused: boolean;
+  loading: boolean; // we called loadVideoById/cueVideoById and YouTube has not settled yet
+}
+export type PauseEvent = "load" | "cue" | "paused" | "playing" | "cued" | "error";
+
+/** YouTube itself emits PAUSED while replacing a video, so only a PAUSED with no load of ours pending is the listener pausing. */
+export function nextPauseState(s: PauseState, event: PauseEvent): PauseState {
+  if (event === "load") return { listenerPaused: false, loading: true };
+  if (event === "cue") return { listenerPaused: s.listenerPaused, loading: true };
+  if (event === "paused") return s.loading ? s : { ...s, listenerPaused: true };
+  if (event === "playing") return { listenerPaused: false, loading: false };
+  return { ...s, loading: false }; // cued, error
+}
