@@ -5,7 +5,7 @@
 
    Two halves. The TOP LEVEL is what every layout needs (resets, sizes of the blocks, drawer contents).
    The html[data-layout="side"] block at the end is only where the "side drawer" layout puts things; another layout
-   switched in later (#49) replaces that block and keeps the rest. */
+   html[data-layout="stacked"] places the same blocks in one column. Neither block sets sizes of its own beyond the player's width. */
 
 /* ---------- resets ---------- */
 html { overflow-x: clip; }
@@ -19,7 +19,8 @@ header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; min
 .wordmark { display: inline-flex; align-items: center; height: 44px; line-height: 1; } /* fixed row height: the fonts differ, the header must not */
 .on-air { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px; }
 .on-air i { width: 10px; height: 10px; border-radius: 50%; }
-.look-switch { margin: 0 0 0 auto; padding: 0; border: 0; min-width: 0; display: inline-flex; align-items: center; gap: 6px; }
+.switches { margin: 0 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; }
+.look-switch { margin: 0; padding: 0; border: 0; min-width: 0; display: inline-flex; align-items: center; gap: 6px; }
 .look-switch legend { float: left; padding: 0 6px 0 0; }
 .look-switch label { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 14px; border-width: 3px; border-style: solid; cursor: pointer; }
 .look-switch input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
@@ -93,7 +94,7 @@ footer { margin-top: 22px; min-height: 44px; }
 }
 /* narrow phones: two header rows whichever font the look uses (wordmark + live + owner badge, then the Look switch) */
 @media (max-width: 480px) {
-  .look-switch { order: 2; flex: 1 0 100%; margin: 0; }
+  .switches { order: 2; flex: 1 0 100%; margin: 0; }
   .owner-badge { order: 1; margin-left: auto; }
   .segmented { grid-template-columns: 1fr; }
   .feed-row { grid-template-columns: 52px minmax(0, 1fr); }
@@ -154,4 +155,43 @@ html[data-layout="side"] {
     .hint-bubble::before { content: ""; position: absolute; left: 28px; top: -10px; border: 10px solid transparent; border-top: 0; border-bottom: 12px solid var(--hint-bg); }
     .drawer { position: static; width: auto; max-width: none; margin: 0 calc(-1 * var(--pad)); padding: 24px var(--pad) 40px; border-left: 0; border-top: 8px solid var(--drawer-edge); box-shadow: none; }
   }
+}
+
+/* =====================================================================================================
+   Stacked layout: one column in page flow, in DOM order: player, Play, now playing, up next, the tip, then requests
+   (box + feed) and, for the owner, Add song and Owner tools. No drawer, no fixed tab.
+   ===================================================================================================== */
+html[data-layout="stacked"] {
+  --pad: 30px;
+
+  .shell { max-width: 960px; min-height: calc(100dvh - 48px); margin: 24px auto; padding: var(--pad); display: flex; flex-direction: column; }
+  main { flex: 1; display: flex; flex-direction: column; gap: 24px; }
+  .player-stage { width: min(100%, max(384px, calc((100dvh - 236px) * 16 / 9 + 28px))); align-self: flex-start; padding: 14px; background: var(--bezel-bg); border-radius: var(--bezel-r); box-shadow: inset 0 0 0 4px var(--bezel-edge); }
+  .play { align-self: flex-start; }
+  .titles { padding: 12px 16px; }
+  .drawer { padding: 28px 30px 40px; border-top: 8px solid var(--drawer-edge); }
+  .drawer-head { display: block; }
+  .hint-bubble { position: relative; max-width: 340px; margin: 0 0 -12px; }
+  .hint-bubble::after { content: ""; position: absolute; left: 28px; bottom: -12px; border: 10px solid transparent; border-bottom: 0; border-top: 12px solid var(--hint-bg); }
+
+  @media (max-width: 999px) {
+    --pad: 14px;
+    .shell { margin: 0; min-height: 100dvh; padding: 0 var(--pad); gap: 16px; }
+    main { gap: 16px; }
+    .player-stage {
+      --pw: min(calc(100% + 2 * var(--pad)), max(356px, calc((100dvh - 306px) * 16 / 9)));
+      width: var(--pw); margin-left: calc((100% - var(--pw)) / 2); align-self: auto; padding: 8px 0;
+      border-radius: 0; box-shadow: inset 0 3px 0 var(--bezel-edge), inset 0 -3px 0 var(--bezel-edge);
+    }
+    .player-frame { border-radius: 0; }
+    .song-indicator { margin: 4px var(--pad) 0; }
+    .notice { margin: 10px var(--pad) 0; }
+    .titles { padding: 12px; }
+    .drawer { margin: 0 calc(-1 * var(--pad)); padding: 24px var(--pad) 40px; }
+  }
+}
+
+/* short landscape phones: two switches make the header two rows, so the gap under it goes to keep the player on the first screen */
+@media (max-width: 999px) and (max-height: 400px) {
+  html[data-layout] .shell { gap: 0; }
 }

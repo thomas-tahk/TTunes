@@ -76,7 +76,7 @@ try {
     await tabOrder.evaluate((l) => { document.documentElement.dataset.look = l; document.activeElement?.blur(); window.scrollTo(0, 0); }, look);
     await tabOrder.waitForTimeout(300);
     const stops = [];
-    for (let i = 0; i < 5; i++) { // Look switch, request bar, tip close, Play, owner sign-in: the five stops before focus wraps
+    for (let i = 0; i < 6; i++) { // Look switch, Layout switch, request bar, tip close, Play, owner sign-in: the six stops before focus wraps
       await tabOrder.keyboard.press("Tab");
       stops.push(await tabOrder.evaluate(() => { const e = document.activeElement; const r = e.getBoundingClientRect(); return { name: (e.getAttribute("aria-label") || e.textContent || e.className || e.tagName).trim().slice(0, 22), y: Math.round(r.top + window.scrollY) }; }));
     }
@@ -96,7 +96,8 @@ try {
       await owner.waitForTimeout(300);
       const head = await owner.locator("header").boundingBox();
       const pl = await owner.locator(".player-host").boundingBox();
-      check(head.height <= 150, `owner ${look} @${w}x${h} header is at most two rows (${Math.round(head.height)}px)`);
+      // Two switches: two rows on short landscape screens (the player must be on the first screen); a tall 375px phone has room for a third.
+      check(head.height <= (h > 500 ? 180 : 150), `owner ${look} @${w}x${h} header is at most ${h > 500 ? "three" : "two"} rows (${Math.round(head.height)}px)`);
       check(pl.y + pl.height <= h + 1, `owner ${look} @${w}x${h} player is on the first screen (bottom ${Math.round(pl.y + pl.height)} of ${h})`);
     }
   }
