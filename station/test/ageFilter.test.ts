@@ -14,7 +14,7 @@ let base: string;
 const realFetch = globalThis.fetch;
 let searchUrls: string[] = [];
 let videoCalls = 0;
-let videosMode: "ok" | "500" | "hang" = "ok";
+let videosMode: "ok" | "500" | "hang" | "slow" = "ok";
 const videos: Record<string, { title: string; restricted: boolean }> = {
   cleanVid001: { title: "Clean", restricted: false },
   adultVid001: { title: "Adult", restricted: true },
@@ -50,6 +50,7 @@ beforeEach(async () => {
       return Response.json({ items: Object.keys(videos).map((videoId) => ({ id: { videoId }, snippet: {} })) });
     }
     videoCalls++;
+    if (videosMode === "slow") await new Promise((resolve) => setTimeout(resolve, 200)); // lets concurrent pollers overlap
     if (videosMode === "500") return Response.json({}, { status: 500 });
     if (videosMode === "hang") return new Promise<Response>((_, reject) => init?.signal?.addEventListener("abort", () => reject(init.signal!.reason)));
     const ids = url.searchParams.get("id")!.split(",").filter((id) => videos[id]);
@@ -153,6 +154,7 @@ describe("age-restricted videos", () => {
   });
 
   it("five concurrent pollers make one YouTube call", async () => {
+    videosMode = "slow";
     await queue("cleanVid001", 1);
     await Promise.all([1, 2, 3, 4, 5].map(() => getNowPlaying(sharedDb(), Date.now)));
     expect(videoCalls).toBe(1);
