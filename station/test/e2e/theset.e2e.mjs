@@ -9,7 +9,7 @@ import { SignJWT } from "jose";
 import pg from "pg";
 import { chromium } from "playwright";
 import { freePort, startDevServer } from "./devServer.mjs";
-import { openDrawer, playerClearOfDrawer } from "./drawer.mjs";
+import { focusRingsClearOfLabels, openDrawer, playerClearOfDrawer } from "./drawer.mjs";
 
 const PORT = await freePort();
 const BASE = `http://127.0.0.1:${PORT}/`;
@@ -188,6 +188,8 @@ try {
   await owner.getByRole("button", { name: "Play next" }).waitFor();
   check((await sunrise.getAttribute("aria-expanded")) === "true", "owner: search card expands in place");
   check((await playerClearOfDrawer(owner)).ok, "owner drawer + open card @1280: player clear");
+  const rings = await focusRingsClearOfLabels(owner);
+  check(rings.checked.length >= 2 && rings.bad.length === 0, `The Set: focus ring clear of label on ${rings.checked.join(", ")} ${rings.bad.join(" | ")}`);
   await shot(owner, "owner-1280", 1280, 900);
   await shot(owner, "owner-375", 375, 812, true);
   check(await noScroll(owner), "owner card open @375: no horizontal scroll");

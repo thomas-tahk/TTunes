@@ -126,14 +126,14 @@ footer .signin { margin-left: 0; font-size: 0.9rem; font-weight: 600; }
 .btn.small { min-height: 48px; min-width: 96px; padding: 0 18px; font-size: 1rem; }
 .owner-panel, .requests { display: block; }
 .requests { display: flex; flex-direction: column; gap: 30px; }
-.drawer label { display: block; margin: 14px 0 0; font-size: 0.8rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
+.drawer label { display: block; margin: 14px 0 8px; font-size: 0.8rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
 .drawer input, .drawer textarea { width: 100%; min-height: 48px; padding: 10px 0; border: 0; border-bottom: 4px solid var(--ink); border-radius: 0; background: transparent; color: var(--ink); font-size: 1.1rem; font-weight: 600; resize: vertical; }
 .drawer input::placeholder { color: var(--ink-soft); opacity: 1; }
 .owner-row { display: flex; gap: 10px; align-items: flex-end; }
 .owner-row input { flex: 1; width: auto; min-width: 0; }
 .hint, .feed-note, .owner-empty, .owner-meta span, .feed-len, .counter { color: var(--ink-soft); }
 .hint { margin: 8px 0 0; }
-.counter { margin: 4px 0 0; text-align: right; font-size: 0.85rem; }
+.counter { margin: 8px 0 0; text-align: right; font-size: 0.85rem; }
 .send { margin-top: 16px; width: 100%; }
 .mine p { margin: 10px 0 0; overflow-wrap: anywhere; }
 .mine { display: flex; gap: 12px; align-items: center; margin-top: 10px; padding: 12px; background: var(--ink); color: #fff; }
