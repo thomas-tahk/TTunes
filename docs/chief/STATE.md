@@ -7,6 +7,6 @@ His decisions 2026-11-08: loose playback; Afterglow (B) default + The Set (A) sw
 M4 issues: #39 playback, #40 Afterglow, #41 add flow (after #40), #42 The Set (after #40,#41), #43 image+README (last)
 Merge order: M4 PR from m4-portfolio to main; M3 live done-gate (#33) folds into the M4 try-live ask
 Waiting on him: nothing
-Next action: #40 merged; #39 in re-review; #41 fixing review findings; then #42, #43, milestone review+QA, M4 PR
+Next action: #39 #40 #41 #42 merged (daa2359); #43 image+README building; whole-milestone review running; then QA on a preview deploy, M4 PR
 Open questions: docs/questions/M4.md
 Updated: 2026-11-08
