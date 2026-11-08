@@ -1,0 +1,20 @@
+/* C. Frosted glass over the cover-colour page background, light text. */
+html[data-look="afterglow"] .drawer, html[data-look="afterglow"] .drawer-tab {
+  --drawer-bg: rgba(14, 6, 28, 0.6);
+  --ink: #fff; --ink-soft: #efe8f6; --rule: rgba(255, 255, 255, 0.35);
+  --focus-on-drawer: #fff; --focus-on-wash: #fff;
+}
+html[data-look="afterglow"] .drawer { background: rgba(14, 6, 28, 0.6); -webkit-backdrop-filter: blur(26px) saturate(1.5); backdrop-filter: blur(26px) saturate(1.5); border-left: 1px solid rgba(255, 255, 255, 0.5); box-shadow: -20px 0 50px rgba(0, 0, 0, 0.25); }
+html[data-look="afterglow"] .drawer-tab { background: rgba(14, 6, 28, 0.6); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.5); border-right: 0; }
+html[data-look="afterglow"] .drawer .btn { background: #fff; color: #1a0630; }
+html[data-look="afterglow"] .drawer .btn.ghost { background: transparent; color: #fff; }
+html[data-look="afterglow"] .mine, html[data-look="afterglow"] .song-card-body { background: rgba(255, 255, 255, 0.16); }
+html[data-look="afterglow"] .song-card-body .btn { background: #fff; color: #1a0630; }
+html[data-look="afterglow"] .feed-row { background: rgba(255, 255, 255, 0.07); padding-left: 10px; padding-right: 10px; border-bottom: 0; margin-bottom: 8px; }
+html[data-look="afterglow"] .mode-open, html[data-look="afterglow"] .status-queued, html[data-look="afterglow"] .mode-approve, html[data-look="afterglow"] .status-waiting { background: #fff; color: #1a0630; }
+html[data-look="afterglow"] .status-playing { background: #1a0630; border-color: #fff; color: #fff; }
+html[data-look="afterglow"] .status-played, html[data-look="afterglow"] .status-expired { color: #efe8f6; border-color: #efe8f6; }
+html[data-look="afterglow"] .mode-off { color: #ffd0d8; border-color: #ffd0d8; }
+html[data-look="afterglow"] .owner-error { color: #ffd0d8; }
+html[data-look="afterglow"] .owner-done { color: #b8f5cb; }
+html[data-look="afterglow"] .tab.on, html[data-look="afterglow"] .seg.on, html[data-look="afterglow"] .waiting-badge { background: #fff; color: #1a0630; }

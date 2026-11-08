@@ -1,0 +1,20 @@
+/* D. Light, muted cream panel, dark text, cover colour (darkened) for accents. */
+html[data-look="afterglow"] .drawer, html[data-look="afterglow"] .drawer-tab {
+  --drawer-bg: #f3eadb; --ink: #1d1722; --ink-soft: #564b5c; --rule: rgba(29, 23, 34, 0.22);
+  --accent: color-mix(in srgb, var(--wash-deep) 85%, #000);
+  --focus-on-drawer: #1d1722; --focus-on-wash: #1d1722;
+}
+html[data-look="afterglow"] .drawer { box-shadow: -30px 0 60px rgba(0, 0, 0, 0.35); border-left: 8px solid var(--wash-mid); }
+html[data-look="afterglow"] .drawer-tab { background: #f3eadb; border-left: 8px solid var(--wash-mid); }
+html[data-look="afterglow"] .drawer h2, html[data-look="afterglow"] .drawer h3 { color: var(--accent); }
+html[data-look="afterglow"] .drawer .btn { background: var(--accent); color: #fff; }
+html[data-look="afterglow"] .drawer .btn.ghost { background: transparent; color: var(--ink); }
+html[data-look="afterglow"] .drawer input, html[data-look="afterglow"] .drawer textarea { border-bottom-color: var(--accent); }
+html[data-look="afterglow"] .mine, html[data-look="afterglow"] .song-card-body { background: var(--accent); color: #fff; }
+html[data-look="afterglow"] .song-card-body .btn { background: #fff; color: var(--accent); }
+html[data-look="afterglow"] .chip { border-color: var(--accent); color: var(--accent); }
+html[data-look="afterglow"] .mode-open, html[data-look="afterglow"] .status-queued { background: var(--accent); color: #fff; }
+html[data-look="afterglow"] .status-playing { background: var(--wash-mid); border-color: var(--wash-mid); color: #fff; }
+html[data-look="afterglow"] .status-waiting, html[data-look="afterglow"] .mode-approve { background: transparent; color: var(--ink); border-color: var(--ink); }
+html[data-look="afterglow"] .feed-name { color: var(--accent); }
+html[data-look="afterglow"] .tab.on, html[data-look="afterglow"] .seg.on, html[data-look="afterglow"] .waiting-badge { background: var(--accent); color: #fff; }

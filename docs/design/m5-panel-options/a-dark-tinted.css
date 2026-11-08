@@ -1,0 +1,20 @@
+/* A. Dark panel tinted by the cover colour, light text. Overrides on top of afterglow.css (look = afterglow). */
+html[data-look="afterglow"] .drawer, html[data-look="afterglow"] .drawer-tab {
+  --drawer-bg: color-mix(in srgb, var(--wash-mid) 58%, #000);
+  --ink: #fff; --ink-soft: #e6dcf0; --rule: rgba(255, 255, 255, 0.28);
+  --focus-on-drawer: #fff; --focus-on-wash: #fff;
+}
+html[data-look="afterglow"] .drawer { box-shadow: -30px 0 60px rgba(0, 0, 0, 0.45); border-left: 4px solid color-mix(in srgb, var(--wash-hot) 70%, #fff); }
+html[data-look="afterglow"] .drawer-tab { background: color-mix(in srgb, var(--wash-mid) 58%, #000); border: 3px solid color-mix(in srgb, var(--wash-hot) 70%, #fff); border-right: 0; }
+html[data-look="afterglow"] .drawer .btn { background: #fff; color: #1a0630; }
+html[data-look="afterglow"] .drawer .btn.ghost { background: transparent; color: #fff; }
+html[data-look="afterglow"] .mine, html[data-look="afterglow"] .song-card-body { background: rgba(255, 255, 255, 0.14); }
+html[data-look="afterglow"] .song-card-body .btn { background: #fff; color: #1a0630; }
+html[data-look="afterglow"] .mode-approve, html[data-look="afterglow"] .status-waiting { background: #fff; color: #1a0630; }
+html[data-look="afterglow"] .mode-open, html[data-look="afterglow"] .status-queued { background: #fff; color: #1a0630; }
+html[data-look="afterglow"] .status-playing { background: color-mix(in srgb, var(--wash-hot) 55%, #fff); border-color: transparent; color: #14052a; }
+html[data-look="afterglow"] .status-played, html[data-look="afterglow"] .status-expired { color: var(--ink-soft); border-color: var(--ink-soft); }
+html[data-look="afterglow"] .mode-off { color: #ffb3c0; border-color: #ffb3c0; }
+html[data-look="afterglow"] .owner-error { color: #ffb3c0; }
+html[data-look="afterglow"] .owner-done { color: #9df0b8; }
+html[data-look="afterglow"] .tab.on, html[data-look="afterglow"] .seg.on, html[data-look="afterglow"] .waiting-badge { background: #fff; color: #1a0630; }
