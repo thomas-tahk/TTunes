@@ -44,7 +44,14 @@ try {
   await page.goto(BASE);
   await page.getByTestId("now-title").waitFor();
   await page.getByRole("button", { name: "Play" }).click();
-  await page.waitForFunction(() => window.__injected, null, { timeout: 60_000 });
+  await page.waitForFunction(() => window.__ttunes && window.__ttunes.currentTime() > 0.5, null, { timeout: 30_000 });
+  // Settle puts the player on live, so song 1 would end locally just before the server changes song, and a load from ENDED emits no PAUSED.
+  // Seek the listener back 3s shortly before the change: the old video is still playing then, so YouTube emits its own PAUSED during the load.
+  const { current, startedAt } = await (await fetch(`${BASE}api/now`)).json();
+  const changeAt = startedAt + current.durationSec * 1000;
+  while (Date.now() < changeAt - 6000) await sleep(250);
+  await page.evaluate(() => window.__ttunes.seekTo(window.__ttunes.currentTime() - 3));
+  await page.waitForFunction(() => window.__injected, null, { timeout: 30_000 });
   await sleep(8000);
   check(await page.locator("[role=status]").filter({ hasText: "can't be embedded" }).count() === 1, "the embed error was handled: skip notice shown");
   const frame = page.frames().find((f) => /youtube/.test(f.url()));

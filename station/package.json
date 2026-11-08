@@ -23,6 +23,7 @@
     "e2e:paused": "npm run sync:shared && node test/e2e/pausedowner.e2e.mjs",
     "e2e:unplayable": "npm run sync:shared && node test/e2e/unplayable.e2e.mjs",
     "e2e:slowstart": "npm run sync:shared && node test/e2e/slowstart.e2e.mjs",
+    "e2e:theset": "npm run sync:shared && node test/e2e/theset.e2e.mjs",
     "pretest": "npm run sync:shared && npm run db:up",
     "test": "vitest run"
   },
