@@ -1,80 +1,127 @@
 /* Shared layout for every look: where things go and how big they are (The Set's proportions).
    Looks (afterglow.css, theset.css) only add palette, type and finish; they never set a box's size or place.
    Looks hand it their colours through custom properties: --bezel-bg --bezel-edge --bezel-r --frame-r --tab-r
-   --drawer-edge --drawer-shade --hint-bg. The box model and the places are decided here.
-   Resets first (they hold for every layout); the rest is keyed on <html data-layout="side"> so another layout can be switched in later. */
+   --drawer-edge --drawer-shade --hint-bg.
 
+   Two halves. The TOP LEVEL is what every layout needs (resets, sizes of the blocks, drawer contents).
+   The html[data-layout="side"] block at the end is only where the "side drawer" layout puts things; another layout
+   switched in later (#49) replaces that block and keeps the rest. */
+
+/* ---------- resets ---------- */
 html { overflow-x: clip; }
 html, body { margin: 0; min-height: 100%; }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 button, input, textarea { font-family: inherit; }
 
+/* ---------- header and the Look switch ---------- */
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; min-height: 44px; padding: 0 0 22px; box-sizing: content-box; }
+.wordmark { display: inline-flex; align-items: center; height: 44px; line-height: 1; } /* fixed row height: the fonts differ, the header must not */
+.on-air { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px; }
+.on-air i { width: 10px; height: 10px; border-radius: 50%; }
+.look-switch { margin: 0 0 0 auto; padding: 0; border: 0; min-width: 0; display: inline-flex; align-items: center; gap: 6px; }
+.look-switch legend { float: left; padding: 0 6px 0 0; }
+.look-switch label { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 14px; border-width: 3px; border-style: solid; cursor: pointer; }
+.look-switch input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+.signin, .owner-badge { display: inline-flex; align-items: center; min-height: 44px; padding: 0 6px; }
+.owner-badge { padding: 0 14px; text-decoration: none; }
+
+/* ---------- the player: always 16:9, never under 200px tall ---------- */
+.stage { position: relative; }
+.player-frame { width: 100%; overflow: hidden; border-radius: var(--frame-r); }
+.player-host { width: 100%; aspect-ratio: 16 / 9; min-height: 200px; display: block; } /* the real player area */
+.player-host iframe { width: 100%; height: 100%; display: block; }
+.notice { margin: 10px 0 0; padding: 10px 14px; border-left: 6px solid; }
+
+/* song indicator: progress line + state marker under the player; never covers it */
+.song-indicator { display: flex; align-items: center; gap: 12px; min-height: 28px; margin-top: 4px; }
+.song-indicator .marker { display: inline-flex; align-items: center; gap: 8px; margin: 0; min-width: 8.5em; text-transform: uppercase; }
+.song-indicator .marker i { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.song-indicator .progress { flex: 1; height: 8px; border-radius: 4px; overflow: hidden; }
+.song-indicator .progress span { display: block; height: 100%; }
+.song-indicator .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.song-indicator .clock { margin: 0; font-variant-numeric: tabular-nums; }
+
+/* ---------- titles, up next, Play ---------- */
+.titles { display: flex; flex-direction: column; justify-content: flex-end; min-width: 0; padding: 16px; }
+.label { margin: 0; line-height: 1.2; }
+.titles .label { padding: 10px 14px 0; }
+h1 { margin: 0; line-height: 1.02; overflow-wrap: anywhere; }
+.titles h1 { padding: 2px 14px 12px; }
+h1.title-xl { font-size: 2.6rem; }
+h1.title-l { font-size: 2.2rem; }
+h1.title-m { font-size: 1.8rem; }
+h1.title-s { font-size: 1.4rem; }
+
+.up-next { position: relative; margin: 0; min-width: 0; padding: 12px 18px 14px; border: 6px solid; overflow-wrap: anywhere; }
+.up-next .label { display: block; padding-bottom: 4px; }
+.up-next b { display: block; margin-top: 10px; padding-left: 10px; border-left: 4px solid; font-size: 1.7rem; line-height: 1.1; }
+.request-line { display: block; margin-top: 8px; }
+
+.btn { min-height: 48px; min-width: 120px; padding: 0 24px; border: 0; cursor: pointer; }
+.play { width: 112px; height: 112px; min-width: 0; padding: 0; display: grid; place-items: center; border-radius: 50%; }
+footer { margin-top: 22px; min-height: 44px; }
+.message { margin: auto 0; padding: 24px 0; max-width: 900px; }
+
+/* ---------- the tip over the request bar ---------- */
+.hint-bubble { display: flex; align-items: center; gap: 4px; padding: 6px 6px 6px 16px; background: var(--hint-bg); }
+.hint-bubble p { margin: 0; flex: 1; }
+.hint-bubble button { flex: none; width: 44px; height: 44px; border: 0; background: transparent; line-height: 1; cursor: pointer; }
+
+/* ---------- drawer contents ---------- */
+.drawer-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.drawer-tabs { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 14px 0 6px; }
+.segmented { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.feed-row { flex: none; display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 6px 14px; align-items: start; }
+.feed-row img { width: 52px; height: 52px; object-fit: cover; }
+
+/* ---------- smaller screens: sizes ---------- */
+@media (max-width: 999px) {
+  h1.title-xl { font-size: 2.1rem; }
+  h1.title-l { font-size: 1.8rem; }
+  h1.title-m { font-size: 1.5rem; }
+  h1.title-s { font-size: 1.25rem; }
+  .up-next b { font-size: 1.4rem; }
+  .play { width: 96px; height: 96px; }
+  header { padding: 12px 0; }
+  footer { margin-top: 2px; }
+}
+@media (max-width: 999px) and (max-height: 700px) {
+  header { padding: 6px 0; column-gap: 10px; }
+  .look-switch label { padding: 0 9px; }
+  .look-switch legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); } /* still read aloud; saves a row at 568px */
+}
+/* narrow phones: two header rows whichever font the look uses (wordmark + live + owner badge, then the Look switch) */
+@media (max-width: 480px) {
+  .look-switch { order: 2; flex: 1 0 100%; margin: 0; }
+  .owner-badge { order: 1; margin-left: auto; }
+  .segmented { grid-template-columns: 1fr; }
+  .feed-row { grid-template-columns: 52px minmax(0, 1fr); }
+  .feed-row .chip { grid-column: 2; justify-self: start; }
+}
+
+/* =====================================================================================================
+   Side layout: player + now playing on top, up next under, Play at the bottom; requests in a drawer on the right.
+   On a phone it is one column in DOM order (player, request bar, drawer, titles, up next, Play), so Tab follows the picture.
+   ===================================================================================================== */
 html[data-layout="side"] {
   --drawer-w: 520px;
   --pad: 30px;
 
-  /* ---------- the card ---------- */
   .shell { position: relative; max-width: 1240px; min-height: calc(100dvh - 48px); margin: 24px auto; padding: var(--pad); display: flex; flex-direction: column; }
-  header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; min-height: 44px; padding: 0 0 22px; box-sizing: content-box; }
-  .wordmark { display: inline-flex; align-items: center; height: 44px; line-height: 1; } /* fixed row height: the fonts differ, the header must not */
-  .on-air { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px; }
-  .on-air i { width: 10px; height: 10px; border-radius: 50%; }
-  .look-switch { margin: 0 0 0 auto; padding: 0; border: 0; min-width: 0; display: inline-flex; align-items: center; gap: 6px; }
-  .look-switch legend { float: left; padding: 0 6px 0 0; }
-  .look-switch label { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 14px; border-width: 3px; border-style: solid; cursor: pointer; }
-  .look-switch input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
-  .signin, .owner-badge { display: inline-flex; align-items: center; min-height: 44px; padding: 0 6px; }
-  .owner-badge { padding: 0 14px; text-decoration: none; }
-
-  /* ---------- front panel: player + now playing on top, up next under, Play at the bottom ---------- */
   main { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 340px; grid-template-rows: auto auto auto; align-content: start; gap: 24px 28px; }
-  .foot { display: contents; }
   .player-stage { grid-column: 1; grid-row: 1; justify-self: start; width: min(100%, max(384px, calc((100dvh - 236px) * 16 / 9 + 28px))); padding: 14px; background: var(--bezel-bg); border-radius: var(--bezel-r); box-shadow: inset 0 0 0 4px var(--bezel-edge); }
-  .stage { position: relative; }
-  .player-frame { width: 100%; overflow: hidden; border-radius: var(--frame-r); }
-  .player-host { width: 100%; aspect-ratio: 16 / 9; min-height: 200px; display: block; } /* the real player area */
-  .player-host iframe { width: 100%; height: 100%; display: block; }
-  .notice { margin: 10px 0 0; padding: 10px 14px; border-left: 6px solid; }
+  .titles { grid-column: 2; grid-row: 1; }
+  .up-next { grid-column: 1 / -1; grid-row: 2; }
+  .play { grid-column: 1 / -1; grid-row: 3; justify-self: start; }
+  .message { grid-column: 1 / -1; }
 
-  /* song indicator: progress line + state marker under the player; never covers it */
-  .song-indicator { display: flex; align-items: center; gap: 12px; min-height: 28px; margin-top: 4px; }
-  .song-indicator .marker { display: inline-flex; align-items: center; gap: 8px; margin: 0; min-width: 8.5em; text-transform: uppercase; }
-  .song-indicator .marker i { width: 12px; height: 12px; border-radius: 50%; flex: none; }
-  .song-indicator .progress { flex: 1; height: 8px; border-radius: 4px; overflow: hidden; }
-  .song-indicator .progress span { display: block; height: 100%; }
-  .song-indicator .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  .song-indicator .clock { margin: 0; font-variant-numeric: tabular-nums; }
-
-  .titles { grid-column: 2; grid-row: 1; display: flex; flex-direction: column; justify-content: flex-end; min-width: 0; padding: 16px; }
-  .label { margin: 0; line-height: 1.2; }
-  .titles .label { padding: 10px 14px 0; }
-  h1 { margin: 0; line-height: 1.02; overflow-wrap: anywhere; }
-  .titles h1 { padding: 2px 14px 12px; }
-  h1.title-xl { font-size: 2.6rem; }
-  h1.title-l { font-size: 2.2rem; }
-  h1.title-m { font-size: 1.8rem; }
-  h1.title-s { font-size: 1.4rem; }
-
-  .up-next { grid-column: 1 / -1; grid-row: 2; position: relative; margin: 0; min-width: 0; padding: 12px 18px 14px; border: 6px solid; overflow-wrap: anywhere; }
-  .up-next .label { display: block; padding-bottom: 4px; }
-  .up-next b { display: block; margin-top: 10px; padding-left: 10px; border-left: 4px solid; font-size: 1.7rem; line-height: 1.1; }
-  .request-line { display: block; margin-top: 8px; }
-
-  .btn { min-height: 48px; min-width: 120px; padding: 0 24px; border: 0; cursor: pointer; }
-  .play { grid-column: 1 / -1; grid-row: 3; justify-self: start; width: 112px; height: 112px; min-width: 0; padding: 0; display: grid; place-items: center; border-radius: 50%; }
-
-  footer { margin-top: 22px; min-height: 44px; }
-  .message { grid-column: 1 / -1; margin: auto 0; padding: 24px 0; max-width: 900px; }
-  .hint-bubble { position: fixed; z-index: 25; right: 76px; top: 134px; width: 230px; display: flex; align-items: center; gap: 4px; padding: 6px 6px 6px 16px; background: var(--hint-bg); } /* top of the right column, level with the player: never over the title text */
-  .hint-bubble p { margin: 0; flex: 1; }
-  .hint-bubble button { flex: none; width: 44px; height: 44px; border: 0; background: transparent; line-height: 1; cursor: pointer; }
-
-  /* ---------- the drawer ---------- */
-  .drawer-tab { position: fixed; z-index: 30; right: 0; top: 50%; transform: translateY(-50%); min-width: 48px; padding: 26px 14px; border: 0; border-radius: var(--tab-r) 0 0 var(--tab-r); cursor: pointer; writing-mode: vertical-rl; }
+  /* the request bar: a tab on the right edge; the tip floats right above it and points down at it */
+  .drawer-tab { position: fixed; z-index: 30; right: 0; top: 50%; transform: translateY(-50%); height: 220px; min-width: 48px; padding: 0 14px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: var(--tab-r) 0 0 var(--tab-r); cursor: pointer; writing-mode: vertical-rl; }
   .drawer-tab[aria-expanded="true"] { right: var(--drawer-w); }
+  .hint-bubble { position: fixed; z-index: 25; right: 8px; bottom: calc(50% + 130px); width: 230px; max-width: calc(100vw - 16px); }
+  .hint-bubble::after { content: ""; position: absolute; right: 8px; bottom: -12px; border: 10px solid transparent; border-bottom: 0; border-top: 12px solid var(--hint-bg); }
   .drawer { position: fixed; z-index: 20; top: 0; right: 0; bottom: 0; width: var(--drawer-w); max-width: 100vw; overflow-y: auto; padding: 28px 30px 40px; border-left: 8px solid var(--drawer-edge); box-shadow: -20px 0 50px var(--drawer-shade); }
-  .drawer-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 
   /* wide with the drawer open: one column so the player keeps its size beside the drawer */
   @media (min-width: 1000px) {
@@ -87,44 +134,24 @@ html[data-layout="side"] {
     .shell.drawer-open .play { grid-row: 4; }
   }
 
-  /* ---------- narrow: one column. Player first and full-bleed, the request bar and drawer right under it,
-     then the titles, up next and Play. main and .foot dissolve so every block is an item of .shell and can be ordered. ---------- */
   @media (max-width: 999px) {
     --pad: 14px;
     .shell { margin: 0; min-height: 100dvh; padding: 0 var(--pad); gap: 16px; }
-    main { display: contents; }
-    header { padding: 12px 0 12px; }
+    main { display: flex; flex-direction: column; gap: 16px; }
     .player-stage {
       --pw: min(calc(100% + 2 * var(--pad)), max(356px, calc((100dvh - 306px) * 16 / 9)));
-      order: 1; width: var(--pw); margin-left: calc((100% - var(--pw)) / 2); justify-self: auto; padding: 8px 0;
+      width: var(--pw); margin-left: calc((100% - var(--pw)) / 2); padding: 8px 0;
       border-radius: 0; box-shadow: inset 0 3px 0 var(--bezel-edge), inset 0 -3px 0 var(--bezel-edge);
     }
     .player-frame { border-radius: 0; }
     .song-indicator { margin: 4px var(--pad) 0; }
     .notice { margin: 10px var(--pad) 0; }
-    .message { order: 1; }
-    .drawer-tab { order: 2; position: static; transform: none; width: calc(100% + 2 * var(--pad)); margin: 0 calc(-1 * var(--pad)); min-height: 60px; padding: 14px; border-radius: 0; writing-mode: horizontal-tb; text-align: center; }
-    .hint-bubble { order: 3; position: relative; right: auto; top: auto; width: auto; max-width: 300px; margin: 6px 0 0; }
+    .titles { padding: 12px; }
+    .play { align-self: flex-start; }
+    .drawer-tab { position: static; transform: none; width: calc(100% + 2 * var(--pad)); height: auto; margin: 0 calc(-1 * var(--pad)); min-height: 60px; padding: 14px; border-radius: 0; display: block; writing-mode: horizontal-tb; text-align: center; }
+    .hint-bubble { position: relative; right: auto; bottom: auto; width: auto; max-width: 300px; margin: 6px 0 0; }
+    .hint-bubble::after { content: none; }
     .hint-bubble::before { content: ""; position: absolute; left: 28px; top: -10px; border: 10px solid transparent; border-top: 0; border-bottom: 12px solid var(--hint-bg); }
-    .drawer { order: 4; position: static; width: auto; max-width: none; margin: 0 calc(-1 * var(--pad)); padding: 24px var(--pad) 40px; border-left: 0; border-top: 8px solid var(--drawer-edge); box-shadow: none; }
-    .titles { order: 5; padding: 12px; }
-    .up-next { order: 6; }
-    .play { order: 7; width: 96px; height: 96px; }
-    footer { order: 8; margin-top: 2px; }
-    h1.title-xl { font-size: 2.1rem; }
-    h1.title-l { font-size: 1.8rem; }
-    h1.title-m { font-size: 1.5rem; }
-    h1.title-s { font-size: 1.25rem; }
-    .up-next b { font-size: 1.4rem; }
-  }
-  @media (max-width: 999px) and (max-height: 700px) {
-    header { padding: 6px 0; column-gap: 10px; }
-    .look-switch label { padding: 0 9px; }
-    .look-switch legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); } /* still read aloud; saves a row at 568px */
-  }
-  /* narrow phones: two header rows whichever font the look uses (wordmark + live + owner badge, then the Look switch) */
-  @media (max-width: 480px) {
-    .look-switch { order: 2; flex: 1 0 100%; margin: 0; }
-    .owner-badge { order: 1; margin-left: auto; }
+    .drawer { position: static; width: auto; max-width: none; margin: 0 calc(-1 * var(--pad)); padding: 24px var(--pad) 40px; border-left: 0; border-top: 8px solid var(--drawer-edge); box-shadow: none; }
   }
 }

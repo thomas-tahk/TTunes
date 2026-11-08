@@ -108,42 +108,9 @@ export function App() {
     if (owner) await ownerRequests.reload();
   };
 
-  let body;
-  if (view.status === "loading") body = <Message title="Tuning in" body="Finding out what's on air." />;
-  else if (view.status === "error")
-    body = <Message title="Can't reach the station" body="The schedule didn't load. Check your connection." action={{ label: "Try again", run: () => void retry() }} />;
-  else if (!view.playing.current) body = <Message title="Off air" body="Nothing is in the library yet. Check back soon." action={{ label: "Check again", run: () => void retry() }} />;
-  else
-    body = (
-      <>
-        <Title playing={view.playing} />
-        <div className="foot">
-          <PlayerStage>
-            {started ? <Player playing={view.playing} serverTime={serverTime} onPausedChange={setPaused} /> : <><div className="player-frame idle"><div className="player-host" /></div><div className="song-indicator" aria-hidden="true" /></>}
-          </PlayerStage>
-          {!started && (
-            <button type="button" className="btn play" onClick={() => setStarted(true)}>
-              <span aria-hidden="true" className="play-icon" />
-              Play
-            </button>
-          )}
-          <UpNext playing={view.playing} requestsOpen={boxMode !== "off"} />
-        </div>
-      </>
-    );
-
-  const washStyle = { "--wash-hot": wash.hot, "--wash-mid": wash.mid, "--wash-deep": wash.deep } as React.CSSProperties;
-  return (
-    <div className={`shell${drawerOpen ? " drawer-open" : ""}`} style={washStyle}>
-      <header>
-        <span className="wordmark">TTunes</span>
-        <span className="on-air">
-          <i aria-hidden="true" /> Live
-        </span>
-        <LookSwitch />
-        {owner && <SignInLink owner />}
-      </header>
-      <main>{body}</main>
+  // The request bar, its drawer and the tip sit right after the player in the DOM (where they are on a phone), so Tab follows the picture.
+  const requestDrawer = (
+    <>
       <Drawer label={boxMode === "off" ? "Requests" : "Request a song"} open={drawerOpen} owner={owner} tab={drawerTab} onTab={setDrawerTab} onToggle={toggleDrawer}>
         <DrawerPanel id="requests" tab={owner ? drawerTab : "requests"} owner={owner}>
           <div className="requests">
@@ -166,6 +133,44 @@ export function App() {
           </button>
         </div>
       )}
+    </>
+  );
+
+  let body;
+  if (view.status === "loading") body = <><Message title="Tuning in" body="Finding out what's on air." />{requestDrawer}</>;
+  else if (view.status === "error")
+    body = <><Message title="Can't reach the station" body="The schedule didn't load. Check your connection." action={{ label: "Try again", run: () => void retry() }} />{requestDrawer}</>;
+  else if (!view.playing.current) body = <><Message title="Off air" body="Nothing is in the library yet. Check back soon." action={{ label: "Check again", run: () => void retry() }} />{requestDrawer}</>;
+  else
+    body = (
+      <>
+        <PlayerStage>
+          {started ? <Player playing={view.playing} serverTime={serverTime} onPausedChange={setPaused} /> : <><div className="player-frame idle"><div className="player-host" /></div><div className="song-indicator" aria-hidden="true" /></>}
+        </PlayerStage>
+        {requestDrawer}
+        <Title playing={view.playing} />
+        <UpNext playing={view.playing} requestsOpen={boxMode !== "off"} />
+        {!started && (
+          <button type="button" className="btn play" onClick={() => setStarted(true)}>
+            <span aria-hidden="true" className="play-icon" />
+            Play
+          </button>
+        )}
+      </>
+    );
+
+  const washStyle = { "--wash-hot": wash.hot, "--wash-mid": wash.mid, "--wash-deep": wash.deep } as React.CSSProperties;
+  return (
+    <div className={`shell${drawerOpen ? " drawer-open" : ""}`} style={washStyle}>
+      <header>
+        <span className="wordmark">TTunes</span>
+        <span className="on-air">
+          <i aria-hidden="true" /> Live
+        </span>
+        <LookSwitch />
+        {owner && <SignInLink owner />}
+      </header>
+      <main>{body}</main>
       <footer>{ownerState === "listener" && <SignInLink owner={false} />}</footer>
     </div>
   );

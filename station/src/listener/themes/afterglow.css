@@ -88,7 +88,6 @@ footer .signin { font-size: 0.9rem; font-weight: 600; }
 .drawer-head h2:focus { outline: none; }
 .drawer-close, .link-btn { min-height: 44px; padding: 0 14px; background: transparent; border: 3px solid var(--ink); color: var(--ink); font-weight: 800; font-size: 1rem; cursor: pointer; }
 .link-btn { border: 0; padding: 0 8px; text-decoration: underline; }
-.drawer-tabs { display: flex; flex-wrap: wrap; gap: 4px 22px; margin: 14px 0 6px; }
 .drawer-tab-btn { min-height: 44px; padding: 4px 0 0; background: none; border: 0; border-bottom: 5px solid transparent; color: var(--ink); font-weight: 800; font-size: 1.15rem; cursor: pointer; }
 .drawer-tab-btn.on { border-bottom-color: var(--ink); }
 .drawer-panel { padding-top: 10px; }
@@ -156,8 +155,8 @@ footer .signin { font-size: 0.9rem; font-weight: 600; }
 
 .feed-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .feed-note { margin: 12px 0 0; }
-.feed-row { flex: none; display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 14px; align-items: start; padding: 12px 0; border-bottom: 1px solid var(--rule); }
-.feed-row img { width: 52px; height: 52px; border-radius: 50%; object-fit: cover; }
+.feed-row { padding: 12px 0; border-bottom: 1px solid var(--rule); }
+.feed-row img { border-radius: 50%; }
 .feed-body { min-width: 0; overflow: hidden; }
 .feed-body p { margin: 0; overflow: hidden; overflow-wrap: anywhere; }
 .feed-name { font-weight: 800; white-space: nowrap; text-overflow: ellipsis; }
@@ -176,7 +175,6 @@ footer .signin { font-size: 0.9rem; font-weight: 600; }
 .chip.in-library { background: transparent; }
 .waiting-badge { background: var(--ink); color: var(--drawer-bg); min-width: 28px; text-align: center; font-size: 0.9rem; }
 .request-settings h2 { display: flex; align-items: center; gap: 10px; }
-.segmented { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .seg { min-height: 64px; padding: 8px 10px; border: 3px solid var(--ink); background: transparent; color: var(--ink); cursor: pointer; display: flex; flex-direction: column; gap: 2px; text-align: left; }
 .seg small { font-size: 0.78rem; }
 .seg.on { background: var(--ink); color: var(--drawer-bg); }
@@ -195,11 +193,6 @@ footer .signin { font-size: 0.9rem; font-weight: 600; }
   .message p { font-size: 1.15rem; }
   .drawer-tab { font-size: 1.15rem; }
   .drawer-head h2 { font-size: 2.3rem; }
-}
-@media (max-width: 480px) {
-  .segmented { grid-template-columns: 1fr; }
-  .feed-row { grid-template-columns: 52px minmax(0, 1fr); }
-  .feed-row .chip { grid-column: 2; justify-self: start; }
 }
 @media (prefers-reduced-motion: reduce) {
   .on-air i { animation: none !important; }

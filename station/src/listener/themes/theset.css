@@ -94,7 +94,6 @@ html[data-look="theset"] {
   .drawer-head h2:focus { outline: none; }
   .drawer-close, .link-btn { min-height: 44px; padding: 0 14px; background: transparent; border: 3px solid var(--ink); border-radius: 6px; color: var(--ink); font-weight: 700; font-size: 1.1rem; cursor: pointer; }
   .link-btn { border: 0; padding: 0 8px; text-decoration: underline; }
-  .drawer-tabs { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 14px 0 6px; }
   .drawer-tab-btn { min-height: 44px; padding: 4px 0 0; background: none; border: 0; border-bottom: 5px solid transparent; color: var(--ink); font-weight: 700; font-size: 1.25rem; cursor: pointer; }
   .drawer-tab-btn.on { border-bottom-color: var(--btn); }
   .drawer-panel { padding-top: 10px; }
@@ -164,9 +163,9 @@ html[data-look="theset"] {
   .feed-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   .feed-note { margin: 12px 0 0; }
   .feed-list { padding: 10px 8px 6px; }
-  .feed-row { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 6px 14px; align-items: start; margin: 0 0 14px; padding: 12px; background: var(--slip); box-shadow: 3px 4px 0 rgba(29, 15, 8, 0.35); transform: rotate(-0.8deg); }
+  .feed-row { margin: 0 0 14px; padding: 12px; background: var(--slip); box-shadow: 3px 4px 0 rgba(29, 15, 8, 0.35); transform: rotate(-0.8deg); }
   .feed-row:nth-child(even) { transform: rotate(0.7deg); }
-  .feed-row img { width: 52px; height: 52px; border-radius: 4px; object-fit: cover; }
+  .feed-row img { border-radius: 4px; }
   .feed-body { min-width: 0; overflow: hidden; }
   .feed-body p { margin: 0; overflow: hidden; overflow-wrap: anywhere; }
   .feed-name { font-weight: 700; white-space: nowrap; text-overflow: ellipsis; text-transform: uppercase; letter-spacing: 0.05em; }
@@ -185,7 +184,6 @@ html[data-look="theset"] {
   .chip.in-library { background: transparent; }
   .waiting-badge { background: var(--red); color: #fff; min-width: 28px; text-align: center; font-size: 0.9rem; }
   .request-settings h2 { display: flex; align-items: center; gap: 10px; }
-  .segmented { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .seg { min-height: 64px; padding: 8px 10px; border: 3px solid var(--ink); border-radius: 6px; background: transparent; color: var(--ink); cursor: pointer; display: flex; flex-direction: column; gap: 2px; text-align: left; font-size: 1.1rem; font-weight: 700; }
   .seg small { font-size: 0.95rem; font-weight: 500; }
   .seg.on { background: var(--ink); color: var(--gold); }
@@ -198,11 +196,6 @@ html[data-look="theset"] {
   }
   @media (max-width: 999px) and (max-height: 700px) {
     .wordmark { font-size: 1.6rem; }
-  }
-  @media (max-width: 480px) {
-    .segmented { grid-template-columns: 1fr; }
-    .feed-row { grid-template-columns: 52px minmax(0, 1fr); }
-    .feed-row .chip { grid-column: 2; justify-self: start; }
   }
 }
 

@@ -48,22 +48,41 @@ try {
     check(within(a.player, s.player), `@${w}x${h} player box matches (afterglow ${fmt(a.player)} / theset ${fmt(s.player)})`);
     check(within(a.title, s.title), `@${w}x${h} title box matches (afterglow ${fmt(a.title)} / theset ${fmt(s.title)})`);
   }
-  // Hint bubble never sits on the title text (wide sizes, long title in the smallest title class).
+  // Hint bubble: sits right above the request tab, points down at it, stays on screen, and never covers the title text or the player.
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.evaluate(() => { const h = document.querySelector("h1"); h.className = "title-s"; h.textContent = "A very long song title that wraps onto several lines of the title panel ".repeat(3); });
+  await page.evaluate(() => { const h = document.querySelector("h1"); h.className = "title-s"; h.textContent = "A very long song title that wraps onto several lines of the title panel (Remastered Deluxe Edition)"; }); // 100 characters: the longest title a real video has
+  const apart = (a, b) => a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y;
   for (const look of ["afterglow", "theset"]) {
-    for (const w of [1000, 1100, 1240, 1280]) {
-      await page.setViewportSize({ width: w, height: 800 });
+    for (const [w, h] of [[1000, 800], [1100, 800], [1240, 800], [1280, 800], [1440, 900], [1920, 1080]]) {
+      await page.setViewportSize({ width: w, height: h });
       await page.evaluate((l) => { document.documentElement.dataset.look = l; }, look);
       await page.waitForTimeout(300);
       const hint = await page.locator(".hint-bubble").boundingBox();
+      const tab = await page.locator(".drawer-tab").boundingBox();
       check(!!hint, `@${w} ${look} hint bubble is shown`);
-      for (const sel of [".titles .label", ".titles h1"]) {
-        const t = await page.locator(sel).first().boundingBox();
-        const apart = hint.x + hint.width <= t.x || t.x + t.width <= hint.x || hint.y + hint.height <= t.y || t.y + t.height <= hint.y;
-        check(apart, `@${w} ${look} hint clear of ${sel}`);
+      check(hint.x >= 0 && hint.y >= 0 && hint.x + hint.width <= w && hint.y + hint.height <= h, `@${w} ${look} hint is inside the viewport`);
+      check(hint.y + hint.height <= tab.y && tab.y - (hint.y + hint.height) <= 40, `@${w} ${look} hint sits directly above the tab (${Math.round(tab.y - hint.y - hint.height)}px gap)`);
+      check(Math.abs(hint.x + hint.width - w) <= 12 && tab.x + tab.width >= w - 1, `@${w} ${look} hint is right-aligned with the tab`);
+      for (const sel of [".titles .label", ".titles h1", ".player-host"]) {
+        check(apart(hint, await page.locator(sel).first().boundingBox()), `@${w} ${look} hint clear of ${sel}`);
       }
     }
+  }
+  // Phone: Tab goes top to bottom, in the order things are drawn.
+  const tabOrder = await (await browser.newContext({ viewport: { width: 375, height: 812 } })).newPage();
+  await tabOrder.goto(BASE);
+  await tabOrder.getByTestId("now-title").waitFor();
+  for (const look of ["afterglow", "theset"]) {
+    await tabOrder.evaluate((l) => { document.documentElement.dataset.look = l; document.activeElement?.blur(); window.scrollTo(0, 0); }, look);
+    await tabOrder.waitForTimeout(300);
+    const stops = [];
+    for (let i = 0; i < 5; i++) { // Look switch, request bar, tip close, Play, owner sign-in: the five stops before focus wraps
+      await tabOrder.keyboard.press("Tab");
+      stops.push(await tabOrder.evaluate(() => { const e = document.activeElement; const r = e.getBoundingClientRect(); return { name: (e.getAttribute("aria-label") || e.textContent || e.className || e.tagName).trim().slice(0, 22), y: Math.round(r.top + window.scrollY) }; }));
+    }
+    const names = stops.map((s) => `${s.name}@${s.y}`).join(" > ");
+    check(stops.every((s, i) => i === 0 || s.y >= stops[i - 1].y - 2), `phone ${look}: Tab follows top-to-bottom order (${names})`);
+    check(stops.findIndex((s) => /request a song/i.test(s.name)) < stops.findIndex((s) => /^play/i.test(s.name)), `phone ${look}: request bar comes before Play`);
   }
   // Owner on a small landscape screen: the header stays two rows, so the player is on the first screen.
   const owner = await (await browser.newContext()).newPage();
