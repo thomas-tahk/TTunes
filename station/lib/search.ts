@@ -46,6 +46,7 @@ export async function searchSongs(query: string, opts: { maxResults?: number; st
     const id = item.id!.videoId!;
     const v = info.get(id);
     if (!v || !v.embeddable || !v.durationSec) continue;
+    if (opts.strict && v.ageRestricted) continue;
     const t = item.snippet?.thumbnails;
     results.push({
       videoId: id, title: v.title, channelTitle: v.channelTitle, durationSec: v.durationSec, categoryId: v.categoryId,

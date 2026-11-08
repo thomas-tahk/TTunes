@@ -143,7 +143,8 @@ async function playRequest(client: Queryable, state: StateRow, catalog: Catalog,
 
 async function writeAdvance(client: Queryable, state: StateRow, catalog: Catalog, now: number): Promise<NowPlaying> {
   await client.query("update requests set status = 'played' where status = 'playing'");
-  const request = await playRequest(client, state, catalog, now);
+  const gate = await denyAgeRestrictedHeads(client, now); // under the station lock, so the request checked is the one that plays
+  const request = gate === "clear" ? await playRequest(client, state, catalog, now) : null; // capped: fall through to the owner queue
   if (request) return request;
   const station = await loadStation(client, state, catalog.library);
   const seed = startedAtOf(state) ?? now;
@@ -177,7 +178,6 @@ export async function getNowPlaying(db: Db, clock: Clock): Promise<NowPlaying> {
   const catalog = await loadSongs(db);
   if (!hasEnded(state, catalog, now)) return describe(db, state, catalog, now);
   if (await staysOffAir(db, state, catalog)) return describe(db, state, catalog, now);
-  await denyAgeRestrictedHeads(db, clock);
   return advanceOnce(db, clock);
 }
 
@@ -186,7 +186,6 @@ export type SkipResult = { skipped: true; now: NowPlaying; from: Song | null } |
 /** Owner skip. Takes the same row lock as the lazy advance, so a skip and a natural advance move the
  * station once between them: whoever is second sees a different current song and changes nothing. */
 export async function skipCurrent(db: Db, expectedVideoId: string, clock: Clock): Promise<SkipResult> {
-  await denyAgeRestrictedHeads(db, clock);
   const client = await db.connect();
   try {
     await client.query("begin");
