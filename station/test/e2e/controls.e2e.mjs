@@ -121,14 +121,16 @@ try {
   check((await results.first().locator("img").count()) === 1, "result shows a thumbnail");
   await shot("search");
   await assertPlayerClear("search results");
-  await page.getByRole("button", { name: "Choose Neon Skyline", exact: true }).click();
+  const pickResult = (name) => page.getByTestId("search-results").getByRole("button", { name }).first().click();
+  check((await page.getByRole("button", { name: "Play next" }).count()) === 0, "results are collapsed until tapped");
+  await pickResult(/^Neon Skyline Nova Echo/);
   await page.getByRole("button", { name: "Play next" }).click();
   await waitText("next-title", "Neon Skyline");
   check(true, "picked result is Up next");
 
   // 2. Search, pick, add to queue.
   await search("drive");
-  await page.getByRole("button", { name: "Choose Late Night Drive" }).click();
+  await pickResult(/^Late Night Drive/);
   await page.getByRole("button", { name: "Add to queue" }).click();
   await page.getByText(/Added "Late Night Drive" to the end of the queue/).waitFor();
   // No tab click: the open Queue list must refresh by itself after an add.
@@ -139,7 +141,7 @@ try {
 
   // 3. A long result asks before adding.
   await search("rain");
-  await page.getByRole("button", { name: "Choose Eight Hours of Rain" }).click();
+  await pickResult(/^Eight Hours of Rain/);
   await page.getByRole("button", { name: "Add to queue" }).click();
   await page.getByText(/Add anyway\?/).waitFor();
   check((await db.query("select 1 from songs where video_id = 'longVideo01'")).rowCount === 0, "2-hour result not added before confirming");

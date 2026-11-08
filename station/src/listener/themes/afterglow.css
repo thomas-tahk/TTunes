@@ -135,7 +135,7 @@ footer .signin { margin-left: 0; font-size: 0.9rem; font-weight: 600; }
 .hint { margin: 8px 0 0; }
 .counter { margin: 4px 0 0; text-align: right; font-size: 0.85rem; }
 .send { margin-top: 16px; width: 100%; }
-.picked, .mine p { margin: 10px 0 0; overflow-wrap: anywhere; }
+.mine p { margin: 10px 0 0; overflow-wrap: anywhere; }
 .mine { display: flex; gap: 12px; align-items: center; margin-top: 10px; padding: 12px; background: var(--ink); color: #fff; }
 .mine p { margin: 0; }
 .mine img { width: 64px; height: 36px; object-fit: cover; flex: none; }
@@ -144,13 +144,27 @@ footer .signin { margin-left: 0; font-size: 0.9rem; font-weight: 600; }
 .owner-status p { margin: 10px 0 0; }
 .owner-error { color: var(--bad); font-weight: 800; }
 .owner-done { color: var(--ok); font-weight: 800; }
-.owner-preview { display: grid; grid-template-columns: 160px 1fr; gap: 12px; margin: 14px -34px 0; padding: 16px 34px; text-align: left; align-items: start; background: var(--ink); color: #fff; }
-.owner-preview .owner-meta span { color: #e9dcf5; }
-.owner-preview img { width: 160px; height: 90px; object-fit: cover; }
-.owner-preview .btn { background: var(--drawer-bg); color: var(--ink); }
-.owner-preview .btn.ghost { background: transparent; color: #fff; box-shadow: inset 0 0 0 3px #fff; }
-.owner-preview :focus-visible, .mine :focus-visible { outline-color: #fff; }
-.owner-preview .owner-error, .owner-preview .owner-done { color: #fff; }
+/* song card: a result row that expands in place (one open at a time) */
+.song-results { list-style: none; margin: 14px 0 0; padding: 0; text-align: left; max-height: 70vh; overflow-y: auto; }
+.song-results > li { border-bottom: 1px solid var(--rule); }
+.song-card-head { display: flex; gap: 12px; align-items: center; width: 100%; min-height: 64px; padding: 8px 0; background: transparent; border: 0; color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
+.song-card-head img, .song-card-art { object-fit: cover; flex: none; background: var(--ink); }
+.song-card-head img { width: 96px; height: 54px; }
+.song-card-meta { display: flex; flex-direction: column; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.song-card-meta span { color: var(--ink-soft); }
+.song-card-head::after { content: "+" / ""; margin-left: auto; padding: 0 6px; font-size: 1.6rem; font-weight: 800; }
+.song-card-head[aria-expanded="true"]::after { content: "\2212" / ""; }
+.song-card-head:focus-visible, .song-card-body :focus-visible { outline: 3px solid var(--focus-on-drawer); outline-offset: 3px; }
+.song-card.open .song-card-head { font-weight: 800; }
+.song-card-body { display: grid; justify-items: start; gap: 10px; margin: 0 0 14px; padding: 16px; background: var(--ink); color: #fff; }
+.song-card-art { width: 100%; max-width: 320px; height: auto; aspect-ratio: 16 / 9; }
+.song-card-length { margin: 0; color: #e9dcf5; font-weight: 800; }
+.song-card-actions { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+.song-card-status p { margin: 0; font-weight: 800; }
+.song-card-body .btn { background: var(--drawer-bg); color: var(--ink); margin-top: 0; width: auto; }
+.song-card-body .btn.ghost { background: transparent; color: #fff; box-shadow: inset 0 0 0 3px #fff; }
+.song-card-body :focus-visible { outline-color: #fff; }
+.song-card-body .owner-error { color: #fff; } /* errors for this song show inside its card, on the dark panel */
 .owner-meta { display: flex; flex-direction: column; gap: 4px; overflow-wrap: anywhere; }
 .owner-actions, .owner-confirm { grid-column: 1 / -1; display: flex; gap: 10px; flex-wrap: wrap; }
 .owner-confirm { flex-direction: column; border: 3px solid currentColor; padding: 10px 12px; }
@@ -163,7 +177,6 @@ footer .signin { margin-left: 0; font-size: 0.9rem; font-weight: 600; }
 .owner-list, .feed-list { list-style: none; margin: 8px 0 0; padding: 0; text-align: left; max-height: 420px; overflow-y: auto; }
 .owner-list li { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 12px 0; border-bottom: 1px solid var(--rule); }
 .owner-list li .owner-meta { flex: 1 1 200px; min-width: 0; }
-.owner-list.results img { width: 96px; height: 54px; object-fit: cover; }
 .row-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .owner-list .btn.small { min-width: 64px; padding: 0 14px; }
 
@@ -217,7 +230,6 @@ footer .signin { margin-left: 0; font-size: 0.9rem; font-weight: 600; }
   .drawer-tab[aria-expanded="true"] { right: 0; }
   .drawer { position: static; width: auto; max-width: none; margin: 28px calc(-1 * var(--pad)) 0; padding: 24px var(--pad) 40px; box-shadow: none; }
   .drawer-head h2 { font-size: 2.3rem; }
-  .owner-preview { margin-left: calc(-1 * var(--pad)); margin-right: calc(-1 * var(--pad)); padding-left: var(--pad); padding-right: var(--pad); }
 }
 @media (max-width: 999px) and (max-height: 700px) {
   header { padding: 10px 0 0; }
@@ -228,8 +240,6 @@ footer .signin { margin-left: 0; font-size: 0.9rem; font-weight: 600; }
   h1.title-s { font-size: clamp(26px, min(9cqw, 6vh), 72px); }
 }
 @media (max-width: 480px) {
-  .owner-preview { grid-template-columns: 1fr; }
-  .owner-preview img { width: 100%; height: auto; aspect-ratio: 16 / 9; }
   .segmented { grid-template-columns: 1fr; }
   .feed-row { grid-template-columns: 52px minmax(0, 1fr); }
   .feed-row .chip { grid-column: 2; justify-self: start; }

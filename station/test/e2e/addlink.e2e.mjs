@@ -28,13 +28,14 @@ const catalog = {
   musicVid001: { title: "Neon Skyline (Official Audio)", duration: "PT3M42S", category: "10" },
   gamingVid01: { title: "Final Boss Theme - Game Soundtrack", duration: "PT4M18S", category: "20" },
   longVideo01: { title: "Eight Hours of Rain", duration: "PT2H" },
+  searchVid01: { title: "Searched Sunrise", duration: "PT2M30S", category: "10" },
   blockedVid1: { title: "Label Blocked Embeds", duration: "PT3M", embeddable: false },
 };
 let youtubeCalls = 0;
 const youtubeStub = createServer((req, res) => {
   youtubeCalls++;
   res.setHeader("Content-Type", "application/json");
-  if (new URL(req.url, "http://x").pathname.endsWith("/search")) return res.end(JSON.stringify({ items: [] }));
+  if (new URL(req.url, "http://x").pathname.endsWith("/search")) return res.end(JSON.stringify({ items: [{ id: { videoId: "searchVid01" }, snippet: { thumbnails: { medium: { url: "https://i.ytimg.com/vi/searchVid01/mqdefault.jpg" } } } }, { id: { videoId: "gamingVid01" }, snippet: { thumbnails: {} } }] }));
   const ids = new URL(req.url, "http://x").searchParams.get("id").split(",");
   const items = ids.filter((id) => catalog[id]).map((id) => ({
     id,
@@ -104,8 +105,11 @@ try {
   };
   const lookUp = async (url) => {
     await page.getByLabel("YouTube link").fill(url);
-    await page.getByRole("button", { name: "Preview" }).click();
+    await page.getByRole("button", { name: "Look up" }).click();
   };
+  const inViewport = (locator) => locator.evaluate((el) => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.bottom <= window.innerHeight && r.width > 0; });
+  const activeIsBody = () => page.evaluate(() => document.activeElement === document.body || document.activeElement === null);
+  const openBodies = () => page.locator(".song-card-body").count();
   const shot = async (name) => {
     for (const [tag, w, h] of [["desktop-1280", 1280, 900], ["phone-375", 375, 812]]) {
       await page.setViewportSize({ width: w, height: h });
@@ -118,9 +122,9 @@ try {
 
   // 1. Music link: preview, then Play next, shows as Up next.
   await lookUp("https://music.youtube.com/watch?v=musicVid001&list=RDx&t=5");
-  await page.getByTestId("preview-title").waitFor();
-  check((await page.getByTestId("preview-title").textContent()) === catalog.musicVid001.title, "preview shows the title");
-  check((await page.getByTestId("preview").textContent()).includes("3:42"), "preview shows the length 3:42");
+  await page.getByTestId("preview").waitFor();
+  check((await page.getByTestId("preview").locator(".song-card-head strong").textContent()) === catalog.musicVid001.title, "pasted link expands a card with the title");
+  check((await page.getByTestId("song-length").textContent()).includes("3:42"), "card shows the length 3:42");
   check((await page.getByRole("img", { name: /Thumbnail of Neon Skyline/ }).getAttribute("src")) === "https://i.ytimg.com/vi/musicVid001/hqdefault.jpg", "preview shows the thumbnail");
   await shot("preview");
   await assertPlayerClear("preview");
@@ -132,18 +136,37 @@ try {
 
   // 2. Gaming soundtrack, youtu.be form.
   await lookUp("https://youtu.be/gamingVid01?t=9");
-  await page.getByTestId("preview-title").waitFor();
+  await page.getByTestId("preview").waitFor();
   await page.getByRole("button", { name: "Play next" }).click();
   await page.waitForFunction((t) => document.querySelector('[data-testid="next-title"]').textContent === t, catalog.gamingVid01.title);
   check(true, "Gaming-category soundtrack is added and shows as Up next");
 
   // 3. Two-hour video asks first.
   await lookUp("longVideo01");
-  await page.getByTestId("preview-title").waitFor();
+  await page.getByTestId("preview").waitFor();
+  await page.setViewportSize({ width: 375, height: 812 });
+  await sleep(300);
   await page.getByRole("button", { name: "Add to queue" }).click();
   await page.getByText(/Add anyway\?/).waitFor();
+  await sleep(300);
+  check(await inViewport(page.getByText(/Add anyway\?/)), "375px: the Add anyway question is inside the viewport, in the card");
+  check(!(await activeIsBody()), "focus is on the confirm, not the page body");
   check((await db.query("select 1 from songs where video_id = 'longVideo01'")).rowCount === 0, "2-hour video not added before confirming");
   await shot("confirm-long");
+  const linkHead = page.getByTestId("preview").getByRole("button", { name: /Eight Hours of Rain/ });
+  await page.getByRole("button", { name: "Add anyway" }).focus();
+  await page.keyboard.press("Escape");
+  check((await linkHead.getAttribute("aria-expanded")) === "false" && (await page.getByTestId("preview").count()) === 1, "Escape collapses the pasted-link card instead of removing it");
+  check(await linkHead.evaluate((el) => el === document.activeElement), "focus returns to the card header");
+  check(await page.getByRole("heading", { name: "Add song" }).isVisible(), "Escape on the card did not close the drawer");
+  await linkHead.click();
+  await page.getByRole("button", { name: "Cancel" }).waitFor();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await page.getByRole("button", { name: "Play next" }).waitFor();
+  await sleep(150);
+  check(await page.getByRole("button", { name: "Play next" }).evaluate((el) => el === document.activeElement), "Cancel in the confirm puts focus on the card's Play next");
+  await page.getByRole("button", { name: "Add to queue" }).click();
+  await page.getByText(/Add anyway\?/).waitFor();
   await page.getByRole("button", { name: "Add anyway" }).click();
   await page.getByText(/Added "Eight Hours of Rain" to the end of the queue/).waitFor();
   check((await db.query("select duration_sec from songs where video_id = 'longVideo01'")).rows[0].duration_sec === 7200, "2-hour video added after confirming");
@@ -151,13 +174,48 @@ try {
   // 4. Embed-blocked is refused.
   await lookUp("https://www.youtube.com/watch?v=blockedVid1");
   await page.getByRole("alert").filter({ hasText: "embedding is blocked" }).waitFor();
-  check((await page.getByRole("button", { name: "Play next" }).count()) === 0, "blocked video offers no add buttons");
+  check((await page.getByRole("button", { name: "Play next" }).count()) === 0 && (await page.getByTestId("preview").count()) === 0, "blocked video expands no card and offers no add buttons");
   check((await db.query("select 1 from songs where video_id = 'blockedVid1'")).rowCount === 0, "embed-blocked video not added");
   await shot("refused");
   await assertPlayerClear("after adds");
 
+  // 5. Search: tap a result -> it expands in place (one at a time) -> Play next -> Up next.
+  await page.getByLabel("Search YouTube").fill("sunrise");
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  const heads = page.getByTestId("search-results").getByRole("button", { name: /Searched Sunrise|Final Boss/ });
+  await heads.first().waitFor();
+  check((await page.getByRole("button", { name: "Play next" }).count()) === 0, "search results start collapsed");
+  const sunrise = page.getByRole("button", { name: /^Searched Sunrise/ });
+  await sunrise.focus();
+  await page.keyboard.press("Space");
+  check((await sunrise.getAttribute("aria-expanded")) === "true", "Space expands the result");
+  check(await page.getByRole("button", { name: "Play next" }).evaluate((el) => el === document.activeElement), "focus lands on Play next");
+  check((await page.getByTestId("song-length").textContent()).includes("2:30"), "expanded search card shows the length 2:30");
+  await page.getByRole("button", { name: /^Final Boss/ }).click();
+  check((await sunrise.getAttribute("aria-expanded")) === "false" && (await page.getByTestId("song-card").locator(".song-card-body").count()) === 1, "opening another result closes the first");
+  await sunrise.click();
+  // One open card across the whole panel: Look up collapses the search card; opening a search card clears the link card.
+  await lookUp("https://youtu.be/musicVid001");
+  await page.getByTestId("preview").waitFor();
+  check((await openBodies()) === 1 && (await sunrise.getAttribute("aria-expanded")) === "false", "Look up leaves exactly one open card (the search card collapsed)");
+  await sunrise.click();
+  check((await openBodies()) === 1 && (await page.getByTestId("preview").count()) === 0, "opening a search card clears the pasted-link card: still one open card");
+  await sunrise.focus();
+  await page.keyboard.press("Escape");
+  check((await sunrise.getAttribute("aria-expanded")) === "false" && await page.getByRole("heading", { name: "Add song" }).isVisible(), "Escape on a card header closes the card, not the drawer");
+  await sunrise.click();
+  await shot("search-card");
+  await assertPlayerClear("search card open");
+  await page.getByRole("button", { name: "Play next" }).click();
+  await page.waitForFunction((t) => document.querySelector('[data-testid="next-title"]').textContent === t, catalog.searchVid01.title);
+  check(true, "searched result added with Play next shows as Up next");
+  await page.getByText(/Added "Searched Sunrise" as up next/).waitFor();
+  check(!(await activeIsBody()), "after Play next focus is on the status message, not the page body");
+  check(await page.locator(".owner-status[tabindex]").evaluate((el) => el === document.activeElement), "focus is on the 'Added' status");
+  check((await page.getByTestId("song-card").locator(".song-card-body").count()) === 0, "card collapses after adding");
+
   const log = await db.query("select what, details->>'videoId' as vid from activity_log order by activity_log.id");
-  check(log.rows.map((r) => r.vid).join() === "musicVid001,gamingVid01,longVideo01", "each add wrote an activity_log row");
+  check(log.rows.map((r) => r.vid).join() === "musicVid001,gamingVid01,longVideo01,searchVid01", "each add wrote an activity_log row");
   check(youtubeCalls > 0, `YouTube was only ever the local stub (${youtubeCalls} calls)`);
   const real = errors.filter((e) => !/favicon|youtube|googlevideo|google|ERR_BLOCKED|Failed to load resource|compute-pressure|Permissions policy/i.test(e));
   check(real.length === 0, `no app console errors ${real.join(" | ")}`);
