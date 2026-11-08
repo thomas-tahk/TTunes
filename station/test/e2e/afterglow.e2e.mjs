@@ -204,7 +204,7 @@ try {
   await shot(sizes, "desktop", 1000, 800);
 
   // The bottom bar never covers the player: at scroll 0 and at the very bottom, on short and tall phones alike.
-  for (const [w, h] of [[667, 375], [844, 390], [900, 600], [375, 812], [375, 667]]) {
+  for (const [w, h] of [[667, 375], [844, 390], [900, 600], [375, 812], [375, 667], [600, 701], [900, 720], [800, 760], [999, 800], [820, 900]]) {
     await sizes.setViewportSize({ width: w, height: h });
     await sleep(300);
     for (const at of ["top", "bottom"]) {
@@ -226,6 +226,31 @@ try {
       await sizes.evaluate(() => window.scrollTo(0, 0));
       await shot(sizes, "landscape", 667, 375);
     }
+  }
+
+  // Every scroll position (8px steps), drawer closed and open: nothing ever overlaps the player.
+  for (const [w, h] of [[900, 720], [800, 760], [999, 800], [667, 375], [375, 812]]) {
+    await sizes.setViewportSize({ width: w, height: h });
+    for (const open of [false, true]) {
+      const opener = sizes.locator(".drawer-tab");
+      if (((await opener.getAttribute("aria-expanded")) === "true") !== open) await opener.click();
+      await sleep(400);
+      const worst = await sizes.evaluate(async () => {
+        const max = document.documentElement.scrollHeight - window.innerHeight;
+        let bad = null;
+        for (let y = 0; y <= max; y += 8) {
+          window.scrollTo(0, y);
+          const host = document.querySelector(".player-host").getBoundingClientRect();
+          for (const el of document.querySelectorAll(".drawer-tab, .hint-bubble, .drawer")) {
+            const r = el.getBoundingClientRect();
+            if (r.width && r.height && getComputedStyle(el).position === "fixed" && r.left < host.right && host.left < r.right && r.top < host.bottom && host.top < r.bottom) bad = bad ?? `${el.className} at scroll ${y}`;
+          }
+        }
+        return bad;
+      });
+      check(worst === null, `@${w}x${h} drawer ${open ? "open" : "closed"}: no fixed element overlaps the player at any scroll position${worst ? " (" + worst + ")" : ""}`);
+    }
+    if (((await sizes.locator(".drawer-tab").getAttribute("aria-expanded")) === "true")) await sizes.keyboard.press("Escape");
   }
 
   // Owner check is slow: nothing owner-or-listener-only flashes before /api/auth/me answers; owner never sees hint or link.

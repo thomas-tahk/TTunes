@@ -197,7 +197,7 @@ footer .signin { margin-left: 0; font-size: 0.9rem; font-weight: 600; }
 /* ---------- narrow: the drawer opens below the player, which stays on screen ---------- */
 @media (max-width: 999px) {
   :root { --pad: 16px; }
-  .shell { padding-bottom: 88px; }
+  .shell { padding-bottom: 0; }
   header { padding-top: 20px; }
   .foot { flex-wrap: wrap; align-items: center; gap: 14px 16px; }
   /* full-bleed on phones, but never so tall that player + bottom bar stop fitting a short (landscape) screen */
@@ -212,16 +212,14 @@ footer .signin { margin-left: 0; font-size: 0.9rem; font-weight: 600; }
   .message p { font-size: 1.15rem; }
   .hint-bubble { position: relative; right: auto; top: auto; transform: none; width: auto; max-width: 300px; margin: 18px 0 0; }
   .hint-bubble::after { right: auto; left: 50%; top: auto; bottom: -10px; margin: 0 0 0 -10px; border: 10px solid transparent; border-top: 12px solid #fff; border-bottom: 0; }
-  .drawer-tab { top: auto; bottom: 0; left: 0; right: 0; transform: none; width: 100%; min-height: 60px; padding: 14px; border-radius: 16px 16px 0 0; writing-mode: horizontal-tb; font-size: 1.15rem; text-align: center; }
+  /* never fixed on narrow screens: the bar sits in the page flow below the player row, so it can not cover the player */
+  .drawer-tab { position: static; transform: none; width: calc(100% + 2 * var(--pad)); margin: 16px calc(-1 * var(--pad)) 0; min-height: 60px; padding: 14px; border-radius: 0; writing-mode: horizontal-tb; font-size: 1.15rem; text-align: center; }
   .drawer-tab[aria-expanded="true"] { right: 0; }
   .drawer { position: static; width: auto; max-width: none; margin: 28px calc(-1 * var(--pad)) 0; padding: 24px var(--pad) 40px; box-shadow: none; }
   .drawer-head h2 { font-size: 2.3rem; }
   .owner-preview { margin-left: calc(-1 * var(--pad)); margin-right: calc(-1 * var(--pad)); padding-left: var(--pad); padding-right: var(--pad); }
 }
 @media (max-width: 999px) and (max-height: 700px) {
-  /* player + fixed bar cannot both fit: the bar joins the page flow right below the player row, so it never covers the player */
-  .shell { padding-bottom: 0; }
-  .drawer-tab { position: static; margin: 16px calc(-1 * var(--pad)) 0; width: calc(100% + 2 * var(--pad)); border-radius: 0; }
   header { padding: 10px 0 0; }
   .titles { padding-top: 8px; }
   h1.title-xl { font-size: clamp(34px, min(22cqw, 9vh), 200px); }
