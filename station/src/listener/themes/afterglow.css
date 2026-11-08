@@ -135,7 +135,7 @@ footer .signin { margin-left: 0; font-size: 0.9rem; font-weight: 600; }
 .hint { margin: 8px 0 0; }
 .counter { margin: 4px 0 0; text-align: right; font-size: 0.85rem; }
 .send { margin-top: 16px; width: 100%; }
-.picked, .mine p { margin: 10px 0 0; overflow-wrap: anywhere; }
+.mine p { margin: 10px 0 0; overflow-wrap: anywhere; }
 .mine { display: flex; gap: 12px; align-items: center; margin-top: 10px; padding: 12px; background: var(--ink); color: #fff; }
 .mine p { margin: 0; }
 .mine img { width: 64px; height: 36px; object-fit: cover; flex: none; }
@@ -152,18 +152,19 @@ footer .signin { margin-left: 0; font-size: 0.9rem; font-weight: 600; }
 .song-card-head img { width: 96px; height: 54px; }
 .song-card-meta { display: flex; flex-direction: column; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
 .song-card-meta span { color: var(--ink-soft); }
-.song-card-head::after { content: "+"; margin-left: auto; padding: 0 6px; font-size: 1.6rem; font-weight: 800; }
-.song-card-head[aria-expanded="true"]::after { content: "\2212"; }
+.song-card-head::after { content: "+" / ""; margin-left: auto; padding: 0 6px; font-size: 1.6rem; font-weight: 800; }
+.song-card-head[aria-expanded="true"]::after { content: "\2212" / ""; }
 .song-card-head:focus-visible, .song-card-body :focus-visible { outline: 3px solid var(--focus-on-drawer); outline-offset: 3px; }
 .song-card.open .song-card-head { font-weight: 800; }
 .song-card-body { display: grid; justify-items: start; gap: 10px; margin: 0 0 14px; padding: 16px; background: var(--ink); color: #fff; }
 .song-card-art { width: 100%; max-width: 320px; height: auto; aspect-ratio: 16 / 9; }
 .song-card-length { margin: 0; color: #e9dcf5; font-weight: 800; }
-.song-card-actions, .song-card-body .owner-actions { display: flex; gap: 10px; flex-wrap: wrap; width: 100%; }
+.song-card-actions { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+.song-card-status p { margin: 0; font-weight: 800; }
 .song-card-body .btn { background: var(--drawer-bg); color: var(--ink); margin-top: 0; width: auto; }
 .song-card-body .btn.ghost { background: transparent; color: #fff; box-shadow: inset 0 0 0 3px #fff; }
 .song-card-body :focus-visible { outline-color: #fff; }
-.song-card-body .owner-error, .song-card-body .owner-done { color: #fff; }
+.song-card-body .owner-error { color: #fff; } /* errors for this song show inside its card, on the dark panel */
 .owner-meta { display: flex; flex-direction: column; gap: 4px; overflow-wrap: anywhere; }
 .owner-actions, .owner-confirm { grid-column: 1 / -1; display: flex; gap: 10px; flex-wrap: wrap; }
 .owner-confirm { flex-direction: column; border: 3px solid currentColor; padding: 10px 12px; }

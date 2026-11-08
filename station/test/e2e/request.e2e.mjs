@@ -96,8 +96,14 @@ try {
   await a.getByLabel("Your name").fill("Thomas");
   await a.getByLabel("Dedication (optional)").fill(TYPED_DEDICATION);
   check((await a.getByTestId("counter").textContent()) === `${TYPED_DEDICATION.length}/140`, "dedication counter is live");
-  check(await a.getByRole("button", { name: "Send request" }).isDisabled(), "send is disabled with no song chosen");
+  check((await a.getByRole("button", { name: "Send request" }).count()) === 0, "no Send request until a song is looked up");
+  check(await a.getByRole("button", { name: "Look up" }).isDisabled(), "Look up is disabled with an empty link");
   await a.getByLabel("Song link").fill("https://youtu.be/musicVid001");
+  await a.getByRole("button", { name: "Look up" }).click();
+  await a.getByTestId("preview").waitFor();
+  check((await a.getByTestId("preview").locator(".song-card-head strong").textContent()) === catalog.musicVid001.title, "pasted link expands the same card with the title");
+  check((await a.getByTestId("song-length").textContent()).includes("3:42"), "listener's link card shows the length");
+  check(await a.getByRole("button", { name: "Send request" }).evaluate((el) => el === document.activeElement), "focus moved to Send request in the link card");
   await shot(a, "filled");
   // The feed is CDN-cached: freeze it at "empty" and the poster must still see their own row.
   await a.route("**/api/requests/feed", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ mode: "open", requests: [] }) }));
@@ -158,11 +164,22 @@ try {
   check((await b.getByTestId("song-length").textContent()).includes("3:42"), "expanded card shows the length");
   check(await b.getByRole("button", { name: "Send request" }).evaluate((el) => el === document.activeElement), "focus moved to Send request");
   await shot(b, "search");
+  // No name yet: the error shows inside the open card, in view at 375px, and focus does not fall to the page body.
+  await b.setViewportSize({ width: 375, height: 812 });
+  await sleep(300);
+  await b.getByRole("button", { name: "Send request" }).click();
+  const nameError = b.getByRole("alert").filter({ hasText: "Type your name first" });
+  await nameError.waitFor();
+  await sleep(200);
+  check(await nameError.evaluate((el) => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.bottom <= window.innerHeight; }), "375px: the missing-name error is inside the viewport, in the card");
+  check(await b.evaluate(() => document.activeElement?.tagName !== "BODY"), "focus stays on a control after the error");
+  await b.setViewportSize({ width: 1280, height: 900 });
 
   // Refusal text from the server is shown (already coming up / playing).
   await b.getByLabel("Your name").fill("Bea");
   await b.getByRole("button", { name: "Send request" }).click();
   await b.getByRole("alert").filter({ hasText: /./ }).first().waitFor();
+  check(await b.getByRole("button", { name: "Send request" }).evaluate((el) => el === document.activeElement), "after a refusal focus is still on the Send request button, next to the message in the card");
   check((await b.getByRole("alert").first().textContent()).length > 5, "server refusal text is shown, not swallowed");
   await shot(b, "refused");
 
@@ -217,6 +234,8 @@ try {
   await c.getByLabel("Your name").fill("Cleo");
   await c.getByLabel("Dedication (optional)").fill("line one\t\tline two");
   await c.getByLabel("Song link").fill("https://youtu.be/musicVid002");
+  await c.getByRole("button", { name: "Look up" }).click();
+  await c.getByTestId("preview").waitFor();
   await c.getByRole("button", { name: "Send request" }).click();
   await c.getByTestId("mine").waitFor();
   await c.getByTestId("feed-row").first().waitFor();

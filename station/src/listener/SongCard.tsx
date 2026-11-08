@@ -13,29 +13,28 @@ interface Props {
   pick: SongPick;
   open: boolean;
   onToggle: () => void;
-  /** Move focus to the first action when the card opens (search results do; a pasted link does not). */
-  focusOnOpen?: boolean;
   children: ReactNode;
 }
 
-/** One song, collapsed to a button row or expanded in place with a bigger thumbnail, its length and the caller's actions. */
-export function SongCard({ pick, open, onToggle, focusOnOpen = true, children }: Props) {
+/** One song, collapsed to a button row or expanded in place with a bigger thumbnail, its length and the caller's actions (and their messages). */
+export function SongCard({ pick, open, onToggle, children }: Props) {
   const head = useRef<HTMLButtonElement>(null);
   const body = useRef<HTMLDivElement>(null);
   const bodyId = `song-card-${pick.videoId}`;
   useEffect(() => {
-    if (open && focusOnOpen) body.current?.querySelector<HTMLElement>("button")?.focus();
-  }, [open, focusOnOpen]);
+    if (open) body.current?.querySelector<HTMLElement>("button")?.focus();
+  }, [open]);
 
+  // On the whole card, so Escape on the header closes the card and not the drawer around it.
   function closeOnEscape(event: React.KeyboardEvent) {
-    if (event.key !== "Escape") return;
+    if (event.key !== "Escape" || !open) return;
     event.stopPropagation();
     onToggle();
     head.current?.focus();
   }
 
   return (
-    <div className={`song-card${open ? " open" : ""}`} data-testid="song-card">
+    <div className={`song-card${open ? " open" : ""}`} data-testid="song-card" onKeyDown={closeOnEscape}>
       <button type="button" ref={head} className="song-card-head" aria-expanded={open} aria-controls={bodyId} onClick={onToggle}>
         <img src={pick.thumbnail} alt="" width={96} height={54} />
         <span className="song-card-meta">
@@ -44,7 +43,7 @@ export function SongCard({ pick, open, onToggle, focusOnOpen = true, children }:
         </span>
       </button>
       {open && (
-        <div id={bodyId} ref={body} className="song-card-body" role="group" aria-label={pick.title} onKeyDown={closeOnEscape}>
+        <div id={bodyId} ref={body} className="song-card-body" role="group" aria-label={pick.title}>
           <img className="song-card-art" src={pick.thumbnail} alt={`Thumbnail of ${pick.title}`} width={320} height={180} />
           <p className="song-card-length" data-testid="song-length">Length {minutes(pick.durationSec)}</p>
           <div className="song-card-actions">{children}</div>

@@ -107,6 +107,9 @@ try {
     await page.getByLabel("YouTube link").fill(url);
     await page.getByRole("button", { name: "Look up" }).click();
   };
+  const inViewport = (locator) => locator.evaluate((el) => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.bottom <= window.innerHeight && r.width > 0; });
+  const activeIsBody = () => page.evaluate(() => document.activeElement === document.body || document.activeElement === null);
+  const openBodies = () => page.locator(".song-card-body").count();
   const shot = async (name) => {
     for (const [tag, w, h] of [["desktop-1280", 1280, 900], ["phone-375", 375, 812]]) {
       await page.setViewportSize({ width: w, height: h });
@@ -141,10 +144,22 @@ try {
   // 3. Two-hour video asks first.
   await lookUp("longVideo01");
   await page.getByTestId("preview").waitFor();
+  await page.setViewportSize({ width: 375, height: 812 });
+  await sleep(300);
   await page.getByRole("button", { name: "Add to queue" }).click();
   await page.getByText(/Add anyway\?/).waitFor();
+  await sleep(300);
+  check(await inViewport(page.getByText(/Add anyway\?/)), "375px: the Add anyway question is inside the viewport, in the card");
+  check(!(await activeIsBody()), "focus is on the confirm, not the page body");
   check((await db.query("select 1 from songs where video_id = 'longVideo01'")).rowCount === 0, "2-hour video not added before confirming");
   await shot("confirm-long");
+  const linkHead = page.getByTestId("preview").getByRole("button", { name: /Eight Hours of Rain/ });
+  await page.getByRole("button", { name: "Add anyway" }).focus();
+  await page.keyboard.press("Escape");
+  check((await linkHead.getAttribute("aria-expanded")) === "false" && (await page.getByTestId("preview").count()) === 1, "Escape collapses the pasted-link card instead of removing it");
+  check(await linkHead.evaluate((el) => el === document.activeElement), "focus returns to the card header");
+  check(await page.getByRole("heading", { name: "Add song" }).isVisible(), "Escape on the card did not close the drawer");
+  await linkHead.click();
   await page.getByRole("button", { name: "Add anyway" }).click();
   await page.getByText(/Added "Eight Hours of Rain" to the end of the queue/).waitFor();
   check((await db.query("select duration_sec from songs where video_id = 'longVideo01'")).rows[0].duration_sec === 7200, "2-hour video added after confirming");
@@ -172,11 +187,24 @@ try {
   await page.getByRole("button", { name: /^Final Boss/ }).click();
   check((await sunrise.getAttribute("aria-expanded")) === "false" && (await page.getByTestId("song-card").locator(".song-card-body").count()) === 1, "opening another result closes the first");
   await sunrise.click();
+  // One open card across the whole panel: Look up collapses the search card; opening a search card clears the link card.
+  await lookUp("https://youtu.be/musicVid001");
+  await page.getByTestId("preview").waitFor();
+  check((await openBodies()) === 1 && (await sunrise.getAttribute("aria-expanded")) === "false", "Look up leaves exactly one open card (the search card collapsed)");
+  await sunrise.click();
+  check((await openBodies()) === 1 && (await page.getByTestId("preview").count()) === 0, "opening a search card clears the pasted-link card: still one open card");
+  await sunrise.focus();
+  await page.keyboard.press("Escape");
+  check((await sunrise.getAttribute("aria-expanded")) === "false" && await page.getByRole("heading", { name: "Add song" }).isVisible(), "Escape on a card header closes the card, not the drawer");
+  await sunrise.click();
   await shot("search-card");
   await assertPlayerClear("search card open");
   await page.getByRole("button", { name: "Play next" }).click();
   await page.waitForFunction((t) => document.querySelector('[data-testid="next-title"]').textContent === t, catalog.searchVid01.title);
   check(true, "searched result added with Play next shows as Up next");
+  await page.getByText(/Added "Searched Sunrise" as up next/).waitFor();
+  check(!(await activeIsBody()), "after Play next focus is on the status message, not the page body");
+  check(await page.locator(".owner-status[tabindex]").evaluate((el) => el === document.activeElement), "focus is on the 'Added' status");
   check((await page.getByTestId("song-card").locator(".song-card-body").count()) === 0, "card collapses after adding");
 
   const log = await db.query("select what, details->>'videoId' as vid from activity_log order by activity_log.id");

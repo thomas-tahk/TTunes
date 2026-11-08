@@ -122,8 +122,8 @@ async function checkRates(q: Queryable, who: Who, now: number): Promise<Refusal 
     const from = hourly.rows[0].mine >= MAX_PER_HOUR ? "" : " from your network";
     return refuse(429, "rate_limited", `That's ${MAX_PER_HOUR} requests this hour${from}. Try again later.`);
   }
-  const daily = await q.query("select count(*)::int as n from request_attempts where at > $1", [at(now - 24 * 3600_000)]);
-  if (daily.rows[0].n >= DAILY_LOOKUP_CAP) return refuse(503, "paused", "Requests are paused for today. Try again tomorrow.");
+  const daily = await q.query("select (select count(*) from request_attempts where at > $1) + (select count(*) from preview_attempts where at > $1) as n", [at(now - 24 * 3600_000)]); // previews are lookups too
+  if (Number(daily.rows[0].n) >= DAILY_LOOKUP_CAP) return refuse(503, "paused", "Requests are paused for today. Try again tomorrow.");
   return null;
 }
 
@@ -206,6 +206,7 @@ export async function purgeOldIpHashes(db: Db, clock: Clock): Promise<number> {
     const { rowCount } = await client.query("update requests set ip_hash = null where ip_hash is not null and created_at <= $1", [cutoff]);
     await client.query("delete from request_attempts where at <= $1", [cutoff]);
     await client.query("delete from search_attempts where at <= $1", [cutoff]);
+    await client.query("delete from preview_attempts where at <= $1", [cutoff]);
     await client.query("commit");
     return rowCount ?? 0;
   } catch (error) {

@@ -22,8 +22,8 @@ it("GET /api/time returns the server clock, uncached", async () => {
 
 it("migrate applies each numbered file once; seeding is separate", async () => {
   const db = createDb();
-  await db.query("drop table if exists play_history, queue, station_state, songs, auth_state, activity_log, library_exports, trash_queue, requests, request_attempts, search_attempts, settings, schema_migrations cascade");
-  expect(await migrate(db)).toEqual(["001_init.sql", "002_auth.sql", "003_upkeep.sql", "004_queue_position.sql", "005_owner_controls.sql", "006_trash_queue_index.sql", "007_requests.sql", "008_request_attempts.sql", "009_search_attempts.sql"]);
+  await db.query("drop table if exists play_history, queue, station_state, songs, auth_state, activity_log, library_exports, trash_queue, requests, request_attempts, search_attempts, preview_attempts, settings, schema_migrations cascade");
+  expect(await migrate(db)).toEqual(["001_init.sql", "002_auth.sql", "003_upkeep.sql", "004_queue_position.sql", "005_owner_controls.sql", "006_trash_queue_index.sql", "007_requests.sql", "008_request_attempts.sql", "009_search_attempts.sql", "010_preview_attempts.sql"]);
   expect(await migrate(db)).toEqual([]);
   expect((await db.query("select count(*)::int as n from songs")).rows[0].n).toBe(0);
   expect(await seedSongs(db)).toBeGreaterThan(0);

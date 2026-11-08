@@ -1,16 +1,16 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { call, messageOf, NETWORK_MESSAGE } from "./ownerFetch.ts";
 import { SongCard, type SongPick } from "./SongCard.tsx";
 
-export type SearchPick = SongPick;
 type Result = SongPick;
 type State = { kind: "idle" } | { kind: "busy" } | { kind: "error"; message: string } | { kind: "results"; results: Result[] };
 
 interface Props {
   /** The actions shown inside the expanded card for this result. */
   renderActions: (pick: SongPick) => ReactNode;
-  /** Changing this value collapses the open card (the owner bumps it after a successful add). */
-  collapseKey?: number;
+  /** The video id of the open card, or null. The parent owns it so only one card in the whole panel is open. */
+  openId: string | null;
+  onOpenChange: (videoId: string | null) => void;
   endpoint: string;
   inputId: string;
   label: string;
@@ -19,15 +19,13 @@ interface Props {
   inForm?: boolean;
 }
 
-export function SongSearch({ renderActions, collapseKey = 0, endpoint, inputId, label, buttonLabel, inForm = false }: Props) {
+export function SongSearch({ renderActions, openId, onOpenChange, endpoint, inputId, label, buttonLabel, inForm = false }: Props) {
   const [query, setQuery] = useState("");
   const [state, setState] = useState<State>({ kind: "idle" });
-  const [openId, setOpenId] = useState<string | null>(null);
-  useEffect(() => setOpenId(null), [collapseKey]);
 
   async function search() {
     if (!query.trim()) return;
-    setOpenId(null);
+    onOpenChange(null);
     setState({ kind: "busy" });
     try {
       const { status, body } = await call("GET", `${endpoint}?q=${encodeURIComponent(query.trim())}`);
@@ -86,7 +84,7 @@ export function SongSearch({ renderActions, collapseKey = 0, endpoint, inputId, 
         <ul className="song-results" data-testid="search-results">
           {state.results.map((r) => (
             <li key={r.videoId}>
-              <SongCard pick={r} open={openId === r.videoId} onToggle={() => setOpenId(openId === r.videoId ? null : r.videoId)}>
+              <SongCard pick={r} open={openId === r.videoId} onToggle={() => onOpenChange(openId === r.videoId ? null : r.videoId)}>
                 {renderActions(r)}
               </SongCard>
             </li>

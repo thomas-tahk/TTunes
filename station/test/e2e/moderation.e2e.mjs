@@ -71,6 +71,8 @@ const newPage = async (ip, owner) => {
 const listenerPost = async (page, name, videoId) => {
   await page.getByLabel("Your name").fill(name);
   await page.getByLabel("Song link").fill(`https://youtu.be/${videoId}`);
+  await page.getByRole("button", { name: "Look up" }).click();
+  await page.getByTestId("preview").waitFor();
   await page.getByRole("button", { name: "Send request" }).click();
   await page.getByTestId("mine").waitFor();
 };
