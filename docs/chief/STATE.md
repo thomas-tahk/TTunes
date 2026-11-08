@@ -4,8 +4,7 @@ Phase: Build — M5 layout & polish (branch m5-polish, off main = M4)
 Live: https://t-tunes-navy.vercel.app (main = M4, PR #45 merged 2026-11-08)
 His M4 review 2026-11-08: see docs/questions/M5.md
 M5 issues: #46 focus outline, #47 calm indicator, #44 pause while buffering (parallel); #50 panel colour (options image first → his pick); #48 shared layout (after #46,#47) → #49 Layout switch Side/Stacked
-Waiting on him: nothing yet (panel-colour pick #50 once the options image is ready)
+Waiting on him: panel colour pick on #50 (needs-you)
 Next action: review + merge #46/#47/#44 builds; post #50 options as needs-you
-Open: #33 M3 live requests check (not confirmed in his review)
 Open questions: docs/questions/M5.md
 Updated: 2026-11-08
