@@ -1,5 +1,6 @@
 import { createRoot } from "react-dom/client";
 import { App } from "./listener/App.tsx";
+import "./listener/themes/layout.css";
 import "./listener/themes/afterglow.css";
 import "./listener/themes/theset.css";
 
