@@ -104,6 +104,13 @@ export function OwnerPanel({ playing, onPlaying, requests, tab }: PanelProps) {
     if (videoId) setLinked(null);
   }
 
+  /** Back to Play next / Add to queue; the confirm's buttons vanish, so focus must go to the card's first action. */
+  function cancelConfirm() {
+    const card = document.activeElement?.closest(".song-card");
+    setStep({ kind: "idle" });
+    requestAnimationFrame(() => card?.querySelector<HTMLElement>(".song-card-body button")?.focus());
+  }
+
   function actionsFor(pick: SongPick) {
     const mine = (step.kind === "busy" || step.kind === "error") && step.videoId === pick.videoId;
     return (
@@ -115,7 +122,7 @@ export function OwnerPanel({ playing, onPlaying, requests, tab }: PanelProps) {
               <button type="button" className="btn small" autoFocus onClick={() => void add(pick, step.position, true)}>
                 Add anyway
               </button>
-              <button type="button" className="btn small ghost" onClick={() => setStep({ kind: "idle" })}>
+              <button type="button" className="btn small ghost" onClick={cancelConfirm}>
                 Cancel
               </button>
             </div>

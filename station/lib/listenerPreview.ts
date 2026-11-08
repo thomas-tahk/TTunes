@@ -4,6 +4,7 @@ import { lockStation } from "./lock.ts";
 import { DAILY_LOOKUP_CAP, getMode, type Refusal, type Who } from "./requests.ts";
 import type { Clock } from "./schedule.ts";
 
+export const MAX_PREVIEWS_PER_DAY = 1000; // station-wide, so preview spam cannot use up the 2000 lookups that requests share
 export const MAX_PREVIEWS_PER_HOUR = 30; // a preview is one cheap lookup; the 5/hour request allowance is untouched
 
 const refuse = (status: number, code: string, message: string): Refusal => ({ ok: false, status, code, message });
@@ -14,6 +15,8 @@ async function check(q: Pick<pg.ClientBase, "query">, who: Who, now: number): Pr
   const hourly = await q.query("select count(*)::int as n from preview_attempts where at > $3 and (listener_id = $1 or ip_hash = $2)", [who.listenerId, who.ipHash, at(now - 3600_000)]);
   if (hourly.rows[0].n >= MAX_PREVIEWS_PER_HOUR) return refuse(429, "rate_limited", "That's a lot of link checks this hour. Try again later.");
   const since = at(now - 24 * 3600_000);
+  const previews = await q.query("select count(*)::int as n from preview_attempts where at > $1", [since]);
+  if (previews.rows[0].n >= MAX_PREVIEWS_PER_DAY) return refuse(503, "paused", "Link checks are paused for today. Try again tomorrow.");
   const daily = await q.query("select (select count(*) from request_attempts where at > $1) + (select count(*) from preview_attempts where at > $1) as n", [since]);
   if (Number(daily.rows[0].n) >= DAILY_LOOKUP_CAP) return refuse(503, "paused", "Requests are paused for today. Try again tomorrow.");
   return null;

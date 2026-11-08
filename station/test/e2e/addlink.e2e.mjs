@@ -160,6 +160,13 @@ try {
   check(await linkHead.evaluate((el) => el === document.activeElement), "focus returns to the card header");
   check(await page.getByRole("heading", { name: "Add song" }).isVisible(), "Escape on the card did not close the drawer");
   await linkHead.click();
+  await page.getByRole("button", { name: "Cancel" }).waitFor();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await page.getByRole("button", { name: "Play next" }).waitFor();
+  await sleep(150);
+  check(await page.getByRole("button", { name: "Play next" }).evaluate((el) => el === document.activeElement), "Cancel in the confirm puts focus on the card's Play next");
+  await page.getByRole("button", { name: "Add to queue" }).click();
+  await page.getByText(/Add anyway\?/).waitFor();
   await page.getByRole("button", { name: "Add anyway" }).click();
   await page.getByText(/Added "Eight Hours of Rain" to the end of the queue/).waitFor();
   check((await db.query("select duration_sec from songs where video_id = 'longVideo01'")).rows[0].duration_sec === 7200, "2-hour video added after confirming");

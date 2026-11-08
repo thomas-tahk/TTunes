@@ -3,9 +3,9 @@ import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import requestsApi from "../api/requests.ts";
 import { createDb, sharedDb } from "../lib/db.ts";
-import { MAX_PREVIEWS_PER_HOUR } from "../lib/listenerPreview.ts";
+import { MAX_PREVIEWS_PER_DAY, MAX_PREVIEWS_PER_HOUR } from "../lib/listenerPreview.ts";
 import { migrate } from "../lib/migrate.ts";
-import { DAILY_LOOKUP_CAP } from "../lib/requests.ts";
+import { DAILY_LOOKUP_CAP, purgeOldIpHashes } from "../lib/requests.ts";
 
 let server: Server;
 let base: string;
@@ -98,6 +98,27 @@ describe("GET /api/requests/preview", () => {
     const paused = await preview("4.4.4.4", "goodVideo01");
     expect(paused.status).toBe(503);
     expect((await paused.json()).code).toBe("paused");
+  });
+
+  it("previews have their own daily cap inside the shared one", async () => {
+    await sharedDb().query("insert into preview_attempts (listener_id, ip_hash, at) select 'l' || g, 'h' || g, now() from generate_series(1, $1) g", [MAX_PREVIEWS_PER_DAY]);
+    const res = await preview("5.5.5.5", "goodVideo01");
+    expect(res.status).toBe(503);
+    expect((await res.json()).error).toContain("Link checks are paused");
+    expect(videoCalls).toBe(0);
+  });
+
+  it("a full day of previews pauses requests too (they share the 2000 lookups)", async () => {
+    await sharedDb().query("insert into preview_attempts (listener_id, ip_hash, at) select 'l' || g, 'h' || g, now() from generate_series(1, $1) g", [DAILY_LOOKUP_CAP]);
+    const res = await fetch(`${base}/api/requests`, { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": "6.6.6.6" }, body: JSON.stringify({ link: "goodVideo01", name: "Ann" }) });
+    expect(res.status).toBe(503);
+    expect((await res.json()).code).toBe("paused");
+  });
+
+  it("the daily cleanup deletes preview attempts older than 7 days and keeps recent ones", async () => {
+    await sharedDb().query("insert into preview_attempts (listener_id, ip_hash, at) values ('old', 'h', now() - interval '8 days'), ('fresh', 'h', now() - interval '1 hour')");
+    await purgeOldIpHashes(sharedDb(), Date.now);
+    expect((await sharedDb().query("select listener_id from preview_attempts")).rows).toEqual([{ listener_id: "fresh" }]);
   });
 
   it("only allows GET", async () => {
