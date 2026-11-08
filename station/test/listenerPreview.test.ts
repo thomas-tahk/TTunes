@@ -108,11 +108,30 @@ describe("GET /api/requests/preview", () => {
     expect(videoCalls).toBe(0);
   });
 
-  it("a full day of previews pauses requests too (they share the 2000 lookups)", async () => {
-    await sharedDb().query("insert into preview_attempts (listener_id, ip_hash, at) select 'l' || g, 'h' || g, now() from generate_series(1, $1) g", [DAILY_LOOKUP_CAP]);
+  it("a full day of previews does not stop requests (they keep the other half of the shared cap)", async () => {
+    await sharedDb().query("insert into preview_attempts (listener_id, ip_hash, at) select 'l' || g, 'h' || g, now() from generate_series(1, $1) g", [MAX_PREVIEWS_PER_DAY]);
     const res = await fetch(`${base}/api/requests`, { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": "6.6.6.6" }, body: JSON.stringify({ link: "goodVideo01", name: "Ann" }) });
-    expect(res.status).toBe(503);
-    expect((await res.json()).code).toBe("paused");
+    expect(res.status).toBe(201);
+  });
+
+  it("maps a YouTube outage to youtube_unavailable", async () => {
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (new URL(String(input)).hostname === "www.googleapis.com") throw new Error("down");
+      return realFetch(input, init);
+    });
+    const down = await preview("7.7.7.7", "goodVideo01");
+    expect(down.status).toBe(502);
+    expect((await down.json()).code).toBe("youtube_unavailable");
+  });
+
+  it("says 'from your network' when the shared network trips the hourly limit, not the listener", async () => {
+    const first = await preview("8.8.8.8", "goodVideo01");
+    const ipHash = (await sharedDb().query("select ip_hash from preview_attempts limit 1")).rows[0].ip_hash;
+    await sharedDb().query("insert into preview_attempts (listener_id, ip_hash, at) select 'o' || g, $1, now() from generate_series(1, $2) g", [ipHash, MAX_PREVIEWS_PER_HOUR]);
+    const over = await preview("8.8.8.8", "goodVideo01");
+    expect(first.status).toBe(200);
+    expect(over.status).toBe(429);
+    expect((await over.json()).error).toContain("from your network");
   });
 
   it("the daily cleanup deletes preview attempts older than 7 days and keeps recent ones", async () => {

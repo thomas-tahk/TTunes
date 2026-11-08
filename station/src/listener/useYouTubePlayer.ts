@@ -15,7 +15,7 @@ interface Input {
   onPausedChange: (paused: boolean) => void;
 }
 
-/** Owns one YouTube player inside `host`: loads it, follows the target, keeps it within MAX_DRIFT_SEC, destroys it on unmount. */
+/** Owns one YouTube player inside `host`: loads it, follows the target, corrects drift once when the player becomes ready (loose playback after that), destroys it on unmount. */
 export function useYouTubePlayer(host: RefObject<HTMLDivElement | null>, input: Input) {
   const latest = useRef(input);
   latest.current = input;

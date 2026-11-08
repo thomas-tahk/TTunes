@@ -20,7 +20,7 @@ export default async function preview(req: IncomingMessage, res: ServerResponse)
     const refusal = await reservePreview(sharedDb(), { listenerId: listener.id, ipHash: listener.ipHash }, Date.now);
     if (refusal) return sendJson(res, refusal.status, { error: refusal.message, code: refusal.code });
     const found = await lookupVideo(videoId);
-    if (!found.ok) return sendJson(res, found.status, { error: found.message, code: "video_unavailable" });
+    if (!found.ok) return sendJson(res, found.status, { error: found.message, code: found.status >= 500 ? "youtube_unavailable" : "video_unavailable" });
     const { info } = found;
     sendJson(res, 200, { videoId, title: info.title, channelTitle: info.channelTitle, durationSec: info.durationSec, thumbnail: thumbnailOf(videoId) });
   } catch (error) {
