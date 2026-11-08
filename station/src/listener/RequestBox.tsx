@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { call, messageOf, minutes, NETWORK_MESSAGE } from "./ownerFetch.ts";
-import { type SearchPick, SongSearch } from "./SongSearch.tsx";
+import { call, messageOf, NETWORK_MESSAGE } from "./ownerFetch.ts";
+import { SongCard, type SongPick } from "./SongCard.tsx";
+import { SongSearch } from "./SongSearch.tsx";
 import { type Mine, type Mode, type PostedRequest, saveName, savedName } from "./useRequests.ts";
 
 const MAX_DEDICATION = 140;
@@ -33,45 +34,85 @@ interface Props {
   onPosted: (posted?: PostedRequest) => Promise<void>;
 }
 
+type Open = { source: "link" | "search"; videoId: string } | null;
+
 export function RequestBox({ mine, mode, onPosted }: Props) {
   const [name, setName] = useState(savedName);
   const [dedication, setDedication] = useState("");
   const [by, setBy] = useState<"link" | "search">("link");
   const [link, setLink] = useState("");
-  const [picked, setPicked] = useState<SearchPick | null>(null);
+  const [linked, setLinked] = useState<SongPick | null>(null); // the card for a pasted link
+  const [open, setOpen] = useState<Open>(null); // one open card in the whole box
+  const [checking, setChecking] = useState(false);
+  const [linkError, setLinkError] = useState("");
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
-  const [error, setError] = useState("");
+  const [cardError, setCardError] = useState<{ videoId: string; message: string } | null>(null);
 
-  const target = by === "link" ? link.trim() : (picked?.videoId ?? "");
-  const ready = name.trim().length > 0 && target.length > 0 && !busy;
+  async function lookUp() {
+    if (!link.trim() || checking) return;
+    setChecking(true);
+    setLinkError("");
+    setLinked(null);
+    setOpen(null);
+    try {
+      const { status, body } = await call("GET", `/api/requests/preview?link=${encodeURIComponent(link.trim())}`);
+      if (status !== 200) return setLinkError(messageOf(body));
+      const pick = body as unknown as SongPick;
+      setLinked(pick);
+      setOpen({ source: "link", videoId: pick.videoId });
+    } catch {
+      setLinkError(NETWORK_MESSAGE);
+    } finally {
+      setChecking(false);
+    }
+  }
 
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
-    if (!ready) return;
+  async function send(pick: SongPick) {
+    if (busy) return;
+    setCardError(null);
+    if (!name.trim()) return setCardError({ videoId: pick.videoId, message: "Type your name first (at the top of this box), then send." });
     setBusy(true);
-    setError("");
     try {
       const cleaned = oneLine(dedication);
-      const body = { link: target, name: name.trim(), ...(cleaned ? { dedication: cleaned } : {}) };
+      const body = { link: pick.videoId, name: name.trim(), ...(cleaned ? { dedication: cleaned } : {}) };
       const { status, body: reply } = await call("POST", "/api/requests", body);
       if (status === 201) {
         saveName(name.trim());
         setLink("");
-        setPicked(null);
+        setLinked(null);
+        setOpen(null);
         setDedication("");
         setSent(true);
         await onPosted(reply.request as PostedRequest);
       } else {
-        setError(messageOf(reply));
+        setCardError({ videoId: pick.videoId, message: messageOf(reply) });
         await onPosted();
       }
     } catch {
-      setError(NETWORK_MESSAGE);
+      setCardError({ videoId: pick.videoId, message: NETWORK_MESSAGE });
     } finally {
       setBusy(false);
     }
   }
+
+  function openSearchCard(videoId: string | null) {
+    setOpen(videoId ? { source: "search", videoId } : null);
+    setCardError(null);
+    if (videoId) setLinked(null);
+  }
+
+  const actionsFor = (pick: SongPick) => (
+    <>
+      <div className="owner-actions">
+        <button type="button" className="btn small" onClick={() => void send(pick)}>Send request</button>
+      </div>
+      <div aria-live="polite" className="song-card-status">
+        {busy && <p>Sending…</p>}
+        {cardError?.videoId === pick.videoId && <p className="owner-error" role="alert">{cardError.message}</p>}
+      </div>
+    </>
+  );
 
   return (
     <section className="request-box" aria-labelledby="req-h">
@@ -86,7 +127,7 @@ export function RequestBox({ mine, mode, onPosted }: Props) {
             {mode === "approve" && " Every request waits for approval."}
             {mode === "open" && " Music requests play on their own; others wait for approval."}
           </p>
-          <form onSubmit={submit}>
+          <form onSubmit={(e) => (e.preventDefault(), by === "link" && void lookUp())}>
             <label htmlFor="req-name">Your name</label>
             <input id="req-name" maxLength={30} autoComplete="nickname" value={name} onChange={(e) => setName(e.target.value)} />
             <label htmlFor="req-ded">Dedication (optional)</label>
@@ -105,20 +146,33 @@ export function RequestBox({ mine, mode, onPosted }: Props) {
             {by === "link" ? (
               <>
                 <label htmlFor="req-link">Song link</label>
-                <input id="req-link" inputMode="url" autoComplete="off" value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://youtu.be/…" />
-              </>
-            ) : (
-              <>
-                <SongSearch endpoint="/api/requests/search" inputId="req-search" label="Song or artist to find" buttonLabel="Find" onPick={setPicked} />
-                {picked && (
-                  <p className="picked" data-testid="picked">
-                    Chosen: <strong>{picked.title}</strong> ({minutes(picked.durationSec)})
-                  </p>
+                <div className="owner-row">
+                  <input id="req-link" inputMode="url" autoComplete="off" value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://youtu.be/…" />
+                  <button type="submit" className="btn small" disabled={!link.trim()}>Look up</button>
+                </div>
+                <div aria-live="polite" className="owner-status">
+                  {checking && <p>Checking the link…</p>}
+                  {linkError && <p className="owner-error" role="alert">{linkError}</p>}
+                </div>
+                {linked && (
+                  <div data-testid="preview">
+                    <SongCard pick={linked} open={open?.source === "link"} onToggle={() => setOpen(open?.source === "link" ? null : { source: "link", videoId: linked.videoId })}>
+                      {actionsFor(linked)}
+                    </SongCard>
+                  </div>
                 )}
               </>
+            ) : (
+              <SongSearch
+                endpoint="/api/requests/search"
+                inputId="req-search"
+                label="Song or artist to find"
+                buttonLabel="Find"
+                openId={open?.source === "search" ? open.videoId : null}
+                onOpenChange={openSearchCard}
+                renderActions={actionsFor}
+              />
             )}
-            <div aria-live="polite">{error && <p className="owner-error" role="alert">{error}</p>}</div>
-            <button type="submit" className="btn send" disabled={!ready}>{busy ? "Sending…" : "Send request"}</button>
           </form>
         </>
       )}
