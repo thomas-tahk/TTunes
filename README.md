@@ -18,7 +18,7 @@ A personal radio station for one person's music library, on a public URL. It pla
 - One shared schedule: every listener hears the same song at the same second, from any browser.
 - Visible YouTube player with a visualizer around it; "Now playing" and "Up next".
 - Never stops: requests first, then the owner's queue, then a shuffle of the library.
-- Listener requests by link or typed search, with an optional dedication, in a public chat-style feed. With requests set to *open*, music under 10 minutes plays without the owner touching anything; anything else waits for approval. Each listener has one request lined up at a time and 5 an hour. The owner can switch requests to *approve first* or *off*, and deny or remove any one.
+- Listener requests by link or typed search, with an optional dedication, in a public chat-style feed. With requests set to *open*, music under 10 minutes plays without the owner touching anything; other requests up to 15 minutes wait for approval; longer ones are refused. Each listener has one request lined up at a time and 5 an hour. The owner can switch requests to *approve first* or *off*, and deny or remove any one.
 - Owner (signed in with GitHub, one account only): add by link or search, skip, reorder, delete with undo, trash, activity log, library export, request mode open / approve first / off.
 
 ### Mac app features
@@ -45,9 +45,13 @@ npm run db:seed      # sample songs, local only
 npm run dev
 ```
 
-Open the address Vite prints. Environment variable names (set them in your shell; values never go in the repo): `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `YOUTUBE_API_KEY`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `SESSION_SECRET`, `CRON_SECRET`, and optionally `IP_HASH_SALT`. Locally `DATABASE_URL` defaults to the Docker database. More in [station/README.md](station/README.md).
+Open the address Vite prints. Environment variables (values never go in the repo):
+- **Local:** `SESSION_SECRET` (any 32+ characters) and `YOUTUBE_API_KEY`. Leave `DATABASE_URL` unset so it uses the Docker database.
+- **Deploy only** (set in Vercel): `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `CRON_SECRET`, optionally `IP_HASH_SALT`.
 
-Tests: `npm test` and `npm run typecheck` (in `station/`). Regenerate the preview image: `npm run preview`.
+The owner is one GitHub account, set by `OWNER_GITHUB_ID` in `station/lib/auth.ts`; change it to your own GitHub user id to sign in. More in [station/README.md](station/README.md).
+
+Tests: `npm test` and `npm run typecheck` (in `station/`). Regenerate the preview image: `npm run preview` (needs Docker running via `npm run db:up`, Playwright's Chromium via `npx playwright install chromium`, and internet for the YouTube embed).
 
 ## Run the Mac app
 Install steps for a new Mac are in [docs/INSTALL.md](docs/INSTALL.md): `brew install node yt-dlp ffmpeg`, clone, double-click `Start TTunes.command`. For development:
