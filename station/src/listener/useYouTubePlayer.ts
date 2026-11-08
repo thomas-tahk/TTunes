@@ -24,6 +24,7 @@ export function useYouTubePlayer(host: RefObject<HTMLDivElement | null>, input: 
   const syncedStart = useRef(input.startedAt);
   const syncedLocal = useRef(input.isLocalStart);
   const cuedPaused = useRef(false);
+  const listenerPaused = useRef(false); // set by YouTube's pause, cleared by play; a cued song keeps it, so it can't be read off the player state
 
   const correctDrift = () => {
     const p = player.current;
@@ -36,8 +37,8 @@ export function useYouTubePlayer(host: RefObject<HTMLDivElement | null>, input: 
     const p = player.current;
     const { videoId, startedAt, isLocalStart, expectedSec } = latest.current;
     if (!p) return;
-    const paused = p.getPlayerState() === window.YT?.PlayerState.PAUSED;
-    const action = planSync({ loadedVideoId: loaded.current, syncedStartedAt: syncedStart.current, wasLocalStart: syncedLocal.current }, { videoId, startedAt, isLocalStart }, paused);
+    const ended = p.getPlayerState() === window.YT?.PlayerState.ENDED;
+    const action = planSync({ loadedVideoId: loaded.current, syncedStartedAt: syncedStart.current, wasLocalStart: syncedLocal.current }, { videoId, startedAt, isLocalStart }, { listenerPaused: listenerPaused.current, ended });
     loaded.current = videoId;
     syncedStart.current = startedAt;
     syncedLocal.current = isLocalStart;
@@ -69,8 +70,12 @@ export function useYouTubePlayer(host: RefObject<HTMLDivElement | null>, input: 
               syncToTarget();
             },
             onStateChange: (e: { data: number }) => {
-              if (e.data === YT.PlayerState.PAUSED) latest.current.onPausedChange(true);
+              if (e.data === YT.PlayerState.PAUSED) {
+                listenerPaused.current = true;
+                latest.current.onPausedChange(true);
+              }
               if (e.data !== YT.PlayerState.PLAYING) return;
+              listenerPaused.current = false;
               latest.current.onPausedChange(false);
               if (!cuedPaused.current) return;
               cuedPaused.current = false;

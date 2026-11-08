@@ -52,7 +52,7 @@ DATABASE_URL=postgres://ttunes:ttunes@localhost:55432/e2e_x node test/e2e/addlin
 docker exec $(docker ps -qf publish=55432) psql -U ttunes -d postgres -qc "drop database e2e_x with (force)"
 ```
 
-Same for `test/e2e/controls.e2e.mjs`, `test/e2e/moderation.e2e.mjs`, `test/e2e/request.e2e.mjs`, `npm run e2e` (sync) and `npm run e2e:playback` (pause, seek and next song; about 3 minutes, real YouTube).
+Same for `test/e2e/controls.e2e.mjs`, `test/e2e/moderation.e2e.mjs`, `test/e2e/request.e2e.mjs`, `npm run e2e` (sync) `npm run e2e:paused` (owner tab, paused listener) and `npm run e2e:playback` (pause, seek and next song; about 3 minutes, real YouTube).
 
 ## Deploy (Vercel + Neon)
 

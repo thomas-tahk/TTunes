@@ -11,11 +11,11 @@ export interface SyncTarget {
 export type SyncAction = "none" | "drift" | "load" | "cue";
 
 /** What the player does when the target may have changed. Live position is for Play and a new song only; a listener-paused player gets the new song cued, not started. */
-export function planSync(prev: SyncState, next: SyncTarget, listenerPaused: boolean): SyncAction {
+export function planSync(prev: SyncState, next: SyncTarget, player: { listenerPaused: boolean; ended: boolean }): SyncAction {
   const newVideo = prev.loadedVideoId !== next.videoId;
   const newStart = prev.syncedStartedAt !== next.startedAt;
   const handoff = !newVideo && prev.wasLocalStart && !next.isLocalStart; // server caught up with the song we already started locally
-  if (!newVideo && handoff) return "none";
+  if (!newVideo && handoff && !player.ended) return "none"; // an ended local start needs the live song, or the slot is silent
   if (!newVideo && !newStart) return "drift";
-  return listenerPaused ? "cue" : "load";
+  return player.listenerPaused ? "cue" : "load";
 }
