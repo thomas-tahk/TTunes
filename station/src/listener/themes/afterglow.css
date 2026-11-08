@@ -5,7 +5,8 @@
 @property --wash-mid { syntax: "<color>"; inherits: true; initial-value: #C2185B; }
 @property --wash-deep { syntax: "<color>"; inherits: true; initial-value: #3D0B5C; }
 
-:root {
+/* Scoped to <html data-look="afterglow"> so only one look applies; The Set lives in theset.css. */
+html[data-look="afterglow"] {
   /* palette */
   --wash-hot: #C93C00; /* set per song by useWash; these are the AA-safe fallback */
   --wash-mid: #C2185B;
@@ -26,11 +27,10 @@
   --drawer-w: 520px;
   --player-w: clamp(364px, 30vw, 480px); /* frame = 4px border + a host that is 16:9 and >= 200px tall */
   --pad: 56px;
-}
 
 * { box-sizing: border-box; }
-html { background: #3D0B5C; overflow-x: clip; }
-html, body { margin: 0; min-height: 100%; }
+& { background: #3D0B5C; overflow-x: clip; }
+&, body { margin: 0; min-height: 100%; }
 body { font-family: var(--font-body); color: var(--on-wash); }
 [hidden] { display: none !important; }
 button, input, textarea { font-family: inherit; }
@@ -207,11 +207,22 @@ footer .signin { margin-left: 0; font-size: 0.9rem; font-weight: 600; }
 .seg small { font-size: 0.78rem; }
 .seg.on { background: var(--ink); color: var(--drawer-bg); }
 
+/* look switch (header): two native radios styled as a segmented control */
+.look-switch { margin: 0 0 0 auto; padding: 0; border: 0; min-width: 0; display: inline-flex; align-items: center; gap: 6px; }
+.look-switch legend { float: left; padding: 0 6px 0 0; font-size: 0.85rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+.look-switch label { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 14px; border: 2px solid #fff; color: #fff; font-weight: 800; font-size: 0.95rem; cursor: pointer; }
+.look-switch label.on { background: #fff; color: var(--wash-deep); }
+.look-switch label.on span::before { content: "\2713\00a0" / ""; }
+.look-switch input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+.look-switch label:focus-within { outline: 3px solid var(--drawer-bg); outline-offset: 3px; }
+header { flex-wrap: wrap; }
+header .owner-badge { margin-left: 0; }
+
 /* ---------- narrow: the drawer opens below the player, which stays on screen ---------- */
 @media (max-width: 999px) {
-  :root { --pad: 16px; }
+  --pad: 16px;
   .shell { padding-bottom: 0; }
-  header { padding-top: 20px; }
+  header { padding-top: 8px; padding-bottom: 4px; } /* the 44px Look switch makes the row taller; keep the player on the first screen */
   .foot { flex-wrap: wrap; align-items: center; gap: 14px 16px; }
   /* full-bleed on phones, but never so tall that player + bottom bar stop fitting a short (landscape) screen */
   .visualizer { flex: 0 0 auto; width: min(calc(100% + 2 * var(--pad)), max(356px, calc((100dvh - 320px) * 16 / 9))); margin: 0 0 0 calc(-1 * var(--pad)); }
@@ -230,6 +241,11 @@ footer .signin { margin-left: 0; font-size: 0.9rem; font-weight: 600; }
   .drawer-tab[aria-expanded="true"] { right: 0; }
   .drawer { position: static; width: auto; max-width: none; margin: 28px calc(-1 * var(--pad)) 0; padding: 24px var(--pad) 40px; box-shadow: none; }
   .drawer-head h2 { font-size: 2.3rem; }
+  /* long titles must not push the player off the first screen: smaller type, tied to the height */
+  h1.title-xl { font-size: clamp(34px, min(22cqw, 11vh), 200px); }
+  h1.title-l { font-size: clamp(30px, min(16cqw, 9vh), 150px); }
+  h1.title-m { font-size: clamp(28px, min(12cqw, 7vh), 104px); }
+  h1.title-s { font-size: clamp(26px, min(9cqw, 5.5vh), 72px); }
 }
 @media (max-width: 999px) and (max-height: 700px) {
   header { padding: 10px 0 0; }
@@ -248,9 +264,11 @@ footer .signin { margin-left: 0; font-size: 0.9rem; font-weight: 600; }
   .shell.drawer-open { padding-right: calc(var(--pad) + var(--drawer-w)); }
 }
 
-@keyframes bar-y { to { transform: scaleY(1); } }
-@keyframes blink { 50% { opacity: 0.35; } }
 @media (prefers-reduced-motion: reduce) {
   .bars span, .on-air i { animation: none !important; }
   .shell { transition: none; }
 }
+}
+
+@keyframes bar-y { to { transform: scaleY(1); } }
+@keyframes blink { 50% { opacity: 0.35; } }

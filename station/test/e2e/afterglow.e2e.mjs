@@ -82,7 +82,7 @@ try {
   await shot(off, "offair", 375, 812);
   check(await noScroll(off), "off air: no horizontal scroll at 375px");
 
-  await db.query("insert into songs (video_id, title, duration_sec) values ('seedSong001','Strawberry Letter 23',300),('seedSong002','Ain''t No Mountain High Enough',300)");
+  await db.query("insert into songs (video_id, title, duration_sec) values ('seedSong001','A Very Long Song Title That Goes On And On (Official Extended Remastered Audio) feat. Many Guests',300),('seedSong002','A Very Long Song Title That Goes On And On (Official Extended Remastered Audio) feat. Many Guests',300)"); // the longest title the test uses, whichever song is on air
 
   // Error: the schedule fails to load.
   const bad = await open({ viewport: { width: 1280, height: 800 } });
@@ -220,7 +220,7 @@ try {
         return { bar: covers(".drawer-tab"), hint: covers(".hint-bubble"), onScreen: host.top >= 0 && host.bottom <= window.innerHeight };
       });
       check(!hit.bar && !hit.hint, `@${w}x${h} scroll ${at}: nothing overlaps the player`);
-      if (at === "top" && w === 900) check(hit.onScreen, `@${w}x${h}: whole player visible on first view`);
+      if (at === "top") check(hit.onScreen, `@${w}x${h}: whole player visible on first view`);
     }
     if (w === 667) {
       await sizes.evaluate(() => window.scrollTo(0, 0));
