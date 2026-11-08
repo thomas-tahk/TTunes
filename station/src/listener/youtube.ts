@@ -3,6 +3,8 @@ export interface YTPlayer {
   loadVideoById(args: { videoId: string; startSeconds: number }): void;
   seekTo(seconds: number, allowSeekAhead: boolean): void;
   getCurrentTime(): number;
+  pauseVideo(): void;
+  playVideo(): void;
   destroy(): void;
 }
 export interface YTNamespace {

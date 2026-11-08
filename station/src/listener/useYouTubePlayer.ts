@@ -19,6 +19,7 @@ export function useYouTubePlayer(host: RefObject<HTMLDivElement | null>, input: 
   latest.current = input;
   const player = useRef<YTPlayer>(undefined);
   const loaded = useRef(input.videoId);
+  const syncedStart = useRef(input.startedAt);
 
   const correctDrift = () => {
     const p = player.current;
@@ -26,14 +27,20 @@ export function useYouTubePlayer(host: RefObject<HTMLDivElement | null>, input: 
     if (p && Math.abs(p.getCurrentTime() - expected) > MAX_DRIFT_SEC) p.seekTo(expected, true);
   };
 
-  // A new video loads at its position; the same video just re-aligns.
+  // Live position only at the start (Play/ready) and when a new song starts; otherwise the listener's pause and seek stand.
   const syncToTarget = () => {
     const p = player.current;
-    const { videoId, expectedSec } = latest.current;
+    const { videoId, startedAt, expectedSec } = latest.current;
     if (!p) return;
-    if (loaded.current === videoId) return correctDrift();
-    loaded.current = videoId;
-    p.loadVideoById({ videoId, startSeconds: expectedSec() });
+    const newSong = syncedStart.current !== startedAt;
+    syncedStart.current = startedAt;
+    if (loaded.current !== videoId) {
+      loaded.current = videoId;
+      p.loadVideoById({ videoId, startSeconds: expectedSec() });
+      return;
+    }
+    if (newSong) p.seekTo(expectedSec(), true); // same video again: a new play starts live
+    else correctDrift();
   };
 
   useEffect(() => {
@@ -59,13 +66,18 @@ export function useYouTubePlayer(host: RefObject<HTMLDivElement | null>, input: 
               if (e.data === YT.PlayerState.PAUSED) latest.current.onPausedChange(true);
               if (e.data !== YT.PlayerState.PLAYING) return;
               latest.current.onPausedChange(false);
-              correctDrift();
             },
             onError: (e: { data: number }) => !dead && UNPLAYABLE.includes(e.data) && latest.current.onUnplayable(),
           },
         });
         if (import.meta.env.DEV) {
-          window.__ttunes = { currentTime: () => player.current?.getCurrentTime() ?? 0, videoId: () => latest.current.videoId };
+          window.__ttunes = {
+            currentTime: () => player.current?.getCurrentTime() ?? 0,
+            videoId: () => latest.current.videoId,
+            pause: () => player.current?.pauseVideo(),
+            play: () => player.current?.playVideo(),
+            seekTo: (sec) => player.current?.seekTo(sec, true),
+          };
         }
       })
       .catch(() => !dead && latest.current.onLoadFailed());
@@ -76,11 +88,12 @@ export function useYouTubePlayer(host: RefObject<HTMLDivElement | null>, input: 
     };
   }, []);
 
-  useEffect(syncToTarget, [input.videoId, input.startedAt]);
+  // Only a changed target re-syncs; the first run (mount) is a no-op until the player is ready.
+  useEffect(() => syncToTarget(), [input.videoId, input.startedAt]);
 }
 
 declare global {
   interface Window {
-    __ttunes?: { currentTime: () => number; videoId: () => string }; // dev builds only; read by the e2e test
+    __ttunes?: { currentTime: () => number; videoId: () => string; pause: () => void; play: () => void; seekTo: (sec: number) => void }; // dev builds only; read by the e2e test
   }
 }
