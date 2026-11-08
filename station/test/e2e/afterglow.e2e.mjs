@@ -203,30 +203,30 @@ try {
   }
   await shot(sizes, "desktop", 1000, 800);
 
-  // Short phone screens: the fixed bottom bar must not trap the player under it.
-  for (const [w, h] of [[667, 375], [844, 390]]) {
+  // The bottom bar never covers the player: at scroll 0 and at the very bottom, on short and tall phones alike.
+  for (const [w, h] of [[667, 375], [844, 390], [900, 600], [375, 812], [375, 667]]) {
     await sizes.setViewportSize({ width: w, height: h });
     await sleep(300);
-    const fits = await sizes.evaluate(() => {
-      const host = document.querySelector(".player-host").getBoundingClientRect();
-      const bar = document.querySelector(".drawer-tab").getBoundingClientRect();
-      const top = host.top + window.scrollY;
-      for (let y = 0; y <= document.documentElement.scrollHeight; y += 10) {
-        if (top - y >= 0 && top - y + host.height <= bar.top) return { y, h: host.height };
-      }
-      return null;
-    });
-    check(fits !== null, `@${w}x${h}: some scroll position shows the whole player above the bottom bar`);
+    for (const at of ["top", "bottom"]) {
+      await sizes.evaluate((where) => window.scrollTo(0, where === "top" ? 0 : document.documentElement.scrollHeight), at);
+      await sleep(200);
+      const hit = await sizes.evaluate(() => {
+        const host = document.querySelector(".player-host").getBoundingClientRect();
+        const covers = (sel) => [...document.querySelectorAll(sel)].some((el) => {
+          const r = el.getBoundingClientRect();
+          const on = r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== "hidden";
+          return on && r.left < host.right && host.left < r.right && r.top < host.bottom && host.top < r.bottom;
+        });
+        return { bar: covers(".drawer-tab"), hint: covers(".hint-bubble"), onScreen: host.top >= 0 && host.bottom <= window.innerHeight };
+      });
+      check(!hit.bar && !hit.hint, `@${w}x${h} scroll ${at}: nothing overlaps the player`);
+      if (at === "top" && w === 900) check(hit.onScreen, `@${w}x${h}: whole player visible on first view`);
+    }
+    if (w === 667) {
+      await sizes.evaluate(() => window.scrollTo(0, 0));
+      await shot(sizes, "landscape", 667, 375);
+    }
   }
-  await shot(sizes, "landscape", 667, 375);
-  await sizes.setViewportSize({ width: 900, height: 600 });
-  await sizes.evaluate(() => window.scrollTo(0, 0));
-  await sleep(300);
-  const first = await sizes.evaluate(() => {
-    const host = document.querySelector(".player-host").getBoundingClientRect();
-    return { bottom: host.bottom, bar: document.querySelector(".drawer-tab").getBoundingClientRect().top };
-  });
-  check(first.bottom <= first.bar, `@900x600: first view shows the whole player above the bar (${Math.round(first.bottom)} <= ${Math.round(first.bar)})`);
 
   // Owner check is slow: nothing owner-or-listener-only flashes before /api/auth/me answers; owner never sees hint or link.
   for (const isOwner of [true, false]) {
