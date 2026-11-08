@@ -114,6 +114,7 @@ export function useYouTubePlayer(host: RefObject<HTMLDivElement | null>, input: 
 
   // Only a changed target re-syncs; the first run (mount) is a no-op until the player is ready.
   useEffect(() => syncToTarget(), [input.videoId, input.startedAt]);
+  return player; // read-only for callers: the indicator reads time and state
 }
 
 declare global {
