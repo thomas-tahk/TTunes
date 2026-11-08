@@ -68,26 +68,36 @@ try {
   // 2. The current song ends; the request becomes Now playing for everyone.
   await db.query("update station_state set started_at_ms = started_at_ms - 400000");
 
+  const mmss = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
   const shoot = async (scale) => {
     const laptop = await listener({ width: 640, height: 900 }, scale);
     const phone = await listener({ width: 375, height: 812 }, scale);
+    const feedPage = await listener({ width: 360, height: 900 }, scale); // narrow window: the feed card at full text size
     for (const p of [laptop, phone]) {
       await p.waitForFunction((t) => document.querySelector('[data-testid="now-title"]')?.textContent === t, REQUESTED.title);
       await p.getByRole("button", { name: "Play" }).click();
       await p.waitForFunction(() => window.__ttunes && window.__ttunes.currentTime() > 1.5, null, { timeout: 30_000 });
     }
-    for (const p of [laptop, phone]) {
-      for (let i = 0; i < 6 && !(await p.getByText("Playing now").count()); i++) { await sleep(2000); await p.reload(); await p.getByRole("button", { name: "Play" }).click(); await p.waitForFunction(() => window.__ttunes && window.__ttunes.currentTime() > 1.5, null, { timeout: 30_000 }); }
+    for (const p of [laptop, phone, feedPage]) {
+      for (let i = 0; i < 6 && !(await p.getByText("Playing now").count()); i++) {
+        await sleep(2000); await p.reload();
+        if (p !== feedPage) { await p.getByRole("button", { name: "Play" }).click(); await p.waitForFunction(() => window.__ttunes && window.__ttunes.currentTime() > 1.5, null, { timeout: 30_000 }); }
+      }
+      await p.mouse.move(0, 0); // keep the pointer off the player so YouTube's hover bars fade
     }
-    await sleep(1500);
+    await sleep(4500);
     const dir = join(tmpdir(), `ttunes-preview-${process.pid}`);
     mkdirSync(dir, { recursive: true });
-    const feedPng = join(dir, `feed-${scale}.png`), laptopPng = join(dir, `laptop-${scale}.png`), phonePng = join(dir, `phone-${scale}.png`);
-    await laptop.screenshot({ path: laptopPng, fullPage: false });
-    await laptop.locator(".feed").screenshot({ path: feedPng });
-    await phone.screenshot({ path: phonePng, fullPage: false });
-    await laptop.context().close(); await phone.context().close();
-    return { laptopPng, phonePng, feedPng };
+    const clipTo = async (p, w) => ({ x: 0, y: 0, width: w, height: Math.ceil((await p.locator(".titles").boundingBox()).y + (await p.locator(".titles").boundingBox()).height + 16) });
+    const files = { laptopPng: join(dir, `laptop-${scale}.png`), phonePng: join(dir, `phone-${scale}.png`), feedPng: join(dir, `feed-${scale}.png`) };
+    const clips = [await clipTo(laptop, 640), await clipTo(phone, 375)];
+    const read = (p) => p.evaluate(() => window.__ttunes.currentTime());
+    const [tLaptop, tPhone] = await Promise.all([read(laptop), read(phone)]); // same moment, each screen's own player
+    await Promise.all([laptop.screenshot({ path: files.laptopPng, clip: clips[0] }), phone.screenshot({ path: files.phonePng, clip: clips[1] })]);
+    await feedPage.locator(".feed").screenshot({ path: files.feedPng });
+    for (const p of [laptop, phone, feedPage]) await p.context().close();
+    console.log(`times: laptop ${tLaptop.toFixed(2)}s, phone ${tPhone.toFixed(2)}s (gap ${Math.abs(tLaptop - tPhone).toFixed(2)}s)`);
+    return { ...files, laptopTime: mmss(tLaptop), phoneTime: mmss(tPhone), laptopSize: [clips[0].width, clips[0].height], phoneSize: [clips[1].width, clips[1].height] };
   };
   const compose = async (shots, scale) => {
     const frame = await browser.newContext({ viewport: { width: 1200, height: 630 }, deviceScaleFactor: scale });
