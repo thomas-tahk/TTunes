@@ -6,6 +6,7 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { mkdirSync } from "node:fs";
 import pg from "pg";
+import { openDrawer, playerClearOfDrawer } from "./drawer.mjs";
 import { freePort, startDevServer } from "./devServer.mjs";
 import { chromium } from "playwright";
 
@@ -61,14 +62,13 @@ const open = async (viewport, ip) => {
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
   await page.goto(BASE);
   await page.getByTestId("next-title").waitFor();
+  await openDrawer(page);
   return page;
 };
 const noScroll = (page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
 const playerClear = async (page, label) => {
-  const frame = await page.locator(".player-frame").boundingBox();
-  const box = await page.locator(".requests").boundingBox();
-  check(frame.width >= 200 && frame.height >= 200, `${label}: player ${frame.width}x${frame.height} >= 200x200`);
-  check(frame.y + frame.height <= box.y, `${label}: requests sit below the player, covering nothing`);
+  const { frame, ok } = await playerClearOfDrawer(page);
+  check(ok, `${label}: player ${frame.width}x${frame.height} >= 200x200 and the drawer covers none of it`);
   check(await noScroll(page), `${label}: no horizontal scroll`);
 };
 const shot = async (page, name) => {
@@ -117,6 +117,7 @@ try {
 
   // B joins fresh: sees it in the feed, can still request (its own slot).
   await b.reload();
+  await openDrawer(b);
   await b.getByTestId("feed-row").first().waitFor();
   const bText = await b.getByTestId("feed-row").first().textContent();
   check(bText.includes("Thomas") && bText.includes("Neon Skyline") && bText.includes(DEDICATION), "B sees name, title and dedication in the feed");
@@ -126,10 +127,12 @@ try {
   // Song ends: the request becomes now playing for both.
   await db.query("update station_state set started_at_ms = started_at_ms - 400000");
   await b.reload();
+  await openDrawer(b);
   await b.waitForFunction((t) => document.querySelector('[data-testid="now-title"]')?.textContent === t, catalog.musicVid001.title);
   check(true, "B hears the request: it is now playing");
   check((await b.getByTestId("feed-row").first().textContent()).includes("Playing now"), "feed chip says Playing now");
   await a.reload();
+  await openDrawer(a);
   await a.waitForFunction((t) => document.querySelector('[data-testid="now-title"]')?.textContent === t, catalog.musicVid001.title);
   check(true, "A hears its own request playing too");
   await playerClear(b, "desktop");
@@ -163,6 +166,7 @@ try {
   for (const [w, h] of [[375, 812], [1280, 900]]) {
     await b.setViewportSize({ width: w, height: h });
     await b.reload();
+    await openDrawer(b);
     await b.getByTestId("feed-row").first().waitFor();
     const m = await b.evaluate(() => {
       const list = document.querySelector('[data-testid="feed"]');
@@ -182,6 +186,7 @@ try {
   const c = await open({ width: 1280, height: 900 }, "203.0.113.77");
   await c.route("**/api/requests/feed", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ mode: "approve", requests: [] }) }));
   await c.reload();
+  await openDrawer(c);
   await c.getByTestId("mode-chip").waitFor();
   check((await c.locator(".request-box .hint").textContent()).includes("Every request waits for approval."), "approve mode hint says every request waits");
   await c.getByLabel("Your name").fill("Cleo");
@@ -201,6 +206,7 @@ try {
   // Mode off hides the box.
   await db.query("update settings set value = 'off' where key = 'request_mode'");
   await b.reload();
+  await openDrawer(b);
   await b.getByTestId("mode-chip").waitFor();
   check((await b.getByTestId("mode-chip").textContent()) === "Requests off", "mode chip says Requests off");
   check((await b.getByRole("heading", { name: "Request a song" }).count()) === 0, "request box is hidden when off");
@@ -209,6 +215,7 @@ try {
   // Feed load failure is an error, not "nothing here".
   await b.route("**/api/requests/feed", (route) => route.fulfill({ status: 500, body: "{}" }));
   await b.reload();
+  await openDrawer(b);
   await b.getByRole("alert").filter({ hasText: "didn't load" }).waitFor();
   check(true, "feed failure shows an error with Try again");
 
