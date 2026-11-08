@@ -63,7 +63,7 @@ html[data-look="theset"] {
   /* main = the front panel: bezel + grille on top, dial under, knob at the bottom */
   main { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 340px; grid-template-rows: auto auto auto; align-content: start; gap: 24px 28px; }
   .foot { display: contents; }
-  .player-stage { grid-column: 1; grid-row: 1; justify-self: start; width: min(100%, max(384px, calc((100dvh - 230px) * 16 / 9 + 28px))); padding: 14px; background: var(--brass); border-radius: 18px; box-shadow: inset 0 0 0 4px var(--brass-dark); }
+  .player-stage { grid-column: 1; grid-row: 1; justify-self: start; width: min(100%, max(384px, calc((100dvh - 236px) * 16 / 9 + 28px))); padding: 14px; background: var(--brass); border-radius: 18px; box-shadow: inset 0 0 0 4px var(--brass-dark); }
   .stage { position: relative; }
   .player-frame { width: 100%; background: #000; border-radius: 8px; overflow: hidden; }
   .player-frame.idle { background: radial-gradient(circle at 50% 40%, #3a1a10, #000); }
@@ -71,14 +71,15 @@ html[data-look="theset"] {
   .player-host iframe { width: 100%; height: 100%; display: block; }
   .notice { margin: 10px 0 0; padding: 10px 14px; background: #1b0c06; color: var(--gold); border-left: 6px solid var(--btn); border-radius: 4px; }
   /* song indicator: a tuning-scale progress line and a lamp, inside the brass bezel */
-  .song-indicator { display: flex; align-items: center; gap: 12px; min-height: 44px; margin-top: 4px; color: #1b0c06; font-family: var(--font-display); font-size: 0.8rem; }
+  .song-indicator { display: flex; align-items: center; gap: 12px; min-height: 28px; margin-top: 4px; color: #1b0c06; font-family: var(--font-display); font-size: 0.8rem; }
   .song-indicator .marker { display: inline-flex; align-items: center; gap: 8px; margin: 0; min-width: 8.5em; text-transform: uppercase; letter-spacing: 0.06em; }
   .song-indicator .marker i { width: 12px; height: 12px; border-radius: 50%; background: #1b0c06; flex: none; box-shadow: inset 0 0 0 2px #1b0c06; }
-  .song-indicator.is-on-air .marker i { background: #C40E1A; box-shadow: 0 0 0 2px #1b0c06, 0 0 8px #ff4a3d; animation: set-glow 1.6s ease-in-out infinite; }
+  .song-indicator.is-on-air .marker i { background: #C40E1A; box-shadow: 0 0 0 2px #1b0c06, 0 0 8px #ff4a3d; }
   .song-indicator.is-paused .marker i { background: transparent; }
-  .song-indicator.is-buffering .marker i { background: #7a5a10; }
+  .song-indicator.is-buffering .marker i, .song-indicator.is-waiting .marker i, .song-indicator.is-between .marker i { background: #7a5a10; }
   .song-indicator .progress { flex: 1; height: 8px; background: var(--brass-dark); border-radius: 4px; overflow: hidden; }
   .song-indicator .progress span { display: block; height: 100%; background: #1b0c06; }
+  .song-indicator .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .song-indicator .clock { margin: 0; font-variant-numeric: tabular-nums; }
 
   /* speaker grille with the "on air" plate */
@@ -248,7 +249,7 @@ html[data-look="theset"] {
     .wordmark { font-size: 2rem; }
     main { display: flex; flex-direction: column; gap: 16px; }
     .player-stage {
-      --pw: min(calc(100% + 2 * var(--pad)), max(356px, calc((100dvh - 300px) * 16 / 9)));
+      --pw: min(calc(100% + 2 * var(--pad)), max(356px, calc((100dvh - 306px) * 16 / 9)));
       order: 1; width: var(--pw); margin-left: calc((100% - var(--pw)) / 2); justify-self: auto;
       padding: 8px 0; border-radius: 0; box-shadow: inset 0 3px 0 var(--brass-dark), inset 0 -3px 0 var(--brass-dark);
     }
@@ -285,5 +286,5 @@ html[data-look="theset"] {
 
 @keyframes set-glow { 50% { opacity: 0.4; } }
 @media (prefers-reduced-motion: reduce) {
-  html[data-look="theset"] .song-indicator .marker i, html[data-look="theset"] .on-air i { animation: none !important; }
+  html[data-look="theset"] .on-air i { animation: none !important; }
 }

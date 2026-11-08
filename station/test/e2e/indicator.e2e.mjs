@@ -35,7 +35,7 @@ const read = (page) => page.evaluate(() => {
   const bar = ind.querySelector('[role="progressbar"]');
   const max = Number(bar.getAttribute("aria-valuemax"));
   const width = parseFloat(bar.firstElementChild.style.width) / 100;
-  return { shown: width * max, player: window.__ttunes.currentTime(), marker: ind.querySelector(".marker").textContent.trim(), animations: ind.getAnimations({ subtree: true }).filter((a) => a.playState === "running").length };
+  return { shown: width * max, player: window.__ttunes.currentTime(), marker: ind.querySelector("[data-testid=marker-text]").textContent.trim(), animations: ind.getAnimations({ subtree: true }).filter((a) => a.playState === "running").length };
 });
 
 async function legs(look, browser) {
@@ -55,16 +55,12 @@ async function legs(look, browser) {
   const a = await read(page);
   check(a.marker === "On air", `${look}: playing shows "On air" (got "${a.marker}")`);
   check(Math.abs(a.shown - a.player) < 1, `${look}: progress ${a.shown.toFixed(1)}s follows player ${a.player.toFixed(1)}s (+-1s)`);
-  check(a.animations > 0, `${look}: the on-air lamp has a calm animation while playing (${a.animations})`);
+  check(a.animations === 0, `${look}: no animation on the indicator while playing (${a.animations})`);
   await sleep(3000);
   const b = await read(page);
   check(Math.abs(b.shown - a.shown - 3) < 1 && Math.abs(b.shown - b.player) < 1, `${look}: progress advanced ${(b.shown - a.shown).toFixed(1)}s in 3s, still in line with player`);
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/${look}-playing-1280.png` });
 
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await sleep(300);
-  check((await read(page)).animations === 0, `${look}: prefers-reduced-motion: no animation while playing`);
-  await page.emulateMedia({ reducedMotion: "no-preference" });
 
   await page.evaluate(() => window.__ttunes.pause());
   await sleep(1500);
@@ -77,8 +73,13 @@ async function legs(look, browser) {
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/${look}-paused-1280.png` });
 
   await page.evaluate(() => window.__ttunes.play());
-  await page.waitForFunction(() => document.querySelector('[data-testid="song-indicator"] .marker').textContent.trim() === "On air", null, { timeout: 10_000 });
+  await page.waitForFunction(() => document.querySelector('[data-testid="marker-text"]').textContent.trim() === "On air", null, { timeout: 10_000 });
   check(true, `${look}: resume returns to "On air" (player controls still work)`);
+
+  await page.evaluate(() => window.__ttunes.seekTo(101.5)); // 102s song: just before the end
+  await page.waitForFunction(() => document.querySelector('[data-testid="marker-text"]').textContent.trim() === "Between songs", null, { timeout: 15_000 });
+  check(true, `${look}: song ended shows "Between songs", not "Buffering"`);
+  await page.evaluate(() => window.__ttunes.seekTo(20));
 
   await page.setViewportSize({ width: 375, height: 800 });
   await sleep(1000);
@@ -87,8 +88,24 @@ async function legs(look, browser) {
   await page.evaluate(() => window.__ttunes.pause());
   await sleep(1500);
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/${look}-paused-375.png` });
+  const small = look === "afterglow" ? { width: 844, height: 390 } : { width: 375, height: 667 };
+  await page.setViewportSize(small);
+  await sleep(800);
+  const fit = await page.evaluate(() => ({ h: document.documentElement.scrollHeight, vh: innerHeight, ind: document.querySelector('[data-testid="song-indicator"]').getBoundingClientRect().bottom }));
+  console.log(`    ${look} ${small.width}x${small.height}: page ${fit.h}px, indicator bottom ${Math.round(fit.ind)}px`);
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/${look}-small-${small.width}x${small.height}.png` });
   check(errors.length === 0, `${look}: no page errors ${errors.join("; ")}`);
   await ctx.close();
+}
+
+async function failedLoad(browser) {
+  const page = await (await browser.newContext({ viewport: { width: 375, height: 800 } })).newPage();
+  await page.route("https://www.youtube.com/iframe_api", (route) => route.abort());
+  await page.goto(BASE);
+  await page.getByTestId("now-title").waitFor();
+  await page.getByRole("button", { name: "Play" }).click();
+  await page.getByText("could not load").waitFor();
+  check((await page.getByTestId("song-indicator").count()) === 0, "failed player load: the indicator is hidden");
 }
 
 await resetStation();
@@ -96,6 +113,7 @@ const server = await startDevServer(PORT);
 const browser = await chromium.launch();
 try {
   for (const look of ["afterglow", "theset"]) await legs(look, browser);
+  await failedLoad(browser);
   console.log("E2E PASS");
 } finally {
   await browser.close();

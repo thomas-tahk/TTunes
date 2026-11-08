@@ -44,7 +44,7 @@ export function Player({ playing, serverTime, onPausedChange }: Props) {
       <div className="player-frame">
         <div ref={host} className="player-host" />
       </div>
-      <SongIndicator player={player} durationSec={target.song.durationSec} />
+      {!loadFailed && <SongIndicator player={player} durationSec={target.song.durationSec} />}
       {notice && <p role="status" className="notice">{notice}</p>}
     </>
   );
