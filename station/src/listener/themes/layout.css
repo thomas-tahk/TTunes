@@ -1,16 +1,18 @@
 /* Shared layout for every look: where things go and how big they are (The Set's proportions).
    Looks (afterglow.css, theset.css) only add palette, type and finish; they never set a box's size or place.
-   Keyed on <html data-layout="side"> so another layout can be switched in later. */
+   Looks hand it their colours through custom properties: --bezel-bg --bezel-edge --bezel-r --frame-r --tab-r
+   --drawer-edge --drawer-shade --hint-bg. The box model and the places are decided here.
+   Resets first (they hold for every layout); the rest is keyed on <html data-layout="side"> so another layout can be switched in later. */
+
+html { overflow-x: clip; }
+html, body { margin: 0; min-height: 100%; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+button, input, textarea { font-family: inherit; }
 
 html[data-layout="side"] {
   --drawer-w: 520px;
   --pad: 30px;
-  overflow-x: clip;
-
-  &, body { margin: 0; min-height: 100%; }
-  * { box-sizing: border-box; }
-  [hidden] { display: none !important; }
-  button, input, textarea { font-family: inherit; }
 
   /* ---------- the card ---------- */
   .shell { position: relative; max-width: 1240px; min-height: calc(100dvh - 48px); margin: 24px auto; padding: var(--pad); display: flex; flex-direction: column; }
@@ -28,9 +30,9 @@ html[data-layout="side"] {
   /* ---------- front panel: player + now playing on top, up next under, Play at the bottom ---------- */
   main { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 340px; grid-template-rows: auto auto auto; align-content: start; gap: 24px 28px; }
   .foot { display: contents; }
-  .player-stage { grid-column: 1; grid-row: 1; justify-self: start; width: min(100%, max(384px, calc((100dvh - 236px) * 16 / 9 + 28px))); padding: 14px; }
+  .player-stage { grid-column: 1; grid-row: 1; justify-self: start; width: min(100%, max(384px, calc((100dvh - 236px) * 16 / 9 + 28px))); padding: 14px; background: var(--bezel-bg); border-radius: var(--bezel-r); box-shadow: inset 0 0 0 4px var(--bezel-edge); }
   .stage { position: relative; }
-  .player-frame { width: 100%; overflow: hidden; }
+  .player-frame { width: 100%; overflow: hidden; border-radius: var(--frame-r); }
   .player-host { width: 100%; aspect-ratio: 16 / 9; min-height: 200px; display: block; } /* the real player area */
   .player-host iframe { width: 100%; height: 100%; display: block; }
   .notice { margin: 10px 0 0; padding: 10px 14px; border-left: 6px solid; }
@@ -63,12 +65,15 @@ html[data-layout="side"] {
   .play { grid-column: 1 / -1; grid-row: 3; justify-self: start; width: 112px; height: 112px; min-width: 0; padding: 0; display: grid; place-items: center; border-radius: 50%; }
 
   footer { margin-top: 22px; min-height: 44px; }
-  .message { grid-column: 1 / -1; margin: auto 0; padding: 24px 0; }
+  .message { grid-column: 1 / -1; margin: auto 0; padding: 24px 0; max-width: 900px; }
+  .hint-bubble { position: fixed; z-index: 25; right: 76px; top: 134px; width: 230px; display: flex; align-items: center; gap: 4px; padding: 6px 6px 6px 16px; background: var(--hint-bg); } /* top of the right column, level with the player: never over the title text */
+  .hint-bubble p { margin: 0; flex: 1; }
+  .hint-bubble button { flex: none; width: 44px; height: 44px; border: 0; background: transparent; line-height: 1; cursor: pointer; }
 
   /* ---------- the drawer ---------- */
-  .drawer-tab { position: fixed; z-index: 30; right: 0; top: 50%; transform: translateY(-50%); min-width: 48px; padding: 26px 14px; border: 0; cursor: pointer; writing-mode: vertical-rl; }
+  .drawer-tab { position: fixed; z-index: 30; right: 0; top: 50%; transform: translateY(-50%); min-width: 48px; padding: 26px 14px; border: 0; border-radius: var(--tab-r) 0 0 var(--tab-r); cursor: pointer; writing-mode: vertical-rl; }
   .drawer-tab[aria-expanded="true"] { right: var(--drawer-w); }
-  .drawer { position: fixed; z-index: 20; top: 0; right: 0; bottom: 0; width: var(--drawer-w); max-width: 100vw; overflow-y: auto; padding: 28px 30px 40px; }
+  .drawer { position: fixed; z-index: 20; top: 0; right: 0; bottom: 0; width: var(--drawer-w); max-width: 100vw; overflow-y: auto; padding: 28px 30px 40px; border-left: 8px solid var(--drawer-edge); box-shadow: -20px 0 50px var(--drawer-shade); }
   .drawer-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 
   /* wide with the drawer open: one column so the player keeps its size beside the drawer */
@@ -82,34 +87,44 @@ html[data-layout="side"] {
     .shell.drawer-open .play { grid-row: 4; }
   }
 
-  /* ---------- narrow: one column, player first and full-bleed, the request bar in the flow below it ---------- */
+  /* ---------- narrow: one column. Player first and full-bleed, the request bar and drawer right under it,
+     then the titles, up next and Play. main and .foot dissolve so every block is an item of .shell and can be ordered. ---------- */
   @media (max-width: 999px) {
     --pad: 14px;
-    .shell { margin: 0; min-height: 100dvh; padding: 0 var(--pad); }
+    .shell { margin: 0; min-height: 100dvh; padding: 0 var(--pad); gap: 16px; }
+    main { display: contents; }
     header { padding: 12px 0 12px; }
-    .look-switch { flex: 1 0 100%; margin: 0; } /* own row: the two wordmarks differ in width, the header must not */
-    main { display: flex; flex-direction: column; gap: 16px; }
     .player-stage {
       --pw: min(calc(100% + 2 * var(--pad)), max(356px, calc((100dvh - 306px) * 16 / 9)));
       order: 1; width: var(--pw); margin-left: calc((100% - var(--pw)) / 2); justify-self: auto; padding: 8px 0;
+      border-radius: 0; box-shadow: inset 0 3px 0 var(--bezel-edge), inset 0 -3px 0 var(--bezel-edge);
     }
+    .player-frame { border-radius: 0; }
     .song-indicator { margin: 4px var(--pad) 0; }
     .notice { margin: 10px var(--pad) 0; }
-    .titles { order: 2; padding: 12px; }
-    .up-next { order: 3; }
-    .play { order: 4; width: 96px; height: 96px; }
     .message { order: 1; }
+    .drawer-tab { order: 2; position: static; transform: none; width: calc(100% + 2 * var(--pad)); margin: 0 calc(-1 * var(--pad)); min-height: 60px; padding: 14px; border-radius: 0; writing-mode: horizontal-tb; text-align: center; }
+    .hint-bubble { order: 3; position: relative; right: auto; top: auto; width: auto; max-width: 300px; margin: 6px 0 0; }
+    .hint-bubble::before { content: ""; position: absolute; left: 28px; top: -10px; border: 10px solid transparent; border-top: 0; border-bottom: 12px solid var(--hint-bg); }
+    .drawer { order: 4; position: static; width: auto; max-width: none; margin: 0 calc(-1 * var(--pad)); padding: 24px var(--pad) 40px; border-left: 0; border-top: 8px solid var(--drawer-edge); box-shadow: none; }
+    .titles { order: 5; padding: 12px; }
+    .up-next { order: 6; }
+    .play { order: 7; width: 96px; height: 96px; }
+    footer { order: 8; margin-top: 2px; }
     h1.title-xl { font-size: 2.1rem; }
     h1.title-l { font-size: 1.8rem; }
     h1.title-m { font-size: 1.5rem; }
     h1.title-s { font-size: 1.25rem; }
     .up-next b { font-size: 1.4rem; }
-    .drawer-tab { position: static; transform: none; width: calc(100% + 2 * var(--pad)); margin: 16px calc(-1 * var(--pad)) 0; min-height: 60px; padding: 14px; writing-mode: horizontal-tb; text-align: center; }
-    .drawer-tab[aria-expanded="true"] { right: 0; }
-    .drawer { position: static; width: auto; max-width: none; margin: 0 calc(-1 * var(--pad)); padding: 24px var(--pad) 40px; box-shadow: none; }
-    footer { margin-top: 18px; }
   }
   @media (max-width: 999px) and (max-height: 700px) {
-    header { padding: 6px 0; }
+    header { padding: 6px 0; column-gap: 10px; }
+    .look-switch label { padding: 0 9px; }
+    .look-switch legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); } /* still read aloud; saves a row at 568px */
+  }
+  /* narrow phones: two header rows whichever font the look uses (wordmark + live + owner badge, then the Look switch) */
+  @media (max-width: 480px) {
+    .look-switch { order: 2; flex: 1 0 100%; margin: 0; }
+    .owner-badge { order: 1; margin-left: auto; }
   }
 }

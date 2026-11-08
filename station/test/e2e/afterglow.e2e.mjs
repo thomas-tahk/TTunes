@@ -286,11 +286,9 @@ try {
     for (const [w, h] of [[1280, 800], [375, 812]]) {
       await owner.setViewportSize({ width: w, height: h });
       if ((await owner.locator(".drawer-tab").getAttribute("aria-expanded")) === "true") await owner.keyboard.press("Escape");
-      await openDrawer(owner);
-      await sleep(600);
-      // Checked right after opening: tapping a drawer tab below the fold then scrolls the page like any tap would.
-      if (w === 375) check((await playerInViewport(owner)).ok, `owner "${name}" @375: opened at phone width, player still in the viewport`);
       await openDrawer(owner, name);
+      await sleep(600);
+      if (w === 375) check((await playerInViewport(owner)).ok, `owner "${name}" @375: opened at phone width, player still in the viewport`);
       await owner.getByRole("heading", { name: heading }).first().waitFor();
       check((await playerClearOfDrawer(owner)).ok, `owner "${name}" @${w}: player >= 200px tall, drawer covers none of it`);
       check(await noScroll(owner), `owner "${name}" @${w}: no horizontal scroll`);

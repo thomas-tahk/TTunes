@@ -20,6 +20,8 @@ html[data-look="theset"] {
   --bad: #a8001e;
   --font-display: "Bungee", Impact, sans-serif;
   --font-brand: "Bungee Shade", "Bungee", Impact, sans-serif;
+  --bezel-bg: var(--brass); --bezel-edge: var(--brass-dark); --bezel-r: 18px; --frame-r: 8px;
+  --tab-r: 12px; --drawer-edge: var(--brass); --drawer-shade: rgba(0, 0, 0, 0.5); --hint-bg: var(--slip);
   --font-body: "Barlow Condensed", "Arial Narrow", "Helvetica Neue Condensed", sans-serif;
   background: var(--table);
 
@@ -40,8 +42,7 @@ html[data-look="theset"] {
   .signin:focus-visible, .btn:focus-visible, .drawer-tab:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
 
   /* the front panel: brass bezel + speaker grille on top, dial under, knob at the bottom */
-  .player-stage { background: var(--brass); border-radius: 18px; box-shadow: inset 0 0 0 4px var(--brass-dark); }
-  .player-frame { background: #000; border-radius: 8px; }
+  .player-frame { background: #000; }
   .player-frame.idle { background: radial-gradient(circle at 50% 40%, #3a1a10, #000); }
   .notice { background: #1b0c06; color: var(--gold); border-left-color: var(--btn); border-radius: 4px; }
   /* song indicator: a tuning-scale progress line and a lamp, inside the brass bezel */
@@ -76,20 +77,16 @@ html[data-look="theset"] {
   .play-icon { display: none; }
 
   footer .signin { font-size: 1rem; }
-  .hint-bubble { position: fixed; z-index: 25; right: 76px; top: 50%; transform: translateY(-50%); width: 230px; display: flex; align-items: center; gap: 4px; padding: 6px 6px 6px 16px; background: var(--slip); color: var(--ink); font-weight: 700; font-size: 1.2rem; border-radius: 4px; box-shadow: 3px 4px 0 rgba(0, 0, 0, 0.5); }
-  .hint-bubble::after { content: ""; position: absolute; right: -10px; top: 50%; margin-top: -10px; border-left: 12px solid var(--slip); border-top: 10px solid transparent; border-bottom: 10px solid transparent; }
-  .hint-bubble p { margin: 0; flex: 1; }
-  .hint-bubble button { flex: none; width: 44px; height: 44px; border: 0; background: transparent; color: var(--ink); font-size: 1.8rem; line-height: 1; cursor: pointer; }
+  .hint-bubble { color: var(--ink); font-weight: 700; font-size: 1.2rem; border-radius: 4px; box-shadow: 3px 4px 0 rgba(0, 0, 0, 0.5); }
+  .hint-bubble button { color: var(--ink); font-size: 1.8rem; }
   .hint-bubble :focus-visible { outline: 3px solid var(--ink); outline-offset: -3px; }
   .message h1 { font-family: var(--font-brand); font-weight: 400; font-size: clamp(40px, 8vw, 96px); color: var(--gold); text-shadow: 0 3px 0 #1b0c06; }
   .message p { margin: 14px 0 24px; font-size: 1.4rem; max-width: 36ch; }
 
   /* ---------- the back of the set: a paper drawer ---------- */
-  .drawer-tab { border-radius: 12px 0 0 12px; background: var(--brass); color: #1b0c06; box-shadow: inset 0 0 0 3px var(--brass-dark); font-weight: 700; font-size: 1.35rem; }
+  .drawer-tab { background: var(--brass); color: #1b0c06; box-shadow: inset 0 0 0 3px var(--brass-dark); font-weight: 700; font-size: 1.35rem; }
   .drawer {
     background: var(--paper); color: var(--ink);
-    border-left: 8px solid var(--brass);
-    box-shadow: -20px 0 50px rgba(0, 0, 0, 0.5);
   }
   .drawer :focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
   .drawer h2, .drawer h3 { margin: 0; font-family: var(--font-display); font-weight: 400; line-height: 1.05; color: var(--red-dark); }
@@ -197,12 +194,6 @@ html[data-look="theset"] {
   @media (max-width: 999px) {
     .shell { border-radius: 0; }
     .wordmark { font-size: 2rem; }
-    .player-stage { box-shadow: inset 0 3px 0 var(--brass-dark), inset 0 -3px 0 var(--brass-dark); border-radius: 0; }
-    .player-frame { border-radius: 0; }
-    .hint-bubble { position: relative; right: auto; top: auto; transform: none; width: auto; max-width: 300px; margin: 18px 0 0; }
-    .hint-bubble::after { right: auto; left: 50%; top: auto; bottom: -10px; margin: 0 0 0 -10px; border: 10px solid transparent; border-top: 12px solid var(--slip); border-bottom: 0; }
-    .drawer-tab { border-radius: 0; }
-    .drawer { border-left: 0; border-top: 8px solid var(--brass); box-shadow: none; }
     .drawer-head h2 { font-size: 1.4rem; }
   }
   @media (max-width: 999px) and (max-height: 700px) {

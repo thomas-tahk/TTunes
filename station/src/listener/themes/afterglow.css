@@ -1,5 +1,5 @@
-/* Afterglow: the whole look lives here. Colours and fonts are custom properties; the structural class names
-   (.shell, .titles, .foot, .player-frame, .drawer, .drawer-tab, .feed-row ...) are what a second theme restyles. */
+/* Afterglow: palette, type and finish only. Where things go is in layout.css, which reads the --bezel-*, --frame-r, --tab-r,
+   --drawer-* and --hint-bg properties set below. */
 
 @property --wash-hot { syntax: "<color>"; inherits: true; initial-value: #C93C00; }
 @property --wash-mid { syntax: "<color>"; inherits: true; initial-value: #C2185B; }
@@ -20,6 +20,8 @@ html[data-look="afterglow"] {
   --bad: #a8001e;
   --focus-on-wash: #fff;
   --focus-on-drawer: #1a0630;
+  --bezel-bg: transparent; --bezel-edge: #fff; --bezel-r: 0; --frame-r: 0;
+  --tab-r: 10px; --drawer-edge: var(--drawer-bg); --drawer-shade: rgba(0, 0, 0, 0.4); --hint-bg: #fff;
   /* type */
   --font-display: "Anton", Impact, "Arial Narrow Bold", "Helvetica Neue Condensed Bold", sans-serif;
   --font-body: "Archivo", "Avenir Next", system-ui, sans-serif;
@@ -46,7 +48,6 @@ header { font-size: 1.05rem; font-weight: 600; }
 h1 { font-family: var(--font-display); font-weight: 400; letter-spacing: 0; }
 
 /* ---------- player ---------- */
-.player-stage { box-shadow: inset 0 0 0 4px #fff; }
 .player-frame { background: #000; }
 .player-frame.idle { background: linear-gradient(135deg, var(--wash-deep), #000); }
 .notice { background: rgba(0, 0, 0, 0.6); border-left-color: var(--drawer-bg); }
@@ -68,21 +69,17 @@ h1 { font-family: var(--font-display); font-weight: 400; letter-spacing: 0; }
 .up-next b { border-left-color: var(--drawer-bg); font-weight: 800; }
 
 .request-line { font-size: 1rem; font-weight: 600; }
-footer .signin { margin-left: 0; font-size: 0.9rem; font-weight: 600; }
-.hint-bubble { position: fixed; z-index: 25; right: 76px; top: 50%; transform: translateY(-50%); width: 230px; display: flex; align-items: center; gap: 4px; padding: 6px 6px 6px 16px; background: #fff; color: var(--ink); font-weight: 800; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4); }
-.hint-bubble::after { content: ""; position: absolute; right: -10px; top: 50%; margin-top: -10px; border-left: 12px solid #fff; border-top: 10px solid transparent; border-bottom: 10px solid transparent; }
-.hint-bubble p { margin: 0; flex: 1; }
-.hint-bubble button { flex: none; width: 44px; height: 44px; border: 0; background: transparent; color: var(--ink); font-size: 1.8rem; line-height: 1; cursor: pointer; }
+footer .signin { font-size: 0.9rem; font-weight: 600; }
+.hint-bubble { color: var(--ink); font-weight: 800; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4); }
+.hint-bubble button { color: var(--ink); font-size: 1.8rem; }
 .hint-bubble :focus-visible { outline: 3px solid var(--ink); outline-offset: -3px; }
-.message { max-width: 900px; }
 .message h1 { font-size: clamp(64px, 12vw, 160px); }
 .message p { margin: 14px 0 24px; font-size: 1.4rem; max-width: 36ch; }
 
 /* ---------- the yellow drawer ---------- */
-.drawer-tab { border-radius: 10px 0 0 10px; background: var(--drawer-bg); color: var(--ink); font-weight: 800; font-size: 1.25rem; }
+.drawer-tab { background: var(--drawer-bg); color: var(--ink); font-weight: 800; font-size: 1.25rem; }
 .drawer {
   background: var(--drawer-bg); color: var(--ink);
-  box-shadow: -30px 0 60px rgba(0, 0, 0, 0.4);
   --focus-on-wash: var(--ink);
 }
 .drawer :focus-visible { outline: 3px solid var(--focus-on-drawer); outline-offset: 3px; }
@@ -196,10 +193,7 @@ footer .signin { margin-left: 0; font-size: 0.9rem; font-weight: 600; }
   .play-icon { border-width: 14px 0 14px 23px; margin-left: 6px; }
   .up-next { font-size: 1rem; }
   .message p { font-size: 1.15rem; }
-  .hint-bubble { position: relative; right: auto; top: auto; transform: none; width: auto; max-width: 300px; margin: 18px 0 0; }
-  .hint-bubble::after { right: auto; left: 50%; top: auto; bottom: -10px; margin: 0 0 0 -10px; border: 10px solid transparent; border-top: 12px solid #fff; border-bottom: 0; }
-  .drawer-tab { border-radius: 0; font-size: 1.15rem; }
-  .drawer { box-shadow: none; }
+  .drawer-tab { font-size: 1.15rem; }
   .drawer-head h2 { font-size: 2.3rem; }
 }
 @media (max-width: 480px) {
