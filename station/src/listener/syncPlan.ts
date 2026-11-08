@@ -23,16 +23,20 @@ export function planSync(prev: SyncState, next: SyncTarget, player: { listenerPa
 export interface PauseState {
   listenerPaused: boolean;
   loading: boolean; // we called loadVideoById/cueVideoById and YouTube has not settled yet
+  buffering: boolean; // BUFFERING was seen since our last load/cue
 }
-export type PauseEvent = "load" | "cue" | "paused" | "playing" | "cued" | "error";
+export type PauseEvent = "load" | "cue" | "paused" | "playing" | "cued" | "error" | "buffering" | "unstarted";
 
-/** YouTube itself emits PAUSED while replacing a video, so only a PAUSED with no load of ours pending is the listener pausing. */
+/** YouTube itself emits PAUSED while replacing a video, so only a PAUSED with no load of ours pending is the listener pausing.
+ *  A pause pressed mid-buffer sends no PAUSED at all: the real sequence is load -> UNSTARTED -> BUFFERING -> UNSTARTED, so an UNSTARTED after BUFFERING while our load is pending is that pause. */
 export function nextPauseState(s: PauseState, event: PauseEvent): PauseState {
-  if (event === "load") return { listenerPaused: false, loading: true };
-  if (event === "cue") return { listenerPaused: s.listenerPaused, loading: true };
+  if (event === "load") return { listenerPaused: false, loading: true, buffering: false };
+  if (event === "cue") return { listenerPaused: s.listenerPaused, loading: true, buffering: false };
+  if (event === "buffering") return { ...s, buffering: s.loading };
+  if (event === "unstarted") return s.loading && s.buffering ? { listenerPaused: true, loading: false, buffering: false } : s;
   if (event === "paused") return s.loading ? s : { ...s, listenerPaused: true };
-  if (event === "playing") return { listenerPaused: false, loading: false };
-  return { ...s, loading: false }; // cued, error
+  if (event === "playing") return { listenerPaused: false, loading: false, buffering: false };
+  return { ...s, loading: false, buffering: false }; // cued, error
 }
 
 export interface LiveSettle {

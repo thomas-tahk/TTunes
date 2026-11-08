@@ -11,7 +11,7 @@ export interface YTPlayer {
 }
 export interface YTNamespace {
   Player: new (el: HTMLElement, opts: unknown) => YTPlayer;
-  PlayerState: { PLAYING: number; PAUSED: number; ENDED: number; CUED: number };
+  PlayerState: { PLAYING: number; PAUSED: number; ENDED: number; CUED: number; BUFFERING: number };
 }
 declare global {
   interface Window {

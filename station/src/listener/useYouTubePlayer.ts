@@ -25,7 +25,7 @@ export function useYouTubePlayer(host: RefObject<HTMLDivElement | null>, input: 
   const syncedLocal = useRef(input.isLocalStart);
   // A pause or seek made before a song's first PLAYING is overridden by settle: a song that hasn't started begins at live. Intended.
   const settle = useRef<LiveSettle>({ pending: true, forced: false }); // the first PLAYING after mount or one of our loads lands on live; later pauses and seeks are the listener's
-  const pause = useRef<PauseState>({ listenerPaused: false, loading: false }); // the listener's pause, not YouTube's own PAUSED while it swaps a video
+  const pause = useRef<PauseState>({ listenerPaused: false, loading: false, buffering: false }); // the listener's pause, not YouTube's own PAUSED while it swaps a video
   const step = (event: PauseEvent) => { pause.current = nextPauseState(pause.current, event); };
 
   const correctDrift = () => {
@@ -79,6 +79,11 @@ export function useYouTubePlayer(host: RefObject<HTMLDivElement | null>, input: 
                 if (pause.current.listenerPaused) latest.current.onPausedChange(true);
               }
               if (e.data === YT.PlayerState.CUED) step("cued");
+              if (e.data === YT.PlayerState.BUFFERING) step("buffering");
+              if (e.data === -1) { // UNSTARTED: after BUFFERING with our load pending, YouTube's way of reporting a pause that came mid-buffer (it sends no PAUSED)
+                step("unstarted");
+                if (pause.current.listenerPaused) latest.current.onPausedChange(true);
+              }
               if (e.data !== YT.PlayerState.PLAYING) return;
               step("playing");
               latest.current.onPausedChange(false);

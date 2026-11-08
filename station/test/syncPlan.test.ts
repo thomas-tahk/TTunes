@@ -32,18 +32,24 @@ describe("planSync", () => {
   });
 });
 
-const run = (events: PauseEvent[]) => events.reduce(nextPauseState, { listenerPaused: false, loading: false });
+const run = (events: PauseEvent[]) => events.reduce(nextPauseState, { listenerPaused: false, loading: false, buffering: false });
 
 describe("nextPauseState", () => {
+  it("a pause pressed mid-buffer (load, UNSTARTED, BUFFERING, UNSTARTED; no PAUSED) counts", () => {
+    expect(run(["playing", "load", "unstarted", "buffering", "unstarted"])).toEqual({ listenerPaused: true, loading: false, buffering: false });
+  });
+  it("UNSTARTED before any BUFFERING is just the load starting", () => expect(run(["playing", "load", "unstarted"]).listenerPaused).toBe(false));
+  it("UNSTARTED with no load pending is ignored", () => expect(run(["playing", "buffering", "unstarted"]).listenerPaused).toBe(false));
+  it("a buffering load that then plays is not a pause", () => expect(run(["load", "buffering", "playing", "unstarted"]).listenerPaused).toBe(false));
   it("a listener pause after PLAYING counts", () => expect(run(["playing", "paused"]).listenerPaused).toBe(true));
   it("YouTube's own PAUSED while swapping a video does not count", () => {
     expect(run(["playing", "load", "paused", "playing"]).listenerPaused).toBe(false);
   });
   it("an embed error right after YouTube's PAUSED leaves the listener unpaused", () => {
-    expect(run(["playing", "load", "paused", "error"])).toEqual({ listenerPaused: false, loading: false });
+    expect(run(["playing", "load", "paused", "error"])).toEqual({ listenerPaused: false, loading: false, buffering: false });
   });
   it("a cue keeps the listener's pause through YouTube's PAUSED and CUED", () => {
-    expect(run(["playing", "paused", "cue", "paused", "cued"])).toEqual({ listenerPaused: true, loading: false });
+    expect(run(["playing", "paused", "cue", "paused", "cued"])).toEqual({ listenerPaused: true, loading: false, buffering: false });
   });
   it("after a cue, the next song change still sees the pause", () => {
     expect(run(["playing", "paused", "cue", "cued"]).listenerPaused).toBe(true);
