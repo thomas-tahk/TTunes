@@ -163,8 +163,8 @@ async function alreadyComingUp(q: Queryable, videoId: string, cutoff: Date): Pro
 export async function postRequest(db: Db, input: RequestInput, who: Who, clock: Clock): Promise<PostResult> {
   const early = await reserveAttempt(db, who, input.videoId, clock);
   if (early) return early;
-  const found = await lookupVideo(input.videoId);
-  if (!found.ok) return refuse(found.status, found.status >= 500 ? "youtube_unavailable" : "video_unavailable", found.message);
+  const found = await lookupVideo(input.videoId, { listener: true });
+  if (!found.ok) return refuse(found.status, found.code ?? (found.status >= 500 ? "youtube_unavailable" : "video_unavailable"), found.message);
   const info = found.info;
   if (info.durationSec > LONG_SEC) return refuse(422, "too_long", "That song is over 15 minutes, which is too long for requests.");
   const client = await db.connect();

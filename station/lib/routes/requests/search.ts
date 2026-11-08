@@ -19,7 +19,7 @@ export default async function search(req: IncomingMessage, res: ServerResponse):
     if (listener.setCookie) res.setHeader("Set-Cookie", listener.setCookie);
     const refusal = await reserveSearch(sharedDb(), { listenerId: listener.id, ipHash: listener.ipHash }, Date.now);
     if (refusal) return sendJson(res, refusal.status, { error: refusal.message, code: refusal.code });
-    const results = await searchSongs(q);
+    const results = await searchSongs(q, { strict: true });
     sendJson(res, 200, { results: results.map(({ videoId, title, channelTitle, durationSec, thumbnail }) => ({ videoId, title, channelTitle, durationSec, thumbnail })) });
   } catch (error) {
     if (error instanceof QuotaExceededError) {

@@ -25,10 +25,10 @@ interface SearchItem {
   snippet?: { thumbnails?: { medium?: { url?: string }; default?: { url?: string } } };
 }
 
-async function searchItems(query: string, maxResults: number): Promise<SearchItem[]> {
+async function searchItems(query: string, maxResults: number, strict: boolean): Promise<SearchItem[]> {
   const url = new URL(`${apiBase()}/search`);
   url.search = new URLSearchParams({
-    part: "snippet", type: "video", videoEmbeddable: "true", maxResults: String(maxResults), q: query, key: apiKey(),
+    part: "snippet", type: "video", videoEmbeddable: "true", maxResults: String(maxResults), q: query, key: apiKey(), ...(strict ? { safeSearch: "strict" } : {}),
   }).toString();
   const res = await fetch(url);
   if (!res.ok) return throwApiError(res, "search.list");
@@ -37,15 +37,16 @@ async function searchItems(query: string, maxResults: number): Promise<SearchIte
   return body.items;
 }
 
-/** Typed search: search.list, then videos.list for duration/category. Throws QuotaExceededError when the daily limit is hit. */
-export async function searchSongs(query: string, opts: { maxResults?: number } = {}): Promise<SongResult[]> {
-  const items = (await searchItems(query, opts.maxResults ?? 15)).filter((i) => i.id?.videoId);
+/** Typed search (strict: listener search, safeSearch=strict): search.list, then videos.list for duration/category. Throws QuotaExceededError when the daily limit is hit. */
+export async function searchSongs(query: string, opts: { maxResults?: number; strict?: boolean } = {}): Promise<SongResult[]> {
+  const items = (await searchItems(query, opts.maxResults ?? 15, opts.strict ?? false)).filter((i) => i.id?.videoId);
   const info = await fetchVideos(items.map((i) => i.id!.videoId!));
   const results: SongResult[] = [];
   for (const item of items) {
     const id = item.id!.videoId!;
     const v = info.get(id);
     if (!v || !v.embeddable || !v.durationSec) continue;
+    if (opts.strict && v.ageRestricted) continue;
     const t = item.snippet?.thumbnails;
     results.push({
       videoId: id, title: v.title, channelTitle: v.channelTitle, durationSec: v.durationSec, categoryId: v.categoryId,

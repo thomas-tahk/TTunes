@@ -30,6 +30,7 @@ const LABELS: Record<string, string> = {
   trash_purged: "Trash emptied",
   request_approve: "Request approved",
   request_deny: "Request denied",
+  request_age_restricted: "Request blocked (age-restricted)",
   request_remove: "Request removed",
   request_expired: "Request expired",
   request_keep: "Request kept in library",

@@ -1,5 +1,6 @@
 import type pg from "pg";
 import { advance, type Random, type Station } from "../shared/station.ts";
+import { denyAgeRestrictedHeads } from "./ageGate.ts";
 import type { Db } from "./db.ts";
 
 export interface Song {
@@ -142,7 +143,8 @@ async function playRequest(client: Queryable, state: StateRow, catalog: Catalog,
 
 async function writeAdvance(client: Queryable, state: StateRow, catalog: Catalog, now: number): Promise<NowPlaying> {
   await client.query("update requests set status = 'played' where status = 'playing'");
-  const request = await playRequest(client, state, catalog, now);
+  const gate = await denyAgeRestrictedHeads(client, now); // under the station lock, so the request checked is the one that plays
+  const request = gate === "clear" ? await playRequest(client, state, catalog, now) : null; // capped: fall through to the owner queue
   if (request) return request;
   const station = await loadStation(client, state, catalog.library);
   const seed = startedAtOf(state) ?? now;
