@@ -206,6 +206,18 @@ it("concurrent queue edits leave one consistent order", async () => {
   expect(new Set(after)).toEqual(new Set(["aaa", "bbb", "ddd"]));
 });
 
+it("restore after delete does not re-queue a song a listener request has lined up, and says so", async () => {
+  await enqueue("bbb");
+  expect((await trashIt("bbb")).status).toBe(200);
+  await sharedDb().query("insert into requests (video_id, title, duration_sec, name, status, listener_id) values ('bbb', 'T', 100, 'Sam', 'queued', 'l')");
+  const res = await restoreIt("bbb");
+  expect(res.status).toBe(200);
+  expect(res.json).toMatchObject({ restoredToQueue: 0, message: "Restored to the library, but not re-queued: it is already coming up as a request." });
+  expect(await queueIds()).toEqual([]);
+  expect((await call("GET", "/api/owner/library")).json.songs.map((s: any) => s.videoId)).toContain("bbb");
+  await sharedDb().query("truncate requests cascade");
+});
+
 it("a deleted song leaves library and queue; restore brings it back with its queue spots", async () => {
   await enqueue("bbb", "ccc", "bbb", "ddd");
   expect((await trashIt("bbb")).json).toMatchObject({ videoId: "bbb", title: "Song bbb", removedFromQueue: 2 });
@@ -300,13 +312,13 @@ it("re-adding a trashed song restores it to the library, clears its trash record
   expect((await call("GET", "/api/owner/log")).json.entries[0].details.restoredFromTrash).toBeUndefined();
 });
 
-it("upkeep purges trash older than 30 days, or with YouTube metadata older than 30 days, and cascades to trash_queue", async () => {
+it("upkeep purges trash older than 28 days, or with YouTube metadata older than 28 days, and cascades to trash_queue", async () => {
   await enqueue("aaa", "bbb", "ccc", "ddd");
   for (const id of ["aaa", "bbb", "ccc", "ddd"]) await trashIt(id);
   const q = (sql: string) => sharedDb().query(sql);
-  await q("update songs set deleted_at = now() - interval '31 days' where video_id = 'aaa'"); // trashed too long
-  await q("update songs set metadata_refreshed_at = now() - interval '31 days' where video_id = 'bbb'"); // YouTube cache rule
-  await q("update songs set deleted_at = now() - interval '29 days', metadata_refreshed_at = now() - interval '29 days' where video_id = 'ccc'");
+  await q("update songs set deleted_at = now() - interval '29 days' where video_id = 'aaa'"); // trashed too long
+  await q("update songs set metadata_refreshed_at = now() - interval '29 days' where video_id = 'bbb'"); // YouTube cache rule
+  await q("update songs set deleted_at = now() - interval '27 days', metadata_refreshed_at = now() - interval '27 days' where video_id = 'ccc'");
   expect((await purgeTrash(sharedDb())).sort()).toEqual(["aaa", "bbb"]);
   expect((await q("select video_id from songs where deleted_at is not null order by 1")).rows).toEqual([{ video_id: "ccc" }, { video_id: "ddd" }]);
   expect((await q("select distinct video_id from trash_queue order by 1")).rows).toEqual([{ video_id: "ccc" }, { video_id: "ddd" }]);
@@ -323,6 +335,38 @@ it("the daily cron purges old trash and does not refresh trashed songs", async (
   expect(res.status).toBe(200);
   expect(body.refresh.checked).toBe(0);
   expect(body.purged).toEqual(["ccc"]);
+});
+
+it("the daily cron expires 24h-old waiting requests and clears 7-day-old IP hashes", async () => {
+  process.env.CRON_SECRET = "cron-secret-123";
+  const db = sharedDb();
+  await db.query("truncate requests");
+  const add = "insert into requests (video_id, title, duration_sec, name, status, listener_id, ip_hash, created_at) values ($1, 't', 100, 'n', $2, 'l', 'h', now() - $3::interval)";
+  await db.query(add, ["oldPlayed001", "played", "8 days"]);
+  await db.query(add, ["staleWait001", "waiting", "25 hours"]);
+  await db.query(add, ["freshWait001", "waiting", "1 hour"]);
+  const res = await fetch(`${base}/api/cron/refresh`, { headers: { authorization: "Bearer cron-secret-123" } });
+  const body = await res.json();
+  expect(res.status).toBe(200);
+  expect(body.requests).toEqual({ expired: 1, ipHashesCleared: 1 });
+  const rows = (await db.query("select video_id, status, ip_hash from requests order by video_id")).rows;
+  expect(rows).toEqual([
+    { video_id: "freshWait001", status: "waiting", ip_hash: "h" },
+    { video_id: "oldPlayed001", status: "played", ip_hash: null },
+    { video_id: "staleWait001", status: "expired", ip_hash: "h" },
+  ]);
+  await db.query("truncate requests");
+});
+
+it("the daily cron deletes request attempts older than 7 days and keeps recent ones", async () => {
+  process.env.CRON_SECRET = "cron-secret-123";
+  const db = sharedDb();
+  await db.query("truncate request_attempts");
+  await db.query("insert into request_attempts (listener_id, ip_hash, at) values ('old', 'h', now() - interval '8 days'), ('fresh', 'h', now() - interval '1 hour')");
+  const res = await fetch(`${base}/api/cron/refresh`, { headers: { authorization: "Bearer cron-secret-123" } });
+  expect(res.status).toBe(200);
+  expect((await db.query("select listener_id from request_attempts")).rows).toEqual([{ listener_id: "fresh" }]);
+  await db.query("truncate request_attempts");
 });
 
 it("the export leaves out trashed songs", async () => {

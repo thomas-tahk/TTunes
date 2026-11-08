@@ -4,8 +4,8 @@ import { fetchVideos, type VideoInfo } from "./youtube.ts";
 
 export const STALE_AFTER_DAYS = 25; // YouTube's cap is 30 days
 export const KEEP_EXPORTS = 14;
-export const TRASH_KEEP_DAYS = 30; // trash lives 30 days; YouTube's 30-day metadata cache rule also ends a trashed song (trash is never refreshed)
-export const ACTIVITY_TITLE_KEEP_DAYS = 30; // 30-day cache rule for titles in rows written before the log stopped storing them
+export const TRASH_KEEP_DAYS = 28; // trash lives 28 days (YouTube's 30-day metadata cache rule minus two: the cron fires within ±59 min of its slot); also ends a trashed song (trash is never refreshed)
+export const ACTIVITY_TITLE_KEEP_DAYS = 28; // 30-day cache rule (minus two, as above) for titles in rows written before the log stopped storing them
 export const SYSTEM_ACTOR = "system:upkeep";
 
 export interface RefreshResult {
@@ -109,7 +109,7 @@ export async function storeExport(db: Db): Promise<number> {
   return data.songs.length;
 }
 
-/** Permanently deletes trashed songs trashed over 30 days ago OR whose YouTube metadata is over 30 days old, logging each.
+/** Permanently deletes trashed songs trashed over 28 days ago OR whose YouTube metadata is over 28 days old, logging each.
  * Cascades to trash_queue. Returns the ids. */
 export async function purgeTrash(db: Db): Promise<string[]> {
   const client = await db.connect();
@@ -143,7 +143,7 @@ const withoutTitle = (key: string) =>
   `case when jsonb_typeof(details->'${key}') = 'object' then jsonb_build_object('${key}', (details->'${key}') - 'title') else '{}'::jsonb end`;
 
 /** Removes legacy YouTube titles (details.title, plus the skipped/next titles a skip records) from activity_log rows
- * older than 30 days: the 30-day cache rule. The rows themselves stay. Returns how many rows changed. */
+ * older than 28 days (YouTube's 30-day cache rule, minus two). The rows themselves stay. Returns how many rows changed. */
 export async function stripOldActivityTitles(db: Db): Promise<number> {
   const { rowCount } = await db.query(
     `update activity_log set details = (details - 'title') || ${withoutTitle("skipped")} || ${withoutTitle("next")}

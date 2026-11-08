@@ -17,7 +17,7 @@ async function withPlaying(db: Db, result: OwnerResult): Promise<OwnerResult> {
 export const skip = ownerEndpoint("POST", async ({ db, body }) => {
   if (typeof body.expectedVideoId !== "string" || !body.expectedVideoId) return { status: 400, body: { error: "expectedVideoId required" } };
   const result = await skipCurrent(db, body.expectedVideoId, Date.now);
-  if (!result.skipped) return { status: 409, body: { error: "that song is no longer playing", current: result.current, playing: await getNowPlaying(db, Date.now) } };
+  if (!result.skipped) return { status: 409, body: { error: "that song is no longer playing", current: result.current, ...(result.current !== null && { playing: await getNowPlaying(db, Date.now) }) } }; // never started: a bogus skip must not be what starts the station
   return { status: 200, body: result.now };
 });
 

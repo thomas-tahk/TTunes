@@ -7,6 +7,7 @@ import { issueSession, SESSION_COOKIE } from "../lib/auth.ts";
 import { createDb, sharedDb } from "../lib/db.ts";
 import { migrate } from "../lib/migrate.ts";
 import { KEEP_EXPORTS, purgeTrash } from "../lib/upkeep.ts";
+import { getNowPlaying } from "../lib/schedule.ts";
 import { parseIsoDuration } from "../lib/youtube.ts";
 
 let server: Server;
@@ -38,7 +39,7 @@ beforeEach(async () => {
   youtubeCalls.length = 0;
   youtube = {};
   const db = sharedDb();
-  await db.query("truncate songs, queue, activity_log, library_exports restart identity cascade");
+  await db.query("truncate songs, queue, activity_log, library_exports, requests, request_attempts, station_state, play_history restart identity cascade");
   vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input));
     if (url.hostname === "www.googleapis.com") {
@@ -169,6 +170,89 @@ it("a YouTube outage removes nothing, fails loudly, and still takes the backup",
   expect((await sharedDb().query("select 1 from library_exports")).rowCount).toBe(1);
 });
 
+it("cron deletes finished requests 28+ days old, expires old queued ones, leaves fresh rows alone", async () => {
+  const db = sharedDb();
+  await db.query("truncate requests, request_attempts cascade");
+  const rows: [string, string, number][] = [
+    ["oldPlayed01", "played", 31], ["oldDenied01", "denied", 31], ["oldExpired1", "expired", 31], ["oldQueued01", "queued", 31],
+    ["edgePlay001", "played", 28], ["freshPlay01", "played", 27], ["freshQueue1", "queued", 27],
+  ];
+  for (const [vid, status, days] of rows) {
+    await db.query(
+      "insert into requests (video_id, title, duration_sec, name, status, listener_id, created_at, queued_at) values ($1, 'T', 100, 'Sam', $2, 'l', now() - make_interval(days => $3), now())",
+      [vid, status, days],
+    );
+  }
+  expect((await cron("Bearer cron-secret-123")).status).toBe(200);
+  expect((await db.query("select video_id, status from requests order by video_id")).rows).toEqual([
+    { video_id: "freshPlay01", status: "played" },
+    { video_id: "freshQueue1", status: "queued" },
+  ]);
+  const log = (await db.query("select who, what, details from activity_log where what = 'request_expired'")).rows;
+  expect(log).toEqual([{ who: "system:upkeep", what: "request_expired", details: { id: expect.any(Number), videoId: "oldQueued01" } }]);
+  await db.query("truncate requests, request_attempts cascade");
+});
+
+it("an old queued request never plays after the cron ran", async () => {
+  const db = sharedDb();
+  await db.query("truncate requests, request_attempts, station_state, play_history, queue cascade");
+  await db.query("insert into requests (video_id, title, duration_sec, name, status, listener_id, created_at, queued_at) values ('oldQueued01', 'T', 100, 'Sam', 'queued', 'l', now() - interval '31 days', now() - interval '31 days')");
+  expect((await cron("Bearer cron-secret-123")).status).toBe(200);
+  expect((await getNowPlaying(db, Date.now)).current).toBeNull();
+  await db.query("truncate requests, request_attempts cascade");
+});
+
+it("a 40-day-old playing request whose song ended is gone after the cron", async () => {
+  const db = sharedDb();
+  await db.query("truncate requests, request_attempts, station_state, play_history, queue cascade");
+  await db.query("insert into requests (video_id, title, duration_sec, name, status, listener_id, created_at, queued_at) values ('endedPlay01', 'T', 100, 'Sam', 'playing', 'l', now() - interval '40 days', now() - interval '40 days')");
+  await db.query("insert into station_state (id, current_video_id, started_at_ms) values (1, 'endedPlay01', $1) on conflict (id) do update set current_video_id = 'endedPlay01', started_at_ms = $1", [Date.now() - 3600_000]);
+  expect((await cron("Bearer cron-secret-123")).status).toBe(200);
+  expect((await db.query("select 1 from requests")).rowCount).toBe(0);
+  await addSong("nextSong001", 1); // the next visit moves the station on cleanly, even though the ended song's row is gone
+  const now = await getNowPlaying(db, Date.now);
+  expect(now.current?.videoId).toBe("nextSong001");
+});
+
+it("an old played or expired row retires even when its video is on air", async () => {
+  const db = sharedDb();
+  for (const status of ["played", "expired"]) {
+    await db.query("insert into requests (video_id, title, duration_sec, name, status, listener_id, created_at) values ('onAirSong01', 'T', 1000, 'Sam', $1, 'l', now() - interval '40 days')", [status]);
+  }
+  await db.query("insert into station_state (id, current_video_id, started_at_ms) values (1, 'onAirSong01', $1)", [Date.now() - 1000]);
+  expect((await cron("Bearer cron-secret-123")).status).toBe(200);
+  expect((await db.query("select 1 from requests")).rowCount).toBe(0);
+});
+
+it("an old waiting request is expired and deleted by the retirement itself", async () => {
+  const db = sharedDb();
+  await db.query("insert into requests (video_id, title, duration_sec, name, status, listener_id, created_at) values ('oldWait0001', 'T', 100, 'Sam', 'waiting', 'l', now() - interval '31 days')");
+  expect((await cron("Bearer cron-secret-123")).status).toBe(200);
+  expect((await db.query("select 1 from requests")).rowCount).toBe(0);
+});
+
+it("the request on air is never deleted or expired mid-song, whatever its status", async () => {
+  const db = sharedDb();
+  for (const status of ["playing", "denied", "queued"]) {
+    await db.query("truncate requests, request_attempts, station_state, play_history, queue cascade");
+    await db.query("insert into requests (video_id, title, duration_sec, name, status, listener_id, created_at, queued_at, decided_at) values ('onAirSong01', 'T', 1000, 'Sam', $1, 'l', now() - interval '40 days', now() - interval '40 days', now())", [status]);
+    await db.query("insert into station_state (id, current_video_id, started_at_ms) values (1, 'onAirSong01', $1) on conflict (id) do update set current_video_id = 'onAirSong01', started_at_ms = $1", [Date.now() - 1000]);
+    expect((await cron("Bearer cron-secret-123")).status).toBe(200);
+    expect((await db.query("select status from requests")).rows).toEqual([{ status }]);
+  }
+  await db.query("truncate requests, request_attempts, station_state cascade");
+});
+
+it("an old denied row for the song on air, decided before that song started, is still deleted", async () => {
+  const db = sharedDb();
+  await db.query("truncate requests, request_attempts, station_state, play_history, queue cascade");
+  await db.query("insert into requests (video_id, title, duration_sec, name, status, listener_id, created_at, decided_at) values ('onAirSong01', 'T', 1000, 'Sam', 'denied', 'l', now() - interval '40 days', now() - interval '40 days')");
+  await db.query("insert into station_state (id, current_video_id, started_at_ms) values (1, 'onAirSong01', $1) on conflict (id) do update set current_video_id = 'onAirSong01', started_at_ms = $1", [Date.now() - 1000]);
+  expect((await cron("Bearer cron-secret-123")).status).toBe(200);
+  expect((await db.query("select 1 from requests")).rowCount).toBe(0);
+  await db.query("truncate requests, request_attempts, station_state cascade");
+});
+
 it("cron route refuses missing or wrong bearer", async () => {
   await addSong("stale1", 40);
   expect((await cron()).status).toBe(401);
@@ -197,10 +281,10 @@ it("keeps only the last 14 exports", async () => {
   expect(rows[13].data.songs).toEqual([{ videoId: "a", addedAt: expect.any(String) }]); // no title/duration saved
 });
 
-it("daily cron strips YouTube titles from activity_log rows older than 30 days, keeps newer ones", async () => {
+it("daily cron strips YouTube titles from activity_log rows older than 28 days, keeps newer ones", async () => {
   const db = sharedDb();
   await db.query("delete from activity_log");
-  const old = "now() - interval '31 days'";
+  const old = "now() - interval '29 days'";
   await db.query(`insert into activity_log (who, what, at, details) values
     ('owner','queue_move', ${old}, '{"videoId":"a","title":"Old Song","from":1}'),
     ('owner','skip', ${old}, '{"skipped":{"videoId":"a","title":"Old"},"next":{"videoId":"b","title":"Next"}}'),
@@ -218,7 +302,7 @@ it("purging an expired trashed song logs its videoId only, no title", async () =
   const db = sharedDb();
   await db.query("delete from activity_log");
   await addSong("gone", 1);
-  await db.query("update songs set deleted_at = now() - interval '31 days' where video_id = 'gone'");
+  await db.query("update songs set deleted_at = now() - interval '29 days' where video_id = 'gone'");
   expect(await purgeTrash(db)).toEqual(["gone"]);
   const { rows } = await db.query("select details from activity_log where what = 'trash_purged'");
   expect(rows).toEqual([{ details: { videoId: "gone" } }]);

@@ -46,6 +46,11 @@ describe("polling decision", () => {
     expect(shouldPoll({ started: false, paused: false, owner: true })).toBe(true);
     expect(shouldPoll({ started: true, paused: true, owner: true })).toBe(true);
   });
+  it("keeps polling while the listener's own request is in flight, Play or not", () => {
+    expect(shouldPoll({ started: false, paused: false, requestActive: true })).toBe(true);
+    expect(shouldPoll({ started: true, paused: true, requestActive: true })).toBe(true);
+    expect(shouldPoll({ started: false, paused: false, requestActive: false })).toBe(false);
+  });
   it("stops while paused, including a hidden paused tab", () => {
     expect(shouldPoll({ started: true, paused: true })).toBe(false);
   });

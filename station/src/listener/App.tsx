@@ -1,7 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { NowPlaying } from "../../lib/schedule.ts";
 import { OwnerPanel, SignInLink, useOwner } from "./OwnerPanel.tsx";
 import { Player } from "./Player.tsx";
+import { RequestBox } from "./RequestBox.tsx";
+import { RequestFeed } from "./RequestFeed.tsx";
+import { type Action, useOwnerRequests } from "./useOwnerRequests.ts";
+import { type PostedRequest, requestActive, useRequests } from "./useRequests.ts";
 import { shouldPoll } from "./timing.ts";
 import { useStation } from "./useStation.ts";
 import { Visualizer } from "./Visualizer.tsx";
@@ -36,7 +40,21 @@ export function App() {
   const [started, setStarted] = useState(false);
   const [paused, setPaused] = useState(false);
   const owner = useOwner();
-  const { view, serverTime, retry, show } = useStation(shouldPoll({ started, paused, owner }));
+  const [waitingOnRequest, setWaitingOnRequest] = useState(false); // mirrors `mine`, which needs the station's view first
+  const { view, serverTime, retry, show } = useStation(shouldPoll({ started, paused, owner, requestActive: waitingOnRequest }));
+  const playingNow = view.status === "ready" ? view.playing : null;
+  const { feed, mine, afterPost, reloadFeed } = useRequests(playingNow);
+  useEffect(() => setWaitingOnRequest(requestActive(mine)), [mine]);
+  const ownerRequests = useOwnerRequests(owner, playingNow);
+  const moderation = { note: ownerRequests.note, kept: ownerRequests.kept, busyId: ownerRequests.busyId, onAct: (id: number, action: Action) => void ownerRequests.moderate(id, action) };
+
+  // The public feed is CDN-cached, so the owner's own box follows the owner's uncached mode.
+  const modeFeed = owner ? ownerRequests.feed : feed;
+  const boxMode = modeFeed.status === "ready" ? modeFeed.mode : null;
+  const posted = async (post?: PostedRequest) => {
+    await afterPost(post);
+    if (owner) await ownerRequests.reload();
+  };
 
   let body;
   if (view.status === "loading") body = <Message title="Tuning in" body="Finding out what's on air." />;
@@ -69,7 +87,15 @@ export function App() {
         <SignInLink owner={owner} />
       </header>
       <main>{body}</main>
-      {owner && <OwnerPanel playing={view.status === "ready" ? view.playing : null} onPlaying={(playing) => void show(playing)} />}
+      <div className="requests">
+        {boxMode !== "off" && <RequestBox mine={mine} mode={boxMode} onPosted={posted} />}
+        {owner ? (
+          <RequestFeed feed={ownerRequests.feed} retry={() => void ownerRequests.reload()} moderation={moderation} />
+        ) : (
+          <RequestFeed feed={feed} retry={() => void reloadFeed()} />
+        )}
+      </div>
+      {owner && <OwnerPanel playing={playingNow} onPlaying={(playing) => void show(playing)} requests={ownerRequests} />}
     </div>
   );
 }

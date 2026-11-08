@@ -4,6 +4,7 @@
   "crons": [{ "path": "/api/cron/refresh", "schedule": "0 9 * * *" }],
   "rewrites": [
     { "source": "/api/owner/(.*)", "destination": "/api/owner?route=$1" },
+    { "source": "/api/requests/(.*)", "destination": "/api/requests?route=$1" },
     { "source": "/api/auth/(.*)", "destination": "/api/auth?route=$1" }
   ]
 }

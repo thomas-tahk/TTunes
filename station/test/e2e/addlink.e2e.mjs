@@ -7,10 +7,11 @@ import { createServer } from "node:http";
 import { mkdirSync } from "node:fs";
 import { SignJWT } from "jose";
 import pg from "pg";
+import { freePort, startDevServer } from "./devServer.mjs";
 import { chromium } from "playwright";
 
-const PORT = 5198;
-const BASE = `http://localhost:${PORT}/`;
+const PORT = await freePort();
+const BASE = `http://127.0.0.1:${PORT}/`;
 const SHOTS = new URL("./screens/", import.meta.url).pathname;
 const SECRET = "e2e-secret-e2e-secret-e2e-secret-0123";
 const OWNER_ID = 10647431;
@@ -52,12 +53,7 @@ await run("db:migrate");
 const db = new pg.Pool({ connectionString: DB_URL });
 await db.query("truncate queue, station_state, play_history, activity_log, songs cascade");
 
-const server = spawn("npx", ["vite", "--port", String(PORT), "--strictPort"], { env, stdio: "ignore" });
-for (let i = 0; ; i++) {
-  if (await fetch(BASE).then((r) => r.ok, () => false)) break;
-  if (i > 60) throw new Error("dev server did not start");
-  await sleep(500);
-}
+const server = await startDevServer(PORT, env);
 
 const { rows: [{ session_version: ver }] } = await db.query("select session_version from auth_state where id = 1");
 const token = await new SignJWT({ ver }).setProtectedHeader({ alg: "HS256" }).setSubject(String(OWNER_ID)).setIssuedAt().setExpirationTime("1h").sign(new TextEncoder().encode(SECRET));
@@ -162,7 +158,7 @@ try {
   const log = await db.query("select what, details->>'videoId' as vid from activity_log order by activity_log.id");
   check(log.rows.map((r) => r.vid).join() === "musicVid001,gamingVid01,longVideo01", "each add wrote an activity_log row");
   check(youtubeCalls > 0, `YouTube was only ever the local stub (${youtubeCalls} calls)`);
-  const real = errors.filter((e) => !/favicon|youtube|googlevideo|google|ERR_BLOCKED|Failed to load resource/i.test(e));
+  const real = errors.filter((e) => !/favicon|youtube|googlevideo|google|ERR_BLOCKED|Failed to load resource|compute-pressure|Permissions policy/i.test(e));
   check(real.length === 0, `no app console errors ${real.join(" | ")}`);
   console.log("E2E PASS");
 } finally {

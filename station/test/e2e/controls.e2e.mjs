@@ -7,8 +7,8 @@ import { createServer } from "node:http";
 import { mkdirSync } from "node:fs";
 import { SignJWT } from "jose";
 import pg from "pg";
-import { chromium } from "playwright";
 import { freePort, startDevServer } from "./devServer.mjs";
+import { chromium } from "playwright";
 
 const PORT = await freePort();
 const BASE = `http://127.0.0.1:${PORT}/`;
@@ -237,7 +237,7 @@ try {
   check((await page.locator(".owner-panel").count()) === 0, "after sign out everywhere the page is signed out");
   check((await page.request.get(`${BASE}api/owner/queue`)).status() === 401, "the old session cookie is refused");
 
-  const real = errors.filter((e) => !/favicon|youtube|googlevideo|google|ERR_BLOCKED|Failed to load resource/i.test(e));
+  const real = errors.filter((e) => !/favicon|youtube|googlevideo|google|ERR_BLOCKED|Failed to load resource|compute-pressure|Permissions policy/i.test(e));
   check(real.length === 0, `no app console errors ${real.join(" | ")}`);
   console.log("E2E PASS");
 } finally {

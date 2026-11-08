@@ -1,10 +1,10 @@
 // Done check for the listener page: two browsers click Play and stay in sync across a song change.
 // Run: npm run e2e (from station/). Needs Docker for Postgres and internet for YouTube.
-import { execSync, spawn } from "node:child_process";
+import { execSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import pg from "pg";
-import { chromium } from "playwright";
 import { freePort, startDevServer } from "./devServer.mjs";
+import { chromium } from "playwright";
 
 const T0 = Date.now();
 const PORT = await freePort();

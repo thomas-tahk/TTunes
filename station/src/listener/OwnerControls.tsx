@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { NowPlaying } from "../../lib/schedule.ts";
 import { LibraryList, LogList, QueueList, TrashList, type LogRow, type QueueRow, type SongRow } from "./OwnerLists.tsx";
-import { call, messageOf, NETWORK_MESSAGE, type Reply } from "./ownerFetch.ts";
+import { call, messageOf, NETWORK_MESSAGE, restoreNote, type Reply } from "./ownerFetch.ts";
 
 type Tab = "queue" | "library" | "trash" | "log";
 type Rows = { kind: "loading" } | { kind: "error"; message: string } | { kind: "ready"; rows: unknown[] };
@@ -50,12 +50,12 @@ export function OwnerControls({ playing, changes, onPlaying }: Props) {
   const { state, reload, reset } = useRows(tab, `${playing?.current?.videoId}|${playing?.next?.videoId}|${changes}`);
 
   const apply = (body: Record<string, unknown>) => body.playing && onPlaying(body.playing as NowPlaying);
-  async function act(run: () => Promise<Reply>, ok: Note | null, on409?: string) {
+  async function act(run: () => Promise<Reply>, ok: Note | null | ((body: Record<string, unknown>) => Note), on409?: string) {
     setBusy(true);
     try {
       const { status, body } = await run();
       if (status === 200 || (status === 409 && on409)) apply(body);
-      if (status === 200) setNote(ok);
+      if (status === 200) setNote(typeof ok === "function" ? ok(body) : ok);
       else setNote({ text: status === 409 && on409 ? on409 : messageOf(body), error: true });
       reload();
     } catch {
@@ -75,7 +75,7 @@ export function OwnerControls({ playing, changes, onPlaying }: Props) {
   const move = (r: QueueRow, toIndex: number) => act(() => call("POST", "/api/owner/queue/move", { queueId: r.queueId, toIndex }), null);
   const unqueue = (r: QueueRow) => act(() => call("DELETE", "/api/owner/queue", { queueId: r.queueId }), { text: `Removed "${r.title}" from the queue.` });
   const trash = (s: SongRow) => act(() => call("DELETE", "/api/owner/songs", { videoId: s.videoId }), { text: `Deleted "${s.title}".`, undo: s });
-  const restore = (s: SongRow) => act(() => call("POST", "/api/owner/songs/restore", { videoId: s.videoId }), { text: `Restored "${s.title}".` });
+  const restore = (s: SongRow) => act(() => call("POST", "/api/owner/songs/restore", { videoId: s.videoId }), (body) => ({ text: restoreNote(s.title, body) }));
   const rows = state.kind === "ready" ? state.rows : [];
 
   return (
