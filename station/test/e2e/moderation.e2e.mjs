@@ -7,6 +7,7 @@ import { createServer } from "node:http";
 import { mkdirSync } from "node:fs";
 import { SignJWT } from "jose";
 import pg from "pg";
+import { openDrawer, playerClearOfDrawer } from "./drawer.mjs";
 import { freePort, startDevServer } from "./devServer.mjs";
 import { chromium } from "playwright";
 
@@ -64,6 +65,7 @@ const newPage = async (ip, owner) => {
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
   await page.goto(BASE);
   await page.getByTestId("next-title").waitFor();
+  await openDrawer(page, owner ? "Requests" : undefined);
   return page;
 };
 const listenerPost = async (page, name, videoId) => {
@@ -79,9 +81,9 @@ const logLabels = (page) => page.getByTestId("list-log").locator("li strong").al
 try {
   mkdirSync(SHOTS, { recursive: true });
   const owner = await newPage(null, true);
-  await owner.getByRole("heading", { name: "Controls" }).waitFor();
+  await owner.getByRole("tab", { name: "Owner tools" }).waitFor();
   const badge = () => owner.getByTestId("waiting-badge").textContent();
-  const reloadOwner = async () => { await owner.reload(); await owner.getByTestId("waiting-badge").waitFor(); await owner.waitForFunction(() => !document.body.textContent.includes("Loading requests")); };
+  const reloadOwner = async () => { await owner.reload(); await openDrawer(owner, "Requests"); await owner.getByTestId("waiting-badge").waitFor(); await owner.waitForFunction(() => !document.body.textContent.includes("Loading requests")); };
   const rowOf = (name) => owner.getByTestId("feed-row").filter({ hasText: name });
   const shot = async (name) => {
     for (const [tag, w, h] of [["desktop-1280", 1280, 900], ["phone-375", 375, 812]]) {
@@ -96,10 +98,9 @@ try {
     for (const width of [1280, 375]) {
       await owner.setViewportSize({ width, height: 900 });
       await sleep(200);
-      const frame = await owner.locator(".player-frame").boundingBox();
-      const box = await owner.locator(".requests").boundingBox();
-      check(frame.width >= 200 && frame.height >= 200, `${label} @${width}px: player ${frame.width}x${frame.height} >= 200x200`);
-      check(frame.y + frame.height <= box.y, `${label} @${width}px: requests sit below the player`);
+      await openDrawer(owner, "Requests");
+      const { frame, ok } = await playerClearOfDrawer(owner);
+      check(ok, `${label} @${width}px: player ${frame.width}x${frame.height} >= 200x200 and the drawer covers none of it`);
       check(await owner.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `${label} @${width}px: no horizontal scroll`);
       const small = await owner.evaluate(() => [...document.querySelectorAll(".feed button, .segmented button")].filter((b) => b.getBoundingClientRect().height < 44).length);
       check(small === 0, `${label} @${width}px: moderation buttons are >= 44px tall`);
@@ -144,6 +145,7 @@ try {
   await rewind();
   await owner.reload();
   await owner.getByTestId("now-title").waitFor();
+  await openDrawer(owner, "Requests");
   check((await owner.getByTestId("now-title").textContent()) !== catalog.gameVid0002.title, "denied request never plays");
   await bob.reload();
   await bob.getByTestId("next-title").waitFor();
@@ -177,9 +179,11 @@ try {
   await rowOf("Alice").getByText("Expired").waitFor({ timeout: 60000 });
   check((await owner.getByLabel("Your name").evaluate((el) => el === document.activeElement)) === true, "a later status change leaves focus in the name field");
   check((await db.query("select 1 from songs where video_id = 'gameVid0001' and deleted_at is null")).rowCount === 1, "kept song is in the library table");
+  await openDrawer(owner, "Owner tools");
   await owner.getByRole("tab", { name: "Library" }).click();
   await owner.getByTestId("list-library").getByText(catalog.gameVid0001.title).waitFor();
   check(true, "kept song appears in the library list");
+  await openDrawer(owner, "Requests");
 
   // 5. 409 path: the request changed under the owner. Approve Dana's waiting request behind the page's back, then tap Approve.
   const dana = await newPage("203.0.113.5");
@@ -187,6 +191,7 @@ try {
   // Freeze the owner's list at "Dana waiting" so a background reload cannot refresh the row before the tap.
   const [snapshot] = await Promise.all([owner.waitForResponse((r) => r.url().endsWith("/api/owner/requests") && r.request().method() === "GET"), owner.reload()]);
   const frozen = await snapshot.text();
+  await openDrawer(owner, "Requests");
   await owner.route("**/api/owner/requests", (route) => (route.request().method() === "GET" ? route.fulfill({ status: 200, contentType: "application/json", body: frozen }) : route.continue()));
   await rowOf("Dana").getByRole("button", { name: /^Approve/ }).waitFor();
   await db.query("update requests set status = 'queued', queued_at = now() where name = 'Dana'");
@@ -222,6 +227,7 @@ try {
   // 6. Mode off: a tuned-in listener's box disappears at its next refresh (the 30s re-check runs while playing;
   //    a tab that never pressed Play and has no request in flight doesn't poll, and sees it on its next load).
   await alice.reload();
+  await openDrawer(alice);
   await alice.getByRole("heading", { name: "Request a song" }).waitFor();
   await alice.getByRole("button", { name: "Play" }).click();
   await owner.getByRole("radio", { name: /^Off/ }).click();
@@ -238,6 +244,7 @@ try {
   await layoutOk("final");
 
   // 7. Activity log shows every action.
+  await openDrawer(owner, "Owner tools");
   await owner.getByRole("tab", { name: "Activity" }).click();
   await owner.getByTestId("list-log").waitFor();
   const labels = await logLabels(owner);
