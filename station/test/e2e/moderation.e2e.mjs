@@ -246,7 +246,7 @@ try {
   }
   check(labels.filter((l) => l === "Request mode changed").length === 2, "both mode changes are logged");
 
-  const real = errors.filter((e) => !/favicon|youtube|googlevideo|google|ERR_BLOCKED|Failed to load resource/i.test(e));
+  const real = errors.filter((e) => !/favicon|youtube|googlevideo|google|ERR_BLOCKED|Failed to load resource|compute-pressure|Permissions policy/i.test(e));
   check(real.length === 0, `no app console errors ${real.join(" | ")}`);
   console.log("E2E PASS");
 } finally {

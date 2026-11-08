@@ -142,7 +142,7 @@ export async function restoreSong(db: Db, videoId: unknown): Promise<Outcome<{ v
     if (!song) return fail(404, "not in the trash");
     const spots = (await client.query("select prev_id::text as prev, next_id::text as next, queue_index, queued_at from trash_queue where video_id = $1 order by id", [videoId])).rows;
     const order = (await listQueue(client)).map((item) => item.queueId);
-    const requested = (await client.query("select 1 from requests where video_id = $1 and status in ('queued', 'playing')", [videoId])).rowCount === 1;
+    const requested = (await client.query("select 1 from requests where video_id = $1 and status in ('queued', 'playing')", [videoId])).rowCount! > 0;
     for (const spot of requested ? [] : spots) {
       const { rows } = await client.query("insert into queue (video_id, queued_at) values ($1, $2) returning id::text as id", [videoId, spot.queued_at]);
       order.splice(restoreIndex(order, spot.prev, spot.next, spot.queue_index), 0, rows[0].id);

@@ -209,6 +209,16 @@ describe("keep", () => {
     expect((await sharedDb().query("select cycle from station_state where id = 1")).rows[0].cycle.played.filter((v: string) => v === "gamingVid01")).toHaveLength(1);
   });
 
+  it("Keep does not add a song to the shuffle cycle twice when its id is already there", async () => {
+    const id = await listen("gamingVid01");
+    await act(id, "approve");
+    await getNowPlaying(sharedDb(), Date.now);
+    await sharedDb().query("update station_state set cycle = jsonb_set(cycle, '{played}', '[\"gamingVid01\"]'::jsonb) where id = 1");
+    expect((await act(id, "keep")).status).toBe(200);
+    const cycle = (await sharedDb().query("select cycle from station_state where id = 1")).rows[0].cycle;
+    expect(cycle.played.filter((v: string) => v === "gamingVid01")).toHaveLength(1);
+  });
+
   it("adds a playing or played request's song to the library once; repeating is a no-op; one log row", async () => {
     const id = await listen("gamingVid01");
     await act(id, "approve");

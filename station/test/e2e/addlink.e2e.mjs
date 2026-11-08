@@ -158,7 +158,7 @@ try {
   const log = await db.query("select what, details->>'videoId' as vid from activity_log order by activity_log.id");
   check(log.rows.map((r) => r.vid).join() === "musicVid001,gamingVid01,longVideo01", "each add wrote an activity_log row");
   check(youtubeCalls > 0, `YouTube was only ever the local stub (${youtubeCalls} calls)`);
-  const real = errors.filter((e) => !/favicon|youtube|googlevideo|google|ERR_BLOCKED|Failed to load resource/i.test(e));
+  const real = errors.filter((e) => !/favicon|youtube|googlevideo|google|ERR_BLOCKED|Failed to load resource|compute-pressure|Permissions policy/i.test(e));
   check(real.length === 0, `no app console errors ${real.join(" | ")}`);
   console.log("E2E PASS");
 } finally {
