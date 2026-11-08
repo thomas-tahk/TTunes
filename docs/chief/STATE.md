@@ -1,11 +1,11 @@
 # Chief state
 Vision: docs/chief/vision.md (hosted shared station; Mac app = Part 1, done)
-Phase: Review — M4 redesign (branch m4-portfolio; contains M2+M3 redesign + portfolio)
-Live: https://t-tunes-navy.vercel.app (main = M2+M3; #38 merged 2026-11-08). Setup #28 done 2026-11-08.
-His M2 review (2026-11-08): palette/fonts/UI disliked; add flow awkward; pause/seek snapped back (escaped bug, fixed in #39 with 4 e2es). Buffering = Brave, not a bug.
-His decisions 2026-11-08: loose playback; Afterglow (B) default + The Set (A) switchable; add flow = tap result, expands in place.
-M4: #39–#43 merged; whole-milestone review fixes merged; QA done-gate PASS (local). Report docs/milestones/M4.md
-Waiting on him: M4 PR https://github.com/thomas-tahk/TTunes/pull/45 (merge = deploy, then try live; folds in M3 live check #33)
-Next action: on his reply — record answers, close #33 if requests work live; follow-up #44 (pause during buffering)
-Open questions: docs/questions/M4.md
+Phase: Build — M5 layout & polish (branch m5-polish, off main = M4)
+Live: https://t-tunes-navy.vercel.app (main = M4, PR #45 merged 2026-11-08)
+His M4 review 2026-11-08: see docs/questions/M5.md
+M5 issues: #46 focus outline, #47 calm indicator, #44 pause while buffering (parallel); #50 panel colour (options image first → his pick); #48 shared layout (after #46,#47) → #49 Layout switch Side/Stacked
+Waiting on him: nothing yet (panel-colour pick #50 once the options image is ready)
+Next action: review + merge #46/#47/#44 builds; post #50 options as needs-you
+Open: #33 M3 live requests check (not confirmed in his review)
+Open questions: docs/questions/M5.md
 Updated: 2026-11-08
