@@ -7,7 +7,7 @@ import { createServer } from "node:http";
 import { mkdirSync } from "node:fs";
 import { SignJWT } from "jose";
 import pg from "pg";
-import { openDrawer, playerClearOfDrawer } from "./drawer.mjs";
+import { focusRingsClearOfLabels, openDrawer, playerClearOfDrawer } from "./drawer.mjs";
 import { freePort, startDevServer } from "./devServer.mjs";
 import { chromium } from "playwright";
 
@@ -213,6 +213,23 @@ try {
   check(!(await activeIsBody()), "after Play next focus is on the status message, not the page body");
   check(await page.locator(".owner-status[tabindex]").evaluate((el) => el === document.activeElement), "focus is on the 'Added' status");
   check((await page.getByTestId("song-card").locator(".song-card-body").count()) === 0, "card collapses after adding");
+
+  // Focus rings sit clear of the labels above the link and search fields, in both looks (issue 46).
+  const FOCUS_SHOTS = process.env.FOCUS_SHOTS;
+  for (const look of ["afterglow", "theset"]) {
+    await page.evaluate((l) => (document.documentElement.dataset.look = l), look);
+    for (const width of [1280, 375]) {
+      await page.setViewportSize({ width, height: 900 });
+      await sleep(150);
+      if (FOCUS_SHOTS) {
+        await page.locator("#song-url").focus();
+        await page.screenshot({ path: `${FOCUS_SHOTS}/${look}-${width}.png` });
+      }
+      const { checked, bad } = await focusRingsClearOfLabels(page);
+      check(checked.includes("song-url") && checked.length >= 2 && bad.length === 0, `${look} @${width}px: focus ring clear of label on ${checked.join(", ")} ${bad.join(" | ")}`);
+    }
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
 
   const log = await db.query("select what, details->>'videoId' as vid from activity_log order by activity_log.id");
   check(log.rows.map((r) => r.vid).join() === "musicVid001,gamingVid01,longVideo01,searchVid01", "each add wrote an activity_log row");

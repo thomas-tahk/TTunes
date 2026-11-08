@@ -8,7 +8,7 @@ import { SignJWT } from "jose";
 import pg from "pg";
 import { chromium } from "playwright";
 import { freePort, startDevServer } from "./devServer.mjs";
-import { openDrawer, playerClearOfDrawer, playerInViewport } from "./drawer.mjs";
+import { focusRingsClearOfLabels, openDrawer, playerClearOfDrawer, playerInViewport } from "./drawer.mjs";
 
 const PORT = await freePort();
 const BASE = `http://127.0.0.1:${PORT}/`;
@@ -292,6 +292,8 @@ try {
       await owner.getByRole("heading", { name: heading }).first().waitFor();
       check((await playerClearOfDrawer(owner)).ok, `owner "${name}" @${w}: player >= 200px tall, drawer covers none of it`);
       check(await noScroll(owner), `owner "${name}" @${w}: no horizontal scroll`);
+      const rings = await focusRingsClearOfLabels(owner);
+      check(rings.bad.length === 0, `owner "${name}" @${w}: focus ring clear of label on ${rings.checked.join(", ") || "no text fields"} ${rings.bad.join(" | ")}`);
       const small = await owner.evaluate(() => [...document.querySelectorAll(".drawer button:not([hidden] *)")].filter((b) => b.offsetParent && b.getBoundingClientRect().height < 44).length);
       check(small === 0, `owner "${name}" @${w}: every visible drawer button is >= 44px tall`);
       await shot(owner, `owner-${name.replace(" ", "-").toLowerCase()}`, w, h);
