@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { NowPlaying } from "../../lib/schedule.ts";
+import { LookSwitch } from "./LookSwitch.tsx";
 import { Drawer, DrawerPanel, type DrawerTab } from "./Drawer.tsx";
 import { OwnerPanel, SignInLink, useOwner } from "./OwnerPanel.tsx";
 import { Player } from "./Player.tsx";
@@ -139,6 +140,7 @@ export function App() {
         <span className="on-air">
           <i aria-hidden="true" /> Live
         </span>
+        <LookSwitch />
         {owner && <SignInLink owner />}
       </header>
       <main>{body}</main>
