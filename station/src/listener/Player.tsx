@@ -21,6 +21,7 @@ export function Player({ playing, serverTime, onPausedChange }: Props) {
   useYouTubePlayer(host, {
     videoId: target.song.videoId,
     startedAt: target.startedAt,
+    isLocalStart: activeSkip(playing, local) !== null,
     expectedSec: () => {
       const { target: t, serverTime: now } = latest.current;
       return Math.min(t.song.durationSec, Math.max(0, (now() - t.startedAt) / 1000));

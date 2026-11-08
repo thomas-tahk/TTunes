@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TTunes design options</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@400;600;800&family=Bungee&family=Bungee+Shade&family=Barlow+Condensed:wght@500;600;700&family=Instrument+Serif:ital@0;1&family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{overflow-x:hidden}
+body{font:16px/1.5 "Bricolage Grotesque",system-ui,sans-serif;background:#F2F2F2;color:#141414}
+.page{max-width:1240px;margin:0 auto;padding:24px 16px 80px}
+.ask{font-size:20px;font-weight:800;background:#141414;color:#fff;padding:14px 16px;border-radius:6px}
+.concept{margin-top:56px}
+.concept>h2{font-size:clamp(28px,6vw,48px);line-height:1.05;font-weight:800}
+.concept>p.pitch{font-size:18px;max-width:62ch;margin:8px 0 6px}
+.concept>p.why{max-width:62ch;color:#3a3a3a}
+.views{display:grid;gap:28px;margin-top:22px}
+@media(min-width:900px){.views{grid-template-columns:1fr 330px}.views .wide{grid-column:1/-1}}
+.cap{font-weight:600;margin-bottom:8px}
+.scaler:has(.ph){max-width:375px}
+.scaler{position:relative;overflow:hidden;border-radius:8px;box-shadow:0 0 0 1px #0002}
+.scaler>.frame{position:absolute;top:0;left:0;transform-origin:0 0}
+button{font:inherit;cursor:pointer}
+.yt{position:relative;aspect-ratio:16/9;background:#050505;color:#ddd;display:grid;place-items:center;min-height:200px}
+.yt::before{content:"";width:0;height:0;border-left:34px solid #fff;border-top:21px solid transparent;border-bottom:21px solid transparent;margin-left:8px}
+.yt span{position:absolute;bottom:10px;left:12px;font:500 13px/1 system-ui;color:#bbb}
+
+/* ============ A: THE SET (bakelite tabletop radio) ============ */
+.A{width:1280px;background:#2A1A12;font-family:"Barlow Condensed",sans-serif;color:#1d0f08;padding:40px}
+.A.ph{width:375px;padding:14px}
+.A .body{background:#A3171F;border-radius:46px 46px 22px 22px;padding:30px;box-shadow:inset 0 -10px 0 #6E0D13, inset 0 6px 0 #C93038}
+.A.ph .body{border-radius:28px 28px 14px 14px;padding:14px}
+.A .top{display:grid;grid-template-columns:1fr 360px;gap:28px;align-items:stretch}
+.A.ph .top{grid-template-columns:1fr}
+.A .bezel{background:#E8B437;padding:14px;border-radius:18px;box-shadow:inset 0 0 0 4px #9C6F0E}
+.A .bezel .yt{border-radius:8px}
+.A .grille{border-radius:16px;background:repeating-linear-gradient(90deg,#1b0c06 0 7px,#7a1016 7px 11px);display:flex;flex-direction:column;justify-content:flex-end;padding:16px}
+.A .brand{font-family:"Bungee Shade";font-size:58px;color:#FFD15C;line-height:1;text-shadow:0 3px 0 #1b0c06}
+.A.ph .brand{font-size:34px}
+.A .np{background:#1b0c06;color:#FFD15C;padding:10px 14px;border-radius:8px;margin-top:12px}
+.A .np b{display:block;font-size:30px;line-height:1.05;color:#fff}
+.A .np small{font-size:18px}
+.A .dial{margin-top:24px;background:linear-gradient(#FFC94D,#F2A81D);border:6px solid #E8B437;border-radius:14px;padding:12px 18px 16px;position:relative}
+.A .scale{display:flex;justify-content:space-between;border-bottom:3px solid #3a1a00;padding-bottom:4px;font-family:"Bungee";font-size:13px;color:#3a1a00}
+.A .marks{display:flex;justify-content:space-between;gap:10px;margin-top:8px}
+.A .mark{flex:1;font-size:19px;font-weight:700;line-height:1.1;color:#2b1200;border-left:3px solid #3a1a00;padding-left:8px}
+.A .mark small{display:block;font-weight:500;font-size:16px}
+.A .mark.on{border-left-color:#C40E1A}
+.A .needle{position:absolute;top:6px;bottom:6px;left:20%;width:4px;background:#C40E1A}
+.A.ph .marks{flex-direction:column}
+.A .knobs{display:flex;gap:28px;align-items:center;margin-top:24px}
+.A .knob{width:84px;height:84px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#4a2a1a,#140805);border:5px solid #E8B437;color:#FFD15C;font-family:"Bungee";font-size:15px;display:grid;place-items:center}
+.A .knob.big{width:110px;height:110px;font-size:22px;background:radial-gradient(circle at 35% 30%,#FFD15C,#D18A00);color:#1b0c06;border-color:#1b0c06}
+.A .slipbox{flex:1;display:flex;gap:14px;overflow:hidden}
+.A .slip{background:#FFF6D8;padding:10px 12px;width:230px;flex:none;font-size:18px;line-height:1.2;box-shadow:3px 4px 0 #0005;transform:rotate(-2deg)}
+.A .slip:nth-child(2){transform:rotate(1.5deg)}
+.A .slip:nth-child(3){transform:rotate(-1deg)}
+.A .slip i{font-family:"Instrument Serif";font-size:21px;display:block;margin:4px 0}
+.A .stamp{display:inline-block;font-family:"Bungee";font-size:12px;color:#fff;background:#1C6B2E;padding:2px 6px;transform:rotate(-4deg)}
+.A .stamp.wait{background:#5a2a8a}
+.A .pad{margin-top:22px;background:#FFF6D8;padding:16px;display:grid;grid-template-columns:160px 1fr 1fr auto;gap:12px;align-items:end;font-size:18px;box-shadow:4px 5px 0 #0006}
+.A.ph .pad{grid-template-columns:1fr}
+.A .pad label{font-weight:700}
+.A .pad input{display:block;width:100%;font:500 19px "Barlow Condensed";border:none;border-bottom:3px solid #1d0f08;background:transparent;padding:6px 0;min-height:44px}
+.A .pad button{background:#1d0f08;color:#FFD15C;border:none;font:700 22px "Barlow Condensed";padding:0 22px;min-height:48px;border-radius:4px}
+.A.ph .knobs{flex-wrap:wrap;gap:14px}
+.A.ph .slipbox{flex-direction:column;flex-basis:100%}
+.A.ph .slip{width:auto}
+/* owner: back panel */
+.A .back{margin-top:22px;background:#1b0c06;border-radius:14px;padding:18px;color:#FFD15C;display:grid;grid-template-columns:1fr 1.25fr;gap:22px}
+.A .back h4{font-family:"Bungee";font-size:18px;font-weight:400;margin-bottom:8px}
+.A .q{display:flex;align-items:center;gap:10px;font-size:20px;color:#fff;padding:6px 0;border-bottom:1px dashed #6b4a2a}
+.A .q em{font-style:normal;color:#FFD15C;width:26px;font-family:"Bungee";font-size:14px}
+.A .q .sw{margin-left:auto;display:flex;gap:6px}
+.A .sw button{background:#3a2010;border:2px solid #E8B437;color:#FFD15C;width:44px;height:44px;border-radius:50%;font:700 18px "Barlow Condensed"}
+.A .tape{background:#FFF6D8;color:#1d0f08;padding:10px;font-size:19px}
+.A .tape input{width:100%;font:500 20px "Barlow Condensed";border:3px solid #1d0f08;padding:8px;min-height:44px;background:#fff}
+.A .res{display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:2px solid #1d0f0822}
+.A .res .th{width:70px;height:40px;background:#3E7BD6;clip-path:polygon(0 0,100% 6%,96% 100%,3% 94%)}
+.A .res.open{display:grid;grid-template-columns:240px 1fr;gap:14px;background:#FFE08A;margin:6px -10px;padding:12px 10px;border:none;transform:rotate(-.6deg);box-shadow:3px 4px 0 #0004}
+.A .res.open .th{width:240px;height:135px;background:#D93AA0;display:grid;place-items:center;color:#fff;font-size:18px}
+.A .res.open b{font-size:26px;line-height:1.05;display:block}
+.A .res .acts{display:flex;gap:10px;margin-top:10px;flex-wrap:wrap}
+.A .res .acts button{min-height:48px;padding:0 16px;border:3px solid #1d0f08;background:#1d0f08;color:#FFD15C;font:700 20px "Barlow Condensed";border-radius:4px}
+.A .res .acts button+button{background:transparent;color:#1d0f08}
+
+/* ============ B: AFTERGLOW (lean-back full-bleed) ============ */
+.B{width:1280px;height:800px;position:relative;overflow:hidden;font-family:"Archivo",sans-serif;color:#fff;background:#C2185B}
+.B.ph{width:375px;height:780px}
+.B .wash{position:absolute;inset:0;background:radial-gradient(120% 90% at 85% 10%,#FF4F00 0,#C2185B 45%,#3D0B5C 100%)}
+.B .in{position:relative;height:100%;padding:44px 56px;display:grid;grid-template-rows:auto 1fr auto}
+.B.ph .in{padding:20px 16px}
+.B .bar{display:flex;align-items:center;gap:18px;font-size:17px;font-weight:600}
+.B .bar .logo{font-family:"Anton";font-size:26px;letter-spacing:.01em}
+.B .bar .live{background:#fff;color:#3D0B5C;padding:2px 10px;border-radius:3px;font-weight:800}
+.B .title{align-self:end;font-family:"Anton";font-size:200px;line-height:.86;text-transform:none;letter-spacing:-.01em;max-width:1100px}
+.B.ph .title{font-size:76px}
+.B .artist{font-size:34px;font-weight:800;margin-top:14px}
+.B.ph .artist{font-size:22px}
+.B .ded{font-family:"Instrument Serif";font-style:italic;font-size:30px;max-width:30ch;margin-top:8px;color:#FFE3EE}
+.B.ph .ded{font-size:22px}
+.B .foot{display:flex;align-items:flex-end;gap:32px;margin-top:28px}
+.B.ph .foot{flex-direction:column;align-items:stretch;gap:14px}
+.B .foot .yt{width:356px;height:200px;border:4px solid #fff}
+.B.ph .foot .yt{width:100%;height:auto}
+.B .play{width:96px;height:96px;border-radius:50%;background:#fff;border:none;display:grid;place-items:center;flex:none}
+.B .play::after{content:"";border-left:30px solid #C2185B;border-top:19px solid transparent;border-bottom:19px solid transparent;margin-left:8px}
+.B .next{font-size:20px;line-height:1.3}
+.B .next b{display:block;font-size:26px}
+.B .tab{position:absolute;right:0;top:50%;transform:translateY(-50%);background:#FFE600;color:#1a0630;border:none;writing-mode:vertical-rl;font:800 20px "Archivo";padding:26px 14px;border-radius:10px 0 0 10px}
+.B.ph .tab{writing-mode:horizontal-tb;top:auto;bottom:0;left:0;transform:none;border-radius:16px 16px 0 0;padding:16px;font-size:18px;text-align:center}
+.B.ph .phrow{display:flex;gap:14px;align-items:center}
+.B.ph .play{width:72px;height:72px}
+.B .drawer{position:absolute;right:0;top:0;bottom:0;width:520px;background:#FFE600;color:#1a0630;padding:36px 34px;box-shadow:-30px 0 60px #0006;overflow:hidden}
+.B .drawer h3{font-family:"Anton";font-size:46px;font-weight:400;line-height:1}
+.B .drawer .tabs{display:flex;gap:22px;font-weight:800;font-size:19px;margin:16px 0 18px}
+.B .drawer .tabs span{padding-bottom:4px}
+.B .drawer .tabs .cur{border-bottom:5px solid #1a0630}
+.B .drawer input{width:100%;font:600 20px "Archivo";padding:12px 0;border:none;border-bottom:4px solid #1a0630;background:transparent;min-height:48px}
+.B .r{display:flex;gap:14px;align-items:center;padding:12px 0;font-size:18px}
+.B .r .th{width:56px;height:56px;border-radius:50%;background:conic-gradient(#3D0B5C 0 25%,#FF4F00 0 50%,#3D0B5C 0 75%,#FF4F00 0)}
+.B .r.open{display:block;background:#1a0630;color:#fff;margin:6px -34px;padding:20px 34px}
+.B .r.open .th{width:100%;height:200px;border-radius:0;background:linear-gradient(135deg,#00C2A8,#0047FF);margin-bottom:12px}
+.B .r.open b{font-family:"Anton";font-size:38px;font-weight:400;display:block;line-height:1}
+.B .r.open .acts{display:flex;gap:12px;margin-top:14px}
+.B .r.open button{flex:1;min-height:52px;font:800 19px "Archivo";border:none;background:#FFE600;color:#1a0630}
+.B .r.open button+button{background:transparent;color:#fff;box-shadow:inset 0 0 0 3px #fff}
+.B .owner-strip{display:flex;gap:10px;margin-top:12px}
+.B .owner-strip button{min-height:44px;padding:0 18px;background:#ffffff22;color:#fff;border:2px solid #fff;font:700 16px "Archivo"}
+
+/* ============ C: THE LOG (station as a running thread) ============ */
+.C{width:1280px;background:#FFFFFF;color:#0E1450;font-family:"Bricolage Grotesque",sans-serif}
+.C.ph{width:375px}
+.C .pin{background:#2335F0;color:#fff;display:grid;grid-template-columns:400px 1fr;gap:28px;padding:22px 40px;align-items:center}
+.C.ph .pin{grid-template-columns:1fr;padding:12px;gap:10px}
+.C .pin .yt{border-radius:0}
+.C .pin h3{font-size:42px;line-height:1;font-weight:800}
+.C.ph .pin h3{font-size:26px}
+.C .pin p{font-size:19px}
+.C .pin .row{display:flex;gap:12px;align-items:center;margin-top:14px;flex-wrap:wrap}
+.C .pin .pl{background:#FFE600;color:#0E1450;border:none;font-weight:800;font-size:19px;min-height:48px;padding:0 24px;border-radius:24px 4px 24px 4px}
+.C .pin .nx{font-size:17px;opacity:1}
+.C .log{max-width:760px;margin:0 auto;padding:28px 24px 0}
+.C.ph .log{padding:16px 12px 0}
+.C .day{text-align:center;font-weight:600;color:#4b52a0;margin:6px 0 18px}
+.C .post{display:grid;grid-template-columns:52px 1fr;gap:14px;margin-bottom:26px}
+.C .av{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;font-weight:800;color:#fff;font-size:20px}
+.C .who{font-weight:800;font-size:18px}
+.C .who small{font-weight:400;color:#4b52a0;margin-left:8px;font-size:15px}
+.C .say{font-family:"Instrument Serif";font-size:32px;line-height:1.15;margin:2px 0 8px}
+.C.ph .say{font-size:25px}
+.C .song{display:inline-flex;gap:12px;align-items:center;background:#EEF0FF;padding:8px 14px 8px 8px;font-size:17px;font-weight:600;border-radius:4px}
+.C .song .th{width:44px;height:44px;background:#FF3D7F;border-radius:2px;transform:rotate(-6deg)}
+.C .tag{display:inline-block;margin-left:10px;font-weight:800;font-size:15px;padding:3px 10px;border-radius:2px}
+.C .tag.played{background:#0E1450;color:#fff}
+.C .tag.up{background:#FFE600;color:#0E1450}
+.C .tag.wait{box-shadow:inset 0 0 0 2px #0E1450}
+.C .sys{color:#4b52a0;font-size:16px;margin:-8px 0 22px 66px}
+.C .compose{background:#fff;border-top:4px solid #2335F0;padding:16px 24px 20px}
+.C.ph .compose{padding:12px}
+.C .compose .wrap{max-width:760px;margin:0 auto}
+.C .compose .as{font-size:16px;color:#4b52a0;margin-bottom:6px}
+.C .compose .as b{color:#0E1450}
+.C .box{display:flex;gap:10px;align-items:flex-end}
+.C .box textarea{flex:1;font:400 22px "Instrument Serif";border:3px solid #0E1450;padding:10px 12px;min-height:56px;resize:none;border-radius:4px}
+.C .box .att{min-height:56px;padding:0 14px;border:3px solid #0E1450;background:#fff;font-weight:700;font-size:16px;border-radius:4px}
+.C .box .send{min-height:56px;padding:0 22px;border:none;background:#2335F0;color:#fff;font-weight:800;font-size:18px;border-radius:24px 4px 24px 4px}
+.C.ph .box{flex-wrap:wrap}.C.ph .box textarea{flex-basis:100%}.C.ph .box .send{flex:1}
+.C .mod{display:flex;gap:8px;margin-top:10px}
+.C .mod button{min-height:44px;padding:0 16px;font-weight:700;font-size:16px;border:2px solid #0E1450;background:#fff;border-radius:4px}
+.C .mod button.ok{background:#0E1450;color:#fff}
+.C .ownerq{display:flex;gap:10px;padding:12px 40px;background:#0E1450;color:#fff;font-size:16px;align-items:center;overflow:hidden;white-space:nowrap}
+.C .ownerq b{color:#FFE600}
+.C .ownerq button{min-height:40px;padding:0 12px;background:transparent;color:#fff;border:2px solid #fff;font-weight:700}
+.C .attach{border:3px solid #0E1450;border-bottom:none;padding:12px;border-radius:4px 4px 0 0;background:#F7F8FF}
+.C .attach input{width:100%;font:600 18px "Bricolage Grotesque";border:none;border-bottom:3px solid #0E1450;background:transparent;padding:6px 0;min-height:44px}
+.C .sr{display:flex;align-items:center;gap:12px;padding:8px 0;font-size:17px}
+.C .sr .th{width:48px;height:48px;background:#00B386;border-radius:2px;transform:rotate(4deg)}
+.C .sr.open{display:grid;grid-template-columns:280px 1fr;gap:16px;background:#fff;box-shadow:inset 0 0 0 3px #2335F0;padding:14px;margin:6px 0}
+.C .sr.open .th{width:280px;height:158px;transform:none;background:#FF3D7F}
+.C .sr.open b{font-size:28px;line-height:1.05;display:block}
+.C .sr.open .acts{display:flex;gap:10px;margin-top:12px}
+.C .sr.open button{min-height:48px;padding:0 18px;font-weight:800;font-size:17px;border:3px solid #2335F0;background:#2335F0;color:#fff;border-radius:24px 4px 24px 4px}
+.C .sr.open button+button{background:#fff;color:#2335F0}
+:focus-visible{outline:3px solid #FFE600;outline-offset:2px;box-shadow:0 0 0 6px #000}
+</style>
+</head>
+<body>
+<main class="page">
+<p class="ask">Reply with the concept's letter, plus anything you'd change.</p>
+
+<!-- ================= A ================= -->
+<section class="concept">
+<h2>A. The Set</h2>
+<p class="pitch">A red bakelite tabletop radio: the video is the glowing screen, the queue is stations along the tuning dial, requests arrive as paper slips.</p>
+<p class="why">Fits because you "turn on" a radio and walk away. One big knob does Play; everything else is furniture you glance at. Owner controls live on the back of the set.</p>
+<div class="views">
+<div class="wide"><p class="cap">Listener, desktop</p>
+<div class="scaler"><div class="frame A">
+ <div class="body">
+  <div class="top">
+   <div class="bezel"><div class="yt"><span>YouTube player</span></div></div>
+   <div class="grille"><div class="brand">TTunes</div><div class="np"><small>On air now</small><b>Strawberry Letter 23</b><small>The Brothers Johnson, for "night shift"</small></div></div>
+  </div>
+  <div class="dial"><div class="needle"></div>
+   <div class="scale"><span>NOW</span><span>NEXT</span><span>LATER</span><span>LATER</span><span>LATER</span></div>
+   <div class="marks">
+    <div class="mark on">Strawberry Letter 23<small>Brothers Johnson</small></div>
+    <div class="mark">Ain't No Mountain<small>Marvin &amp; Tammi</small></div>
+    <div class="mark">Golden Hour<small>JVKE</small></div>
+    <div class="mark">Electric Feel<small>MGMT</small></div>
+    <div class="mark">Sunday Best<small>Surfaces</small></div>
+   </div>
+  </div>
+  <div class="knobs">
+   <button class="knob big" aria-label="Play">PLAY</button>
+   <button class="knob" aria-label="Volume">VOL</button>
+   <div class="slipbox">
+    <div class="slip"><b>3rd floor</b> asked for Electric Feel<i>"for whoever fixed the coffee machine"</i><span class="stamp">QUEUED</span></div>
+    <div class="slip"><b>night shift</b> asked for Strawberry Letter 23<i>"to stay awake till 6"</i><span class="stamp">ON AIR</span></div>
+    <div class="slip"><b>the van</b> asked for Kokomo<i>"road trip energy"</i><span class="stamp wait">WAITING</span></div>
+   </div>
+  </div>
+ </div>
+ <form class="pad" onsubmit="return false">
+  <label>From<input value="3rd floor"></label>
+  <label>Song (search or paste a link)<input placeholder="e.g. september earth wind"></label>
+  <label>Dedication<input placeholder="who's it for?"></label>
+  <button>Send slip</button>
+ </form>
+</div></div></div>
+
+<div><p class="cap">Listener, phone</p>
+<div class="scaler"><div class="frame A ph">
+ <div class="body">
+  <div class="top">
+   <div class="brand">TTunes</div>
+   <div class="bezel"><div class="yt"><span>YouTube player</span></div></div>
+   <div class="np"><small>On air now</small><b>Strawberry Letter 23</b><small>for "night shift"</small></div>
+  </div>
+  <div class="dial"><div class="scale"><span>NEXT UP</span></div>
+   <div class="marks"><div class="mark">Ain't No Mountain<small>Marvin &amp; Tammi</small></div><div class="mark">Golden Hour<small>JVKE</small></div></div>
+  </div>
+  <div class="knobs"><button class="knob big">PLAY</button>
+   <div class="slipbox"><div class="slip"><b>3rd floor</b> asked for Electric Feel<i>"for whoever fixed the coffee machine"</i><span class="stamp">QUEUED</span></div></div>
+  </div>
+ </div>
+ <form class="pad" onsubmit="return false"><label>From<input value="3rd floor"></label><label>Song<input placeholder="search or paste a link"></label><label>Dedication<input></label><button>Send slip</button></form>
+</div></div></div>
+
+<div class="wide"><p class="cap">Owner view: the back of the set, a search result expanded in place</p>
+<div class="scaler"><div class="frame A">
+ <div class="body">
+  <div class="top">
+   <div class="bezel"><div class="yt"><span>YouTube player</span></div></div>
+   <div class="grille"><div class="brand">TTunes</div><div class="np"><small>On air now</small><b>Strawberry Letter 23</b><small>The Brothers Johnson</small></div></div>
+  </div>
+ </div>
+ <div class="back">
+  <div>
+   <h4>Running order</h4>
+   <div class="q"><em>1</em>Ain't No Mountain<span class="sw"><button aria-label="Move up">&uarr;</button><button aria-label="Move down">&darr;</button><button aria-label="Remove">&times;</button></span></div>
+   <div class="q"><em>2</em>Golden Hour<span class="sw"><button aria-label="Move up">&uarr;</button><button aria-label="Move down">&darr;</button><button aria-label="Remove">&times;</button></span></div>
+   <div class="q"><em>3</em>Electric Feel<span class="sw"><button aria-label="Move up">&uarr;</button><button aria-label="Move down">&darr;</button><button aria-label="Remove">&times;</button></span></div>
+   <h4 style="margin-top:18px">Slips waiting</h4>
+   <div class="q">the van: Kokomo<span class="sw"><button aria-label="Approve">&check;</button><button aria-label="Deny">&times;</button></span></div>
+   <div class="q" style="border:none"><button style="min-height:48px;padding:0 18px;background:#C40E1A;color:#fff;border:none;font:700 20px 'Barlow Condensed';border-radius:4px">Skip this song</button></div>
+  </div>
+  <div class="tape">
+   <h4 style="color:#1d0f08">Add a song</h4>
+   <input value="september">
+   <div class="res"><div class="th"></div>September (Phil Collins cover)</div>
+   <div class="res open"><div class="th">preview</div><div><b>September</b>Earth, Wind &amp; Fire, 3:35<div class="acts"><button>Play next</button><button>Add to queue</button></div></div></div>
+   <div class="res"><div class="th"></div>September Song, JP Cooper</div>
+  </div>
+ </div>
+</div></div></div>
+</div>
+</section>
+
+<!-- ================= B ================= -->
+<section class="concept">
+<h2>B. Afterglow</h2>
+<p class="pitch">The song title fills the whole window in color pulled from its thumbnail; one yellow drawer holds the queue, requests and owner tools.</p>
+<p class="why">Fits a second monitor or a background tab: readable from across the room, nothing to manage. The page changes color with every song, so it feels alive without asking for attention.</p>
+<div class="views">
+<div class="wide"><p class="cap">Listener, desktop (drawer closed)</p>
+<div class="scaler"><div class="frame B"><div class="wash"></div><div class="in">
+ <div class="bar"><span class="logo">TTunes</span><span class="live">Live</span><span>4 listening</span></div>
+ <div><div class="title">Strawberry Letter 23</div><div class="artist">The Brothers Johnson</div><div class="ded">"to stay awake till 6" from night shift</div></div>
+ <div class="foot"><div class="yt"><span>YouTube player</span></div><button class="play" aria-label="Play"></button><div class="next">Up next<b>Ain't No Mountain High Enough</b>then Golden Hour, Electric Feel</div></div>
+</div><button class="tab">Queue &amp; requests</button></div></div></div>
+
+<div><p class="cap">Listener, phone</p>
+<div class="scaler"><div class="frame B ph"><div class="wash"></div><div class="in">
+ <div class="bar"><span class="logo">TTunes</span><span class="live">Live</span></div>
+ <div><div class="title">Strawberry Letter 23</div><div class="artist">The Brothers Johnson</div><div class="ded">"to stay awake till 6" from night shift</div></div>
+ <div class="foot"><div class="yt"><span>YouTube player</span></div><div class="phrow"><button class="play" aria-label="Play"></button><div class="next">Up next<b>Ain't No Mountain</b></div></div><div style="height:52px"></div></div>
+</div><button class="tab">Request a song &uarr;</button></div></div></div>
+
+<div class="wide"><p class="cap">Owner view: drawer open on "Add", a result expanded in place</p>
+<div class="scaler"><div class="frame B"><div class="wash"></div><div class="in" style="padding-right:580px">
+ <div class="bar"><span class="logo">TTunes</span><span class="live">Live</span><span>Signed in</span></div>
+ <div><div class="title" style="font-size:120px">Strawberry Letter 23</div><div class="artist">The Brothers Johnson</div><div class="owner-strip"><button>Skip</button><button>Pause station</button></div></div>
+ <div class="foot"><div class="yt"><span>YouTube player</span></div></div>
+</div>
+<aside class="drawer"><h3>The drawer</h3><div class="tabs"><span>Queue (5)</span><span>Requests (1 new)</span><span class="cur">Add</span></div>
+ <input value="september">
+ <div class="r"><div class="th"></div>September (Phil Collins cover)</div>
+ <div class="r open"><div class="th"></div><b>September</b>Earth, Wind &amp; Fire, 3:35<div class="acts"><button>Play next</button><button>Add to queue</button></div></div>
+ <div class="r"><div class="th"></div>September Song, JP Cooper</div>
+</aside></div></div></div>
+</div>
+</section>
+
+<!-- ================= C ================= -->
+<section class="concept">
+<h2>C. The Log</h2>
+<p class="pitch">The station is a running thread: dedications are the headline, the song is pinned on top, and asking for a song feels like posting a message.</p>
+<p class="why">Fits a few friends: the fun is seeing who sent what to whom. The music plays; the thread is the reason to check back.</p>
+<div class="views">
+<div class="wide"><p class="cap">Listener, desktop</p>
+<div class="scaler"><div class="frame C">
+ <div class="pin"><div class="yt"><span>YouTube player</span></div><div><p>Playing now, sent by night shift</p><h3>Strawberry Letter 23</h3><p>The Brothers Johnson</p><div class="row"><button class="pl">Play</button><span class="nx">Next: Ain't No Mountain High Enough</span></div></div></div>
+ <div class="log">
+  <p class="day">Tonight</p>
+  <div class="post"><div class="av" style="background:#FF3D7F">NS</div><div><p class="who">night shift <small>11:42 pm</small></p><p class="say">to stay awake till 6</p><span class="song"><span class="th"></span>Strawberry Letter 23</span><span class="tag played">Playing</span></div></div>
+  <div class="post"><div class="av" style="background:#00875F">3F</div><div><p class="who">3rd floor <small>11:50 pm</small></p><p class="say">for whoever fixed the coffee machine. hero.</p><span class="song"><span class="th" style="background:#00B386"></span>Electric Feel, MGMT</span><span class="tag up">In the queue</span></div></div>
+  <p class="sys">The station played Golden Hour.</p>
+  <div class="post"><div class="av" style="background:#7B2FF7">TV</div><div><p class="who">the van <small>12:04 am</small></p><p class="say">road trip energy please</p><span class="song"><span class="th" style="background:#FF7A00"></span>Kokomo, The Beach Boys</span><span class="tag wait">Waiting for OK</span></div></div>
+ </div>
+ <div class="compose"><div class="wrap"><p class="as">Posting as <b>3rd floor</b></p><div class="box"><textarea aria-label="Dedication">who's this one for?</textarea><button class="att">+ Song</button><button class="send">Send</button></div></div></div>
+</div></div></div>
+
+<div><p class="cap">Listener, phone</p>
+<div class="scaler"><div class="frame C ph">
+ <div class="pin"><div class="yt"><span>YouTube player</span></div><div><h3>Strawberry Letter 23</h3><p>sent by night shift</p><div class="row"><button class="pl">Play</button><span class="nx">Next: Ain't No Mountain</span></div></div></div>
+ <div class="log">
+  <div class="post"><div class="av" style="background:#00875F">3F</div><div><p class="who">3rd floor <small>11:50</small></p><p class="say">for whoever fixed the coffee machine. hero.</p><span class="song"><span class="th" style="background:#00B386"></span>Electric Feel</span></div></div>
+  <div class="post"><div class="av" style="background:#7B2FF7">TV</div><div><p class="who">the van <small>12:04</small></p><p class="say">road trip energy please</p><span class="tag wait" style="margin:0">Waiting for OK</span></div></div>
+ </div>
+ <div class="compose"><p class="as">Posting as <b>3rd floor</b></p><div class="box"><textarea aria-label="Dedication">who's this one for?</textarea><button class="att">+ Song</button><button class="send">Send</button></div></div>
+</div></div></div>
+
+<div class="wide"><p class="cap">Owner view: approve in the thread, add a song from the composer (result expanded in place)</p>
+<div class="scaler"><div class="frame C">
+ <div class="pin"><div class="yt"><span>YouTube player</span></div><div><p>Playing now</p><h3>Strawberry Letter 23</h3><div class="row"><button class="pl">Skip</button><span class="nx">Next: Ain't No Mountain</span></div></div></div>
+ <div class="ownerq"><b>Queue</b> 1. Ain't No Mountain <button aria-label="Move down">&darr;</button><button aria-label="Remove">&times;</button> 2. Golden Hour <button aria-label="Move up">&uarr;</button><button aria-label="Remove">&times;</button> 3. Electric Feel <button aria-label="Remove">&times;</button></div>
+ <div class="log">
+  <div class="post"><div class="av" style="background:#7B2FF7">TV</div><div><p class="who">the van <small>12:04 am</small></p><p class="say">road trip energy please</p><span class="song"><span class="th" style="background:#FF7A00"></span>Kokomo, The Beach Boys</span><div class="mod"><button class="ok">Approve</button><button>Deny</button></div></div></div>
+ </div>
+ <div class="compose"><div class="wrap">
+  <div class="attach"><input value="september" aria-label="Search songs">
+   <div class="sr"><div class="th"></div>September (Phil Collins cover)</div>
+   <div class="sr open"><div class="th"></div><div><b>September</b>Earth, Wind &amp; Fire, 3:35<div class="acts"><button>Play next</button><button>Add to queue</button></div></div></div>
+  </div>
+  <div class="box"><textarea aria-label="Note">add a note (optional)</textarea><button class="send">Post</button></div>
+ </div></div>
+</div></div></div>
+</div>
+</section>
+</main>
+<script>
+function fit(){document.querySelectorAll('.scaler').forEach(s=>{const f=s.firstElementChild;const k=Math.min(1,s.clientWidth/f.offsetWidth);f.style.transform='scale('+k+')';s.style.height=(f.offsetHeight*k)+'px'})}
+addEventListener('resize',fit);addEventListener('load',fit);document.fonts&&document.fonts.ready.then(fit);fit();
+</script>
+</body>
+</html>

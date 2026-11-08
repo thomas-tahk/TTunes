@@ -1,19 +1,16 @@
-import { useState } from "react";
-import { call, messageOf, minutes, NETWORK_MESSAGE } from "./ownerFetch.ts";
+import { type ReactNode, useState } from "react";
+import { call, messageOf, NETWORK_MESSAGE } from "./ownerFetch.ts";
+import { SongCard, type SongPick } from "./SongCard.tsx";
 
-export interface SearchPick {
-  videoId: string;
-  title: string;
-  durationSec: number;
-  thumbnail: string;
-}
-interface Result extends SearchPick {
-  channelTitle: string;
-}
+type Result = SongPick;
 type State = { kind: "idle" } | { kind: "busy" } | { kind: "error"; message: string } | { kind: "results"; results: Result[] };
 
 interface Props {
-  onPick: (pick: SearchPick) => void;
+  /** The actions shown inside the expanded card for this result. */
+  renderActions: (pick: SongPick) => ReactNode;
+  /** The video id of the open card, or null. The parent owns it so only one card in the whole panel is open. */
+  openId: string | null;
+  onOpenChange: (videoId: string | null) => void;
   endpoint: string;
   inputId: string;
   label: string;
@@ -22,12 +19,13 @@ interface Props {
   inForm?: boolean;
 }
 
-export function SongSearch({ onPick, endpoint, inputId, label, buttonLabel, inForm = false }: Props) {
+export function SongSearch({ renderActions, openId, onOpenChange, endpoint, inputId, label, buttonLabel, inForm = false }: Props) {
   const [query, setQuery] = useState("");
   const [state, setState] = useState<State>({ kind: "idle" });
 
   async function search() {
     if (!query.trim()) return;
+    onOpenChange(null);
     setState({ kind: "busy" });
     try {
       const { status, body } = await call("GET", `${endpoint}?q=${encodeURIComponent(query.trim())}`);
@@ -83,17 +81,12 @@ export function SongSearch({ onPick, endpoint, inputId, label, buttonLabel, inFo
         {state.kind === "results" && state.results.length === 0 && <p>No playable songs found. Try other words.</p>}
       </div>
       {state.kind === "results" && state.results.length > 0 && (
-        <ul className="owner-list results" data-testid="search-results">
+        <ul className="song-results" data-testid="search-results">
           {state.results.map((r) => (
             <li key={r.videoId}>
-              <img src={r.thumbnail} alt="" width={96} height={54} />
-              <div className="owner-meta">
-                <strong>{r.title}</strong>
-                <span>{r.channelTitle} · {minutes(r.durationSec)}</span>
-              </div>
-              <button type="button" className="btn small ghost" aria-label={`Choose ${r.title}`} onClick={() => onPick(r)}>
-                Choose
-              </button>
+              <SongCard pick={r} open={openId === r.videoId} onToggle={() => onOpenChange(openId === r.videoId ? null : r.videoId)}>
+                {renderActions(r)}
+              </SongCard>
             </li>
           ))}
         </ul>

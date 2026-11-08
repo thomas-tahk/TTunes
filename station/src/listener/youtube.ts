@@ -1,13 +1,17 @@
 // Minimal typing for the parts of the YouTube IFrame API we use.
 export interface YTPlayer {
   loadVideoById(args: { videoId: string; startSeconds: number }): void;
+  cueVideoById(args: { videoId: string; startSeconds: number }): void;
+  getPlayerState(): number;
   seekTo(seconds: number, allowSeekAhead: boolean): void;
   getCurrentTime(): number;
+  pauseVideo(): void;
+  playVideo(): void;
   destroy(): void;
 }
 export interface YTNamespace {
   Player: new (el: HTMLElement, opts: unknown) => YTPlayer;
-  PlayerState: { PLAYING: number; PAUSED: number };
+  PlayerState: { PLAYING: number; PAUSED: number; ENDED: number; CUED: number };
 }
 declare global {
   interface Window {

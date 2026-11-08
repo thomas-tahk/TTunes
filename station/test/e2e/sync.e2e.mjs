@@ -16,7 +16,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const fail = (msg) => { throw new Error(`E2E FAIL: ${msg}`); };
 const check = (ok, msg) => { if (!ok) fail(msg); console.log(`ok  ${msg}`); };
 
-const DB_URL = process.env.DATABASE_URL ?? "postgres://ttunes:ttunes@localhost:55432/ttunes_station";
+const DB_URL = process.env.DATABASE_URL;
+if (!DB_URL || !/^postgres:\/\/[^/]*(localhost|127\.0\.0\.1)/.test(DB_URL) || /ttunes_station$/.test(DB_URL)) {
+  throw new Error("set DATABASE_URL to a fresh local database (not the shared ttunes_station)");
+}
 
 async function songStarts() {
   const db = new pg.Pool({ connectionString: DB_URL });

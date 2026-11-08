@@ -6,6 +6,7 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { mkdirSync } from "node:fs";
 import pg from "pg";
+import { openDrawer, playerClearOfDrawer } from "./drawer.mjs";
 import { freePort, startDevServer } from "./devServer.mjs";
 import { chromium } from "playwright";
 
@@ -23,6 +24,7 @@ if (!DB_URL || !/^postgres:\/\/[^/]*(localhost|127\.0\.0\.1)/.test(DB_URL) || /t
 const catalog = {
   musicVid001: { title: "Neon Skyline (Official Audio)", duration: "PT3M42S", category: "10" },
   musicVid002: { title: "Midnight Drive (Official Audio)", duration: "PT3M10S", category: "10" },
+  musicVid003: { title: "Sunrise Drive (Official Audio)", duration: "PT3M5S", category: "10" },
 };
 const youtubeStub = createServer((req, res) => {
   const ids = (new URL(req.url, "http://x").searchParams.get("id") ?? "").split(",");
@@ -61,14 +63,13 @@ const open = async (viewport, ip) => {
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
   await page.goto(BASE);
   await page.getByTestId("next-title").waitFor();
+  await openDrawer(page);
   return page;
 };
 const noScroll = (page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
 const playerClear = async (page, label) => {
-  const frame = await page.locator(".player-frame").boundingBox();
-  const box = await page.locator(".requests").boundingBox();
-  check(frame.width >= 200 && frame.height >= 200, `${label}: player ${frame.width}x${frame.height} >= 200x200`);
-  check(frame.y + frame.height <= box.y, `${label}: requests sit below the player, covering nothing`);
+  const { frame, ok } = await playerClearOfDrawer(page);
+  check(ok, `${label}: player ${frame.width}x${frame.height} >= 200x200 and the drawer covers none of it`);
   check(await noScroll(page), `${label}: no horizontal scroll`);
 };
 const shot = async (page, name) => {
@@ -95,8 +96,14 @@ try {
   await a.getByLabel("Your name").fill("Thomas");
   await a.getByLabel("Dedication (optional)").fill(TYPED_DEDICATION);
   check((await a.getByTestId("counter").textContent()) === `${TYPED_DEDICATION.length}/140`, "dedication counter is live");
-  check(await a.getByRole("button", { name: "Send request" }).isDisabled(), "send is disabled with no song chosen");
+  check((await a.getByRole("button", { name: "Send request" }).count()) === 0, "no Send request until a song is looked up");
+  check(await a.getByRole("button", { name: "Look up" }).isDisabled(), "Look up is disabled with an empty link");
   await a.getByLabel("Song link").fill("https://youtu.be/musicVid001");
+  await a.getByRole("button", { name: "Look up" }).click();
+  await a.getByTestId("preview").waitFor();
+  check((await a.getByTestId("preview").locator(".song-card-head strong").textContent()) === catalog.musicVid001.title, "pasted link expands the same card with the title");
+  check((await a.getByTestId("song-length").textContent()).includes("3:42"), "listener's link card shows the length");
+  check(await a.getByRole("button", { name: "Send request" }).evaluate((el) => el === document.activeElement), "focus moved to Send request in the link card");
   await shot(a, "filled");
   // The feed is CDN-cached: freeze it at "empty" and the poster must still see their own row.
   await a.route("**/api/requests/feed", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ mode: "open", requests: [] }) }));
@@ -117,6 +124,7 @@ try {
 
   // B joins fresh: sees it in the feed, can still request (its own slot).
   await b.reload();
+  await openDrawer(b);
   await b.getByTestId("feed-row").first().waitFor();
   const bText = await b.getByTestId("feed-row").first().textContent();
   check(bText.includes("Thomas") && bText.includes("Neon Skyline") && bText.includes(DEDICATION), "B sees name, title and dedication in the feed");
@@ -126,10 +134,12 @@ try {
   // Song ends: the request becomes now playing for both.
   await db.query("update station_state set started_at_ms = started_at_ms - 400000");
   await b.reload();
+  await openDrawer(b);
   await b.waitForFunction((t) => document.querySelector('[data-testid="now-title"]')?.textContent === t, catalog.musicVid001.title);
   check(true, "B hears the request: it is now playing");
   check((await b.getByTestId("feed-row").first().textContent()).includes("Playing now"), "feed chip says Playing now");
   await a.reload();
+  await openDrawer(a);
   await a.waitForFunction((t) => document.querySelector('[data-testid="now-title"]')?.textContent === t, catalog.musicVid001.title);
   check(true, "A hears its own request playing too");
   await playerClear(b, "desktop");
@@ -145,16 +155,51 @@ try {
   await b.getByLabel("Song or artist to find").fill("neon");
   await b.getByRole("button", { name: "Find", exact: true }).click();
   await b.getByTestId("search-results").waitFor();
-  await b.getByRole("button", { name: /Choose Neon Skyline/ }).click();
-  check((await b.getByTestId("picked").textContent()).includes("Neon Skyline"), "picking a search result shows the choice");
+  check((await b.getByRole("button", { name: "Send request" }).count()) === 0, "no Send request until a result is opened");
+  const head = b.getByRole("button", { name: /Neon Skyline/ });
+  check((await head.getAttribute("aria-expanded")) === "false", "result starts collapsed");
+  await head.focus();
+  await b.keyboard.press("Enter");
+  check((await head.getAttribute("aria-expanded")) === "true", "Enter expands the result in place");
+  check((await b.getByTestId("song-length").textContent()).includes("3:42"), "expanded card shows the length");
+  check(await b.getByRole("button", { name: "Send request" }).evaluate((el) => el === document.activeElement), "focus moved to Send request");
   await shot(b, "search");
+  // No name yet: the error shows inside the open card, in view at 375px, and focus does not fall to the page body.
+  await b.setViewportSize({ width: 375, height: 812 });
+  await sleep(300);
+  await b.getByRole("button", { name: "Send request" }).click();
+  const nameError = b.getByRole("alert").filter({ hasText: "Type your name first" });
+  await nameError.waitFor();
+  await sleep(200);
+  check(await nameError.evaluate((el) => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.bottom <= window.innerHeight; }), "375px: the missing-name error is inside the viewport, in the card");
+  check(await b.evaluate(() => document.activeElement?.tagName !== "BODY"), "focus stays on a control after the error");
+  await b.setViewportSize({ width: 1280, height: 900 });
 
   // Refusal text from the server is shown (already coming up / playing).
   await b.getByLabel("Your name").fill("Bea");
   await b.getByRole("button", { name: "Send request" }).click();
   await b.getByRole("alert").filter({ hasText: /./ }).first().waitFor();
+  check(await b.getByRole("button", { name: "Send request" }).evaluate((el) => el === document.activeElement), "after a refusal focus is still on the Send request button, next to the message in the card");
   check((await b.getByRole("alert").first().textContent()).length > 5, "server refusal text is shown, not swallowed");
   await shot(b, "refused");
+
+  // Third listener: search, tap a result, Send request from the expanded card -> it shows in the feed.
+  const dana = await open({ width: 1280, height: 900 }, "203.0.113.88");
+  const neonTwo = { videoId: "musicVid003", title: "Sunrise Drive (Official Audio)", channelTitle: "Night", durationSec: 190, thumbnail: "https://i.ytimg.com/vi/musicVid003/hqdefault.jpg" };
+  await dana.route("**/api/requests/search?**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ results: [neonTwo, { ...neonTwo, videoId: "musicVid001", title: "Other Result" }] }) }));
+  await dana.getByLabel("Your name").fill("Dana");
+  await dana.getByRole("button", { name: "Search by name" }).click();
+  await dana.getByLabel("Song or artist to find").fill("sunrise");
+  await dana.getByRole("button", { name: "Find", exact: true }).click();
+  await dana.getByTestId("search-results").waitFor();
+  await dana.getByRole("button", { name: /Other Result/ }).click();
+  await dana.getByRole("button", { name: /Sunrise Drive/ }).click();
+  check((await dana.getByTestId("song-card").locator(".song-card-body").count()) === 1, "only one card is open at a time");
+  await shot(dana, "card");
+  await dana.getByRole("button", { name: "Send request" }).click();
+  await dana.getByTestId("mine").waitFor();
+  await dana.getByTestId("feed-row").filter({ hasText: "Sunrise Drive" }).first().waitFor();
+  check(true, "listener's Send request from the card shows in the feed");
 
   // Full list: 30 rows must keep their height and the list must scroll, not squash.
   await db.query(`insert into requests (video_id, title, duration_sec, name, dedication, status, listener_id)
@@ -163,6 +208,7 @@ try {
   for (const [w, h] of [[375, 812], [1280, 900]]) {
     await b.setViewportSize({ width: w, height: h });
     await b.reload();
+    await openDrawer(b);
     await b.getByTestId("feed-row").first().waitFor();
     const m = await b.evaluate(() => {
       const list = document.querySelector('[data-testid="feed"]');
@@ -182,11 +228,14 @@ try {
   const c = await open({ width: 1280, height: 900 }, "203.0.113.77");
   await c.route("**/api/requests/feed", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ mode: "approve", requests: [] }) }));
   await c.reload();
+  await openDrawer(c);
   await c.getByTestId("mode-chip").waitFor();
   check((await c.locator(".request-box .hint").textContent()).includes("Every request waits for approval."), "approve mode hint says every request waits");
   await c.getByLabel("Your name").fill("Cleo");
   await c.getByLabel("Dedication (optional)").fill("line one\t\tline two");
   await c.getByLabel("Song link").fill("https://youtu.be/musicVid002");
+  await c.getByRole("button", { name: "Look up" }).click();
+  await c.getByTestId("preview").waitFor();
   await c.getByRole("button", { name: "Send request" }).click();
   await c.getByTestId("mine").waitFor();
   await c.getByTestId("feed-row").first().waitFor();
@@ -201,6 +250,7 @@ try {
   // Mode off hides the box.
   await db.query("update settings set value = 'off' where key = 'request_mode'");
   await b.reload();
+  await openDrawer(b);
   await b.getByTestId("mode-chip").waitFor();
   check((await b.getByTestId("mode-chip").textContent()) === "Requests off", "mode chip says Requests off");
   check((await b.getByRole("heading", { name: "Request a song" }).count()) === 0, "request box is hidden when off");
@@ -209,6 +259,7 @@ try {
   // Feed load failure is an error, not "nothing here".
   await b.route("**/api/requests/feed", (route) => route.fulfill({ status: 500, body: "{}" }));
   await b.reload();
+  await openDrawer(b);
   await b.getByRole("alert").filter({ hasText: "didn't load" }).waitFor();
   check(true, "feed failure shows an error with Try again");
 
