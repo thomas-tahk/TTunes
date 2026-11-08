@@ -1,4 +1,5 @@
 import { useEffect, useRef, type RefObject } from "react";
+import { planSync } from "./syncPlan.ts";
 import { MAX_DRIFT_SEC } from "./timing.ts";
 import { loadYouTubeApi, type YTPlayer } from "./youtube.ts";
 
@@ -7,6 +8,7 @@ const UNPLAYABLE = [101, 150]; // owner disallows embedding
 interface Input {
   videoId: string;
   startedAt: number;
+  isLocalStart: boolean;
   expectedSec: () => number;
   onUnplayable: () => void;
   onLoadFailed: () => void;
@@ -20,6 +22,8 @@ export function useYouTubePlayer(host: RefObject<HTMLDivElement | null>, input: 
   const player = useRef<YTPlayer>(undefined);
   const loaded = useRef(input.videoId);
   const syncedStart = useRef(input.startedAt);
+  const syncedLocal = useRef(input.isLocalStart);
+  const cuedPaused = useRef(false);
 
   const correctDrift = () => {
     const p = player.current;
@@ -30,17 +34,19 @@ export function useYouTubePlayer(host: RefObject<HTMLDivElement | null>, input: 
   // Live position only at the start (Play/ready) and when a new song starts; otherwise the listener's pause and seek stand.
   const syncToTarget = () => {
     const p = player.current;
-    const { videoId, startedAt, expectedSec } = latest.current;
+    const { videoId, startedAt, isLocalStart, expectedSec } = latest.current;
     if (!p) return;
-    const newSong = syncedStart.current !== startedAt;
+    const paused = p.getPlayerState() === window.YT?.PlayerState.PAUSED;
+    const action = planSync({ loadedVideoId: loaded.current, syncedStartedAt: syncedStart.current, wasLocalStart: syncedLocal.current }, { videoId, startedAt, isLocalStart }, paused);
+    loaded.current = videoId;
     syncedStart.current = startedAt;
-    if (loaded.current !== videoId) {
-      loaded.current = videoId;
-      p.loadVideoById({ videoId, startSeconds: expectedSec() });
-      return;
+    syncedLocal.current = isLocalStart;
+    if (action === "drift") correctDrift();
+    if (action === "load") p.loadVideoById({ videoId, startSeconds: expectedSec() });
+    if (action === "cue") {
+      cuedPaused.current = true; // the first PLAYING after this is the listener pressing play: start at live then
+      p.cueVideoById({ videoId, startSeconds: expectedSec() });
     }
-    if (newSong) p.seekTo(expectedSec(), true); // same video again: a new play starts live
-    else correctDrift();
   };
 
   useEffect(() => {
@@ -66,6 +72,9 @@ export function useYouTubePlayer(host: RefObject<HTMLDivElement | null>, input: 
               if (e.data === YT.PlayerState.PAUSED) latest.current.onPausedChange(true);
               if (e.data !== YT.PlayerState.PLAYING) return;
               latest.current.onPausedChange(false);
+              if (!cuedPaused.current) return;
+              cuedPaused.current = false;
+              player.current?.seekTo(latest.current.expectedSec(), true);
             },
             onError: (e: { data: number }) => !dead && UNPLAYABLE.includes(e.data) && latest.current.onUnplayable(),
           },

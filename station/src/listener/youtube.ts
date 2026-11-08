@@ -1,6 +1,8 @@
 // Minimal typing for the parts of the YouTube IFrame API we use.
 export interface YTPlayer {
   loadVideoById(args: { videoId: string; startSeconds: number }): void;
+  cueVideoById(args: { videoId: string; startSeconds: number }): void;
+  getPlayerState(): number;
   seekTo(seconds: number, allowSeekAhead: boolean): void;
   getCurrentTime(): number;
   pauseVideo(): void;
