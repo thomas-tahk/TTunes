@@ -4,7 +4,7 @@ A personal radio station for one person's music library, on a public URL. It pla
 
 ![Two listener screens (laptop and phone) on the same song in the Afterglow look, with the request feed showing a dedication](docs/preview/ttunes-preview.png)
 
-**Live station:** _not deployed yet — URL goes here once it is live._
+**Live station:** https://t-tunes-navy.vercel.app
 
 ## Two parts
 
