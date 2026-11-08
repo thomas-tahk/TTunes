@@ -17,5 +17,5 @@ export function frameHtml({ laptopPng, phonePng, feedPng, laptopTime, phoneTime 
    <div class="feed"><img alt="" src="file://${feedPng}"></div>
    <div class="col"><div class="screen phone" style="width:260px"><img alt="" src="file://${phonePng}"></div><span class="chip">phone &middot; ${phoneTime}</span></div>
   </div>
-  <div class="cap">Same song, same second, for everyone.</div>`;
+  <div class="cap">Everyone joins at the live spot.</div>`;
 }

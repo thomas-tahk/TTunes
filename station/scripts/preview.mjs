@@ -1,4 +1,4 @@
-// Makes docs/preview/ttunes-preview.png (1200x630) and @2x: two real listener screens of the running app on one frame.
+// Makes docs/preview/ttunes-preview.png (1200x630) and @2x: two real listener screens (Afterglow look) and the request feed on one frame.
 // Run from station/ with Docker up (npm run db:up): npm run preview
 // Headless only. Uses a throwaway local database, YouTube Data API stubbed server-side, the real YouTube embed (needs internet).
 import { spawn } from "node:child_process";
@@ -61,10 +61,12 @@ browser = await chromium.launch();
   };
   // 1. A listener requests a song with a dedication (the real request box).
   const poster = await listener({ width: 1000, height: 900 }, 1);
+  await poster.getByRole("button", { name: "Request a song", exact: true }).click();
   await poster.getByLabel("Your name").fill("3rd floor");
   await poster.getByLabel("Dedication (optional)").fill("for whoever's on the late shift");
   await poster.getByLabel("Song link").fill(`https://youtu.be/${REQUESTED.id}`);
-  await poster.getByRole("button", { name: "Send request" }).click();
+  await poster.getByRole("button", { name: "Look up" }).click();
+  await poster.getByRole("button", { name: "Send request" }).click(); // the looked-up song expands in place
   await poster.getByTestId("mine").waitFor();
   await poster.close();
   // 2. The current song ends; the request becomes Now playing for everyone.
@@ -85,18 +87,24 @@ browser = await chromium.launch();
         await sleep(2000); await p.reload();
         if (p !== feedPage) { await p.getByRole("button", { name: "Play" }).click(); await p.waitForFunction(() => window.__ttunes && window.__ttunes.currentTime() > 1.5, null, { timeout: 30_000 }); }
       }
+      if (p === feedPage) await p.getByRole("button", { name: "Request a song", exact: true }).click(); await sleep(1200); // the request feed lives in the drawer
       await p.mouse.move(0, 0); // keep the pointer off the player so YouTube's hover bars fade
     }
     await sleep(4500);
     const dir = TMP;
     mkdirSync(dir, { recursive: true });
-    const clipTo = async (p, w) => ({ x: 0, y: 0, width: w, height: Math.ceil((await p.locator(".titles").boundingBox()).y + (await p.locator(".titles").boundingBox()).height + 16) });
+    const clipTo = async (p, w) => {
+      const bottom = async (sel) => { const b = await p.locator(sel).boundingBox(); return b.y + b.height; };
+      return { x: 0, y: 0, width: w, height: Math.ceil(Math.max(await bottom(".titles"), await bottom(".player-frame")) + 16) };
+    };
     const files = { laptopPng: join(dir, `laptop-${scale}.png`), phonePng: join(dir, `phone-${scale}.png`), feedPng: join(dir, `feed-${scale}.png`) };
     const clips = [await clipTo(laptop, 640), await clipTo(phone, 375)];
     const read = (p) => p.evaluate(() => window.__ttunes.currentTime());
     const [tLaptop, tPhone] = await Promise.all([read(laptop), read(phone)]); // same moment, each screen's own player
     await Promise.all([laptop.screenshot({ path: files.laptopPng, clip: clips[0] }), phone.screenshot({ path: files.phonePng, clip: clips[1] })]);
-    await feedPage.locator(".feed").screenshot({ path: files.feedPng });
+    await feedPage.locator(".feed-row").first().scrollIntoViewIfNeeded();
+    const fb = await feedPage.locator(".feed").boundingBox();
+    await feedPage.screenshot({ path: files.feedPng, clip: { x: Math.max(0, fb.x - 14), y: fb.y - 10, width: Math.min(360, fb.width + 28), height: fb.height + 20 } });
     for (const p of [laptop, phone, feedPage]) await p.context().close();
     console.log(`times: laptop ${tLaptop.toFixed(2)}s, phone ${tPhone.toFixed(2)}s (gap ${Math.abs(tLaptop - tPhone).toFixed(2)}s)`);
     return { ...files, laptopTime: mmss(tLaptop), phoneTime: mmss(tPhone), laptopSize: [clips[0].width, clips[0].height], phoneSize: [clips[1].width, clips[1].height] };
