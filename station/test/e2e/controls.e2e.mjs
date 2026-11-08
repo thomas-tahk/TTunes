@@ -7,6 +7,7 @@ import { createServer } from "node:http";
 import { mkdirSync } from "node:fs";
 import { SignJWT } from "jose";
 import pg from "pg";
+import { openDrawer, playerClearOfDrawer } from "./drawer.mjs";
 import { freePort, startDevServer } from "./devServer.mjs";
 import { chromium } from "playwright";
 
@@ -82,7 +83,7 @@ try {
   page.on("pageerror", (e) => errors.push(String(e)));
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
   await page.goto(BASE);
-  await page.getByRole("heading", { name: "Controls" }).waitFor();
+  await openDrawer(page, "Add song");
 
   const shot = async (name) => {
     for (const [tag, w, h] of [["desktop-1280", 1280, 900], ["phone-375", 375, 812]]) {
@@ -96,10 +97,8 @@ try {
     for (const width of [1280, 375]) {
       await page.setViewportSize({ width, height: 900 });
       await sleep(200);
-      const frame = await page.locator(".player-frame").boundingBox();
-      const panel = await page.locator(".owner-panel").boundingBox();
-      check(frame.width >= 200 && frame.height >= 200, `${label} @${width}px: player ${frame.width}x${frame.height} >= 200x200`);
-      check(frame.y + frame.height <= panel.y, `${label} @${width}px: panel sits below the player`);
+      const { frame, ok } = await playerClearOfDrawer(page);
+      check(ok, `${label} @${width}px: player ${frame.width}x${frame.height} >= 200x200 and the drawer covers none of it`);
       check(!(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)), `${label} @${width}px: no horizontal scroll`);
     }
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -156,6 +155,7 @@ try {
   await shot("quota");
 
   // 5. Queue edit.
+  await openDrawer(page, "Owner tools");
   await page.getByRole("button", { name: "Move Neon Skyline down" }).click();
   await page.waitForFunction(() => document.querySelector('[data-testid="list-queue"] li strong')?.textContent === "Late Night Drive");
   await waitText("next-title", "Late Night Drive");
@@ -233,7 +233,7 @@ try {
   check((await page.getByRole("button", { name: "Yes, sign out everywhere" }).count()) === 0, "Cancel closes the confirm");
   await page.getByRole("button", { name: "Sign out everywhere" }).click();
   await page.getByRole("button", { name: "Yes, sign out everywhere" }).click();
-  await page.getByRole("link", { name: "Sign in" }).waitFor();
+  await page.getByRole("link", { name: /^Owner sign-in/ }).waitFor();
   check((await page.locator(".owner-panel").count()) === 0, "after sign out everywhere the page is signed out");
   check((await page.request.get(`${BASE}api/owner/queue`)).status() === 401, "the old session cookie is refused");
 

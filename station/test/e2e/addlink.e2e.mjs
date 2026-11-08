@@ -7,6 +7,7 @@ import { createServer } from "node:http";
 import { mkdirSync } from "node:fs";
 import { SignJWT } from "jose";
 import pg from "pg";
+import { openDrawer, playerClearOfDrawer } from "./drawer.mjs";
 import { freePort, startDevServer } from "./devServer.mjs";
 import { chromium } from "playwright";
 
@@ -71,7 +72,7 @@ try {
   await lp.getByRole("button", { name: "Check again" }).click();
   await lp.getByTestId("next-title").waitFor();
   check(true, "off-air tab picks up the first songs via Check again");
-  check((await lp.getByRole("link", { name: "Sign in" }).count()) === 1, "listener sees the Sign in link");
+  check((await lp.getByRole("link", { name: /^Owner sign-in/ }).count()) === 1, "listener sees the Sign in link");
   check((await lp.getByRole("heading", { name: "Add song" }).count()) === 0, "listener sees no Add song panel");
 
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
@@ -82,8 +83,9 @@ try {
   page.on("pageerror", (e) => errors.push(String(e)));
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
   await page.goto(BASE);
+  await openDrawer(page, "Add song");
   await page.getByRole("heading", { name: "Add song" }).waitFor();
-  check((await page.getByRole("link", { name: "Sign in" }).count()) === 0, "owner no longer sees Sign in");
+  check((await page.getByRole("link", { name: /^Owner sign-in/ }).count()) === 0, "owner no longer sees Sign in");
   const nextBefore = await page.getByTestId("next-title").textContent();
 
   const assertPlayerClear = async (label) => {
@@ -95,10 +97,8 @@ try {
     await page.setViewportSize({ width: 1280, height: 900 });
   };
   const assertPlayerClearAt = async (label) => {
-    const frame = await page.locator(".player-frame").boundingBox();
-    const panel = await page.locator(".owner-panel").boundingBox();
-    check(frame.width >= 200 && frame.height >= 200, `${label}: player ${frame.width}x${frame.height} >= 200x200`);
-    check(frame.y + frame.height <= panel.y, `${label}: panel sits below the player, covering nothing`);
+    const { frame, ok } = await playerClearOfDrawer(page);
+    check(ok, `${label}: player ${frame.width}x${frame.height} >= 200x200 and the drawer covers none of it`);
     check(!(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)), `${label}: no horizontal scroll`);
   };
   const lookUp = async (url) => {

@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import type { NowPlaying } from "../../lib/schedule.ts";
+import { DrawerPanel, type DrawerTab } from "./Drawer.tsx";
 import { OwnerAccount } from "./OwnerAccount.tsx";
 import { OwnerControls } from "./OwnerControls.tsx";
 import { call, messageOf, minutes, NETWORK_MESSAGE } from "./ownerFetch.ts";
-import { RequestSettings } from "./RequestSettings.tsx";
 import { type SearchPick, SongSearch } from "./SongSearch.tsx";
 import type { useOwnerRequests } from "./useOwnerRequests.ts";
 
@@ -37,7 +37,7 @@ export function SignInLink({ owner }: { owner: boolean }) {
   if (owner) return <span className="owner-badge">Owner</span>;
   return (
     <a className="signin" href="/api/auth/github/login">
-      Sign in
+      Owner sign-in (station owner only)
     </a>
   );
 }
@@ -46,9 +46,10 @@ interface PanelProps {
   playing: NowPlaying | null;
   onPlaying: (playing: NowPlaying) => void;
   requests: ReturnType<typeof useOwnerRequests>;
+  tab: DrawerTab;
 }
 
-export function OwnerPanel({ playing, onPlaying, requests }: PanelProps) {
+export function OwnerPanel({ playing, onPlaying, requests, tab }: PanelProps) {
   const [adds, setAdds] = useState(0); // bumps on every successful add so the open list refetches
   const [url, setUrl] = useState("");
   const [step, setStep] = useState<Step>({ kind: "idle" });
@@ -81,7 +82,9 @@ export function OwnerPanel({ playing, onPlaying, requests }: PanelProps) {
 
   const preview = step.kind === "preview" || step.kind === "confirm" ? step.preview : null;
   return (
-    <section className="owner-panel" aria-labelledby="add-song-heading">
+    <div className="owner-panel">
+      <DrawerPanel id="add" tab={tab} owner>
+      <section aria-labelledby="add-song-heading">
       <h2 id="add-song-heading">Add song</h2>
       <form onSubmit={lookUp} className="owner-form">
         <label htmlFor="song-url">YouTube link</label>
@@ -130,9 +133,12 @@ export function OwnerPanel({ playing, onPlaying, requests }: PanelProps) {
           )}
         </div>
       )}
-      <RequestSettings feed={requests.feed} onMode={(mode) => void requests.setMode(mode)} onReload={() => void requests.reload()} />
+      </section>
+      </DrawerPanel>
+      <DrawerPanel id="tools" tab={tab} owner>
       <OwnerControls playing={playing} changes={adds + requests.changes} onPlaying={onPlaying} />
       <OwnerAccount />
-    </section>
+      </DrawerPanel>
+    </div>
   );
 }
