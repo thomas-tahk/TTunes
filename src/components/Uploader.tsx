@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { uploadTrack } from "../api.ts";
-import type { AddChoice } from "../addChoice.ts";
+import type { AddChoice } from "../../shared/addChoice.ts";
 import { useWindowDrop } from "../useWindowDrop.ts";
 import { BatchChoice } from "./BatchChoice.tsx";
 

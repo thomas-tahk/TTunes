@@ -1,0 +1,36 @@
+# Local Postgres for station tests and dev. Default DATABASE_URL (see lib/db.ts) points here.
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ttunes
+      POSTGRES_PASSWORD: ttunes
+      POSTGRES_DB: ttunes_station
+    ports:
+      - "55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ttunes -d ttunes_station"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+
+  # PgBouncer in transaction mode, like Neon's pooled URL. Optional (profile "bouncer"): `npm run db:bouncer`.
+  # Lets the migrate test prove the lock works through a transaction-mode pooler. Port 56432.
+  bouncer:
+    profiles: ["bouncer"]
+    image: edoburu/pgbouncer:v1.26.1-p0
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_USER: ttunes
+      DB_PASSWORD: ttunes
+      POOL_MODE: transaction
+      AUTH_TYPE: scram-sha-256
+      ADMIN_USERS: ttunes
+      MAX_CLIENT_CONN: 100
+      DEFAULT_POOL_SIZE: 2
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits
+    ports:
+      - "56432:5432"

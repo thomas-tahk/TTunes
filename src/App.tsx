@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Track } from "./types.ts";
-import type { AddChoice } from "./addChoice.ts";
+import type { AddChoice } from "../shared/addChoice.ts";
 import { fetchTracks, deleteTrack } from "./api.ts";
 import { usePlayer } from "./usePlayer.ts";
 import { Uploader } from "./components/Uploader.tsx";

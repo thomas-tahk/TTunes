@@ -1,8 +1,11 @@
 # Chief state
-Vision: docs/chief/vision.md (local app on his Mac, no hosting)
-Phase: Review done for M1 → next: Shape/Plan M2 (needs him at his Mac; cloud runs Build only)
-Next action: he presses Merge on PR #18; then at his Mac run Shape for M2: what "publish eventually" means vs non-goals, plus polish list in docs/milestones/M1.md "His review" (visible queue, real Library view, file/edge-case testing)
-Waiting on him: Merge button on https://github.com/thomas-tahk/TTunes/pull/18
-Open questions: docs/questions/M1.md; "publish" meaning (Shape)
-Escaped bug lesson: real yt-dlp only testable on his Mac; launcher could check yt-dlp age (M2 candidate)
-Updated: 2026-11-04
+Vision: docs/chief/vision.md (hosted shared station; Mac app = Part 1, done)
+Phase: Review — M2 hosted station (PR to main open, needs-you); Build — M3 requests (branch m3-requests, M2 merged in)
+His ask (2026-11-07): build M2 → M3 → M4 through to ready-for-check without stopping
+M2: all built + QA'd locally; report docs/milestones/M2.md; go-live #27 waits on #28
+M3: #29–#32 merged; #36 (30-day rule for request rows) in review fix round 2 on m3-fix-36; then whole-M3 review + QA + report
+M4: #34 README, #35 demo video — branch off m3 after M3 is ready
+Branching: one branch per milestone, chained; M3 PR opens only after M2 merges — no stacked PRs
+Waiting on him: M2 PR (merge + 3 wording/behaviour calls); one-time setup https://github.com/thomas-tahk/TTunes/issues/28 (needed only for go-live)
+Open questions: docs/questions/M2.md
+Updated: 2026-11-07
