@@ -212,6 +212,7 @@ footer .signin { margin-left: 0; font-size: 0.9rem; font-weight: 600; }
 .look-switch legend { float: left; padding: 0 6px 0 0; font-size: 0.85rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
 .look-switch label { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 14px; border: 2px solid #fff; color: #fff; font-weight: 800; font-size: 0.95rem; cursor: pointer; }
 .look-switch label.on { background: #fff; color: var(--wash-deep); }
+.look-switch label.on span::before { content: "\2713\00a0" / ""; }
 .look-switch input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
 .look-switch label:focus-within { outline: 3px solid var(--drawer-bg); outline-offset: 3px; }
 header { flex-wrap: wrap; }
@@ -240,6 +241,11 @@ header .owner-badge { margin-left: 0; }
   .drawer-tab[aria-expanded="true"] { right: 0; }
   .drawer { position: static; width: auto; max-width: none; margin: 28px calc(-1 * var(--pad)) 0; padding: 24px var(--pad) 40px; box-shadow: none; }
   .drawer-head h2 { font-size: 2.3rem; }
+  /* long titles must not push the player off the first screen: smaller type, tied to the height */
+  h1.title-xl { font-size: clamp(34px, min(22cqw, 11vh), 200px); }
+  h1.title-l { font-size: clamp(30px, min(16cqw, 9vh), 150px); }
+  h1.title-m { font-size: clamp(28px, min(12cqw, 7vh), 104px); }
+  h1.title-s { font-size: clamp(26px, min(9cqw, 5.5vh), 72px); }
 }
 @media (max-width: 999px) and (max-height: 700px) {
   header { padding: 10px 0 0; }

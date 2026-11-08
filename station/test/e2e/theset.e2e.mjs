@@ -9,7 +9,7 @@ import { SignJWT } from "jose";
 import pg from "pg";
 import { chromium } from "playwright";
 import { freePort, startDevServer } from "./devServer.mjs";
-import { openDrawer, playerClearOfDrawer, playerInViewport } from "./drawer.mjs";
+import { openDrawer, playerClearOfDrawer } from "./drawer.mjs";
 
 const PORT = await freePort();
 const BASE = `http://127.0.0.1:${PORT}/`;
@@ -39,7 +39,7 @@ const run = (cmd) => new Promise((ok, bad) => spawn("npm", ["run", cmd], { env, 
 await run("db:migrate");
 const db = new pg.Pool({ connectionString: DB_URL });
 await db.query("truncate queue, station_state, play_history, activity_log, songs, requests, request_attempts cascade");
-await db.query("insert into songs (video_id, title, duration_sec) values ('seedSong001','Strawberry Letter 23',300),('seedSong002','Ain''t No Mountain High Enough',300),('seedSong003','Golden Hour',200)");
+await db.query("insert into songs (video_id, title, duration_sec) values ('seedSong001','A Very Long Song Title That Goes On And On (Official Extended Remastered Audio) feat. Many Guests',300),('seedSong002','A Very Long Song Title That Goes On And On (Official Extended Remastered Audio) feat. Many Guests',300),('seedSong003','A Very Long Song Title That Goes On And On (Official Extended Remastered Audio) feat. Many Guests',200)"); // longest title in use, whichever song is on air
 await db.query(`insert into requests (video_id, title, duration_sec, name, dedication, status, listener_id, queued_at) values
   ('seedSong003','Golden Hour',200,'3rd floor','for whoever fixed the coffee machine','queued','l1',now()),
   ('seedSong002','Ain''t No Mountain High Enough',300,'night shift','to stay awake till 6','waiting','l2',null)`);
@@ -130,16 +130,17 @@ try {
     window.scrollTo(0, 0);
     return bad;
   });
-  for (const [w, h] of [[320, 700], [375, 812], [600, 800], [768, 1024], [999, 800], [1000, 800], [1100, 800], [1280, 800], [1920, 1080], [667, 375], [900, 720], [1280, 600]]) {
+  for (const [w, h] of [[320, 700], [375, 812], [600, 800], [768, 1024], [999, 800], [1000, 800], [1100, 800], [1280, 800], [1920, 1080], [667, 375], [900, 720], [1280, 600], [800, 760], [600, 701], [900, 600]]) {
     await page.setViewportSize({ width: w, height: h });
     await sleep(250);
     const host = await page.locator(".player-host").boundingBox();
-    const wide = host.width >= 356;
+    const wide = w >= 356; // below 356px wide the 200px minimum wins over 16:9
     check(host.height >= 200 && (!wide || Math.abs(host.width / host.height - 16 / 9) < 0.03), `@${w}x${h}: player ${Math.round(host.width)}x${Math.round(host.height)} is >= 200 tall${wide ? " and 16:9" : " (200px minimum wins)"}`);
     check(host.x >= -0.5 && host.x + host.width <= w + 0.5, `@${w}x${h}: player fully inside the viewport width`);
     if (w <= 1280) check(await noScroll(page), `@${w}x${h}: no horizontal scroll`);
+    if (w <= 999 && h >= 600) check(host.y + host.height <= h, `@${w}x${h}: whole player on the first screen (bottom ${Math.round(host.y + host.height)})`);
   }
-  for (const [w, h] of [[900, 720], [667, 375], [375, 812], [320, 640], [1100, 700], [1280, 800]]) {
+  for (const [w, h] of [[900, 720], [667, 375], [375, 812], [320, 640], [1000, 800], [1100, 700], [1280, 800]]) {
     await page.setViewportSize({ width: w, height: h });
     for (const openIt of [false, true]) {
       const tab = page.locator(".drawer-tab");
@@ -147,6 +148,7 @@ try {
       await sleep(400);
       const bad = await fixedOverlap();
       check(bad === null, `@${w}x${h} drawer ${openIt ? "open" : "closed"}: nothing fixed overlaps the player at any scroll (8px steps)${bad ? " " + bad : ""}`);
+      if (openIt && w >= 356) { const hb = await page.locator(".player-host").boundingBox(); check(hb.width >= 356 && Math.abs(hb.width / hb.height - 16 / 9) < 0.03, `@${w}x${h} drawer open: player ${Math.round(hb.width)}x${Math.round(hb.height)} is true 16:9`); }
       if (openIt) check((await playerClearOfDrawer(page)).ok, `@${w}x${h} drawer open: player >= 200 tall and clear of the drawer`);
       if (w <= 1280) check(await noScroll(page), `@${w}x${h} drawer ${openIt ? "open" : "closed"}: no horizontal scroll`);
     }
