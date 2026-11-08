@@ -24,6 +24,7 @@ if (!DB_URL || !/^postgres:\/\/[^/]*(localhost|127\.0\.0\.1)/.test(DB_URL) || /t
 const catalog = {
   musicVid001: { title: "Neon Skyline (Official Audio)", duration: "PT3M42S", category: "10" },
   musicVid002: { title: "Midnight Drive (Official Audio)", duration: "PT3M10S", category: "10" },
+  musicVid003: { title: "Sunrise Drive (Official Audio)", duration: "PT3M5S", category: "10" },
 };
 const youtubeStub = createServer((req, res) => {
   const ids = (new URL(req.url, "http://x").searchParams.get("id") ?? "").split(",");
@@ -148,8 +149,14 @@ try {
   await b.getByLabel("Song or artist to find").fill("neon");
   await b.getByRole("button", { name: "Find", exact: true }).click();
   await b.getByTestId("search-results").waitFor();
-  await b.getByRole("button", { name: /Choose Neon Skyline/ }).click();
-  check((await b.getByTestId("picked").textContent()).includes("Neon Skyline"), "picking a search result shows the choice");
+  check((await b.getByRole("button", { name: "Send request" }).count()) === 0, "no Send request until a result is opened");
+  const head = b.getByRole("button", { name: /Neon Skyline/ });
+  check((await head.getAttribute("aria-expanded")) === "false", "result starts collapsed");
+  await head.focus();
+  await b.keyboard.press("Enter");
+  check((await head.getAttribute("aria-expanded")) === "true", "Enter expands the result in place");
+  check((await b.getByTestId("song-length").textContent()).includes("3:42"), "expanded card shows the length");
+  check(await b.getByRole("button", { name: "Send request" }).evaluate((el) => el === document.activeElement), "focus moved to Send request");
   await shot(b, "search");
 
   // Refusal text from the server is shown (already coming up / playing).
@@ -158,6 +165,24 @@ try {
   await b.getByRole("alert").filter({ hasText: /./ }).first().waitFor();
   check((await b.getByRole("alert").first().textContent()).length > 5, "server refusal text is shown, not swallowed");
   await shot(b, "refused");
+
+  // Third listener: search, tap a result, Send request from the expanded card -> it shows in the feed.
+  const dana = await open({ width: 1280, height: 900 }, "203.0.113.88");
+  const neonTwo = { videoId: "musicVid003", title: "Sunrise Drive (Official Audio)", channelTitle: "Night", durationSec: 190, thumbnail: "https://i.ytimg.com/vi/musicVid003/hqdefault.jpg" };
+  await dana.route("**/api/requests/search?**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ results: [neonTwo, { ...neonTwo, videoId: "musicVid001", title: "Other Result" }] }) }));
+  await dana.getByLabel("Your name").fill("Dana");
+  await dana.getByRole("button", { name: "Search by name" }).click();
+  await dana.getByLabel("Song or artist to find").fill("sunrise");
+  await dana.getByRole("button", { name: "Find", exact: true }).click();
+  await dana.getByTestId("search-results").waitFor();
+  await dana.getByRole("button", { name: /Other Result/ }).click();
+  await dana.getByRole("button", { name: /Sunrise Drive/ }).click();
+  check((await dana.getByTestId("song-card").locator(".song-card-body").count()) === 1, "only one card is open at a time");
+  await shot(dana, "card");
+  await dana.getByRole("button", { name: "Send request" }).click();
+  await dana.getByTestId("mine").waitFor();
+  await dana.getByTestId("feed-row").filter({ hasText: "Sunrise Drive" }).first().waitFor();
+  check(true, "listener's Send request from the card shows in the feed");
 
   // Full list: 30 rows must keep their height and the list must scroll, not squash.
   await db.query(`insert into requests (video_id, title, duration_sec, name, dedication, status, listener_id)

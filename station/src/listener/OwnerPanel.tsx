@@ -3,16 +3,16 @@ import type { NowPlaying } from "../../lib/schedule.ts";
 import { DrawerPanel, type DrawerTab } from "./Drawer.tsx";
 import { OwnerAccount } from "./OwnerAccount.tsx";
 import { OwnerControls } from "./OwnerControls.tsx";
-import { call, messageOf, minutes, NETWORK_MESSAGE } from "./ownerFetch.ts";
-import { type SearchPick, SongSearch } from "./SongSearch.tsx";
+import { call, messageOf, NETWORK_MESSAGE } from "./ownerFetch.ts";
+import { SongCard, type SongPick } from "./SongCard.tsx";
+import { SongSearch } from "./SongSearch.tsx";
 import type { useOwnerRequests } from "./useOwnerRequests.ts";
 
-type Preview = SearchPick;
+type Preview = SongPick;
 type Position = "next" | "queue";
 type Step =
   | { kind: "idle" }
   | { kind: "busy"; what: string }
-  | { kind: "preview"; preview: Preview }
   | { kind: "confirm"; preview: Preview; position: Position; question: string }
   | { kind: "error"; message: string }
   | { kind: "done"; message: string };
@@ -56,13 +56,17 @@ export function OwnerPanel({ playing, onPlaying, requests, tab }: PanelProps) {
   const [adds, setAdds] = useState(0); // bumps on every successful add so the open list refetches
   const [url, setUrl] = useState("");
   const [step, setStep] = useState<Step>({ kind: "idle" });
+  const [linked, setLinked] = useState<Preview | null>(null); // the card for a pasted link
 
   async function lookUp(event: React.FormEvent) {
     event.preventDefault();
+    setLinked(null);
     setStep({ kind: "busy", what: "Checking the link…" });
     try {
       const { status, body } = await call("POST", "/api/owner/preview", { url });
-      setStep(status === 200 ? { kind: "preview", preview: body as unknown as Preview } : { kind: "error", message: messageOf(body) });
+      if (status !== 200) return setStep({ kind: "error", message: messageOf(body) });
+      setStep({ kind: "idle" });
+      setLinked(body as unknown as Preview);
     } catch {
       setStep({ kind: "error", message: NETWORK_MESSAGE });
     }
@@ -75,6 +79,7 @@ export function OwnerPanel({ playing, onPlaying, requests, tab }: PanelProps) {
       if (status === 409) return setStep({ kind: "confirm", preview, position, question: messageOf(body) });
       if (status !== 200) return setStep({ kind: "error", message: messageOf(body) });
       setUrl("");
+      setLinked(null);
       setStep({ kind: "done", message: `Added "${preview.title}" ${position === "next" ? "as up next" : "to the end of the queue"}.` });
       setAdds((n) => n + 1);
       onPlaying(body.playing as NowPlaying);
@@ -83,7 +88,34 @@ export function OwnerPanel({ playing, onPlaying, requests, tab }: PanelProps) {
     }
   }
 
-  const preview = step.kind === "preview" || step.kind === "confirm" ? step.preview : null;
+  function actionsFor(pick: SongPick) {
+    if (step.kind === "confirm" && step.preview.videoId === pick.videoId) {
+      return (
+        <div className="owner-confirm" role="alert">
+          <p>{step.question}</p>
+          <div className="owner-actions">
+            <button type="button" className="btn small" autoFocus onClick={() => void add(pick, step.position, true)}>
+              Add anyway
+            </button>
+            <button type="button" className="btn small ghost" onClick={() => setStep({ kind: "idle" })}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="owner-actions">
+        <button type="button" className="btn small" onClick={() => void add(pick, "next")}>
+          Play next
+        </button>
+        <button type="button" className="btn small ghost" onClick={() => void add(pick, "queue")}>
+          Add to queue
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="owner-panel">
       <DrawerPanel id="add" tab={tab} owner>
@@ -94,46 +126,21 @@ export function OwnerPanel({ playing, onPlaying, requests, tab }: PanelProps) {
         <div className="owner-row">
           <input id="song-url" type="text" inputMode="url" autoComplete="off" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Paste a YouTube link" />
           <button type="submit" className="btn small" disabled={!url.trim() || step.kind === "busy"}>
-            Preview
+            Look up
           </button>
         </div>
       </form>
-      <SongSearch endpoint="/api/owner/search" inputId="song-search" label="Search YouTube" buttonLabel="Search" inForm onPick={(pick) => setStep({ kind: "preview", preview: pick })} />
+      <SongSearch endpoint="/api/owner/search" inputId="song-search" label="Search YouTube" buttonLabel="Search" inForm collapseKey={adds} renderActions={actionsFor} />
       <div aria-live="polite" className="owner-status">
         {step.kind === "busy" && <p>{step.what}</p>}
         {step.kind === "error" && <p className="owner-error" role="alert">{step.message}</p>}
         {step.kind === "done" && <p className="owner-done">{step.message}</p>}
       </div>
-      {preview && (
-        <div className="owner-preview" data-testid="preview">
-          <img src={preview.thumbnail} alt={`Thumbnail of ${preview.title}`} width={160} height={90} />
-          <div className="owner-meta">
-            <strong data-testid="preview-title">{preview.title}</strong>
-            <span>{minutes(preview.durationSec)}</span>
-          </div>
-          {step.kind === "preview" && (
-            <div className="owner-actions">
-              <button type="button" className="btn small" onClick={() => void add(preview, "next")}>
-                Play next
-              </button>
-              <button type="button" className="btn small ghost" onClick={() => void add(preview, "queue")}>
-                Add to queue
-              </button>
-            </div>
-          )}
-          {step.kind === "confirm" && (
-            <div className="owner-confirm" role="alert">
-              <p>{step.question}</p>
-              <div className="owner-actions">
-                <button type="button" className="btn small" autoFocus onClick={() => void add(preview, step.position, true)}>
-                  Add anyway
-                </button>
-                <button type="button" className="btn small ghost" onClick={() => setStep({ kind: "preview", preview })}>
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
+      {linked && (
+        <div data-testid="preview">
+          <SongCard pick={linked} open focusOnOpen={false} onToggle={() => setLinked(null)}>
+            {actionsFor(linked)}
+          </SongCard>
         </div>
       )}
       </section>

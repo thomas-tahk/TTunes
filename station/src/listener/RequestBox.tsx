@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { call, messageOf, minutes, NETWORK_MESSAGE } from "./ownerFetch.ts";
-import { type SearchPick, SongSearch } from "./SongSearch.tsx";
+import { call, messageOf, NETWORK_MESSAGE } from "./ownerFetch.ts";
+import { SongSearch } from "./SongSearch.tsx";
 import { type Mine, type Mode, type PostedRequest, saveName, savedName } from "./useRequests.ts";
 
 const MAX_DEDICATION = 140;
@@ -38,17 +38,24 @@ export function RequestBox({ mine, mode, onPosted }: Props) {
   const [dedication, setDedication] = useState("");
   const [by, setBy] = useState<"link" | "search">("link");
   const [link, setLink] = useState("");
-  const [picked, setPicked] = useState<SearchPick | null>(null);
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
 
-  const target = by === "link" ? link.trim() : (picked?.videoId ?? "");
-  const ready = name.trim().length > 0 && target.length > 0 && !busy;
+  const nameInput = useRef<HTMLInputElement>(null);
 
-  async function submit(event: React.FormEvent) {
+  function submitLink(event: React.FormEvent) {
     event.preventDefault();
-    if (!ready) return;
+    if (by === "link" && link.trim()) void send(link.trim());
+  }
+
+  async function send(target: string) {
+    if (busy) return;
+    if (!name.trim()) {
+      setError("Type your name first, then send.");
+      nameInput.current?.focus();
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -58,7 +65,6 @@ export function RequestBox({ mine, mode, onPosted }: Props) {
       if (status === 201) {
         saveName(name.trim());
         setLink("");
-        setPicked(null);
         setDedication("");
         setSent(true);
         await onPosted(reply.request as PostedRequest);
@@ -86,9 +92,9 @@ export function RequestBox({ mine, mode, onPosted }: Props) {
             {mode === "approve" && " Every request waits for approval."}
             {mode === "open" && " Music requests play on their own; others wait for approval."}
           </p>
-          <form onSubmit={submit}>
+          <form onSubmit={submitLink}>
             <label htmlFor="req-name">Your name</label>
-            <input id="req-name" maxLength={30} autoComplete="nickname" value={name} onChange={(e) => setName(e.target.value)} />
+            <input id="req-name" ref={nameInput} maxLength={30} autoComplete="nickname" value={name} onChange={(e) => setName(e.target.value)} />
             <label htmlFor="req-ded">Dedication (optional)</label>
             <textarea
               id="req-ded"
@@ -108,17 +114,24 @@ export function RequestBox({ mine, mode, onPosted }: Props) {
                 <input id="req-link" inputMode="url" autoComplete="off" value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://youtu.be/…" />
               </>
             ) : (
-              <>
-                <SongSearch endpoint="/api/requests/search" inputId="req-search" label="Song or artist to find" buttonLabel="Find" onPick={setPicked} />
-                {picked && (
-                  <p className="picked" data-testid="picked">
-                    Chosen: <strong>{picked.title}</strong> ({minutes(picked.durationSec)})
-                  </p>
+              <SongSearch
+                endpoint="/api/requests/search"
+                inputId="req-search"
+                label="Song or artist to find"
+                buttonLabel="Find"
+                renderActions={(pick) => (
+                  <div className="owner-actions">
+                    <button type="button" className="btn small send" disabled={busy} onClick={() => void send(pick.videoId)}>
+                      {busy ? "Sending…" : "Send request"}
+                    </button>
+                  </div>
                 )}
-              </>
+              />
             )}
             <div aria-live="polite">{error && <p className="owner-error" role="alert">{error}</p>}</div>
-            <button type="submit" className="btn send" disabled={!ready}>{busy ? "Sending…" : "Send request"}</button>
+            {by === "link" && (
+              <button type="submit" className="btn send" disabled={!link.trim() || busy}>{busy ? "Sending…" : "Send request"}</button>
+            )}
           </form>
         </>
       )}
