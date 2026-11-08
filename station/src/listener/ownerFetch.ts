@@ -9,6 +9,10 @@ export async function call(method: string, path: string, body?: object): Promise
 }
 
 export const messageOf = (body: Record<string, unknown>): string => (typeof body.error === "string" ? body.error : "Something went wrong. Try again.");
+/** Note after Undo-delete: the server's message when it restored the song without re-queuing it, else the plain confirmation. */
+export const restoreNote = (title: string, body: Record<string, unknown>): string =>
+  body.restoredToQueue === 0 && typeof body.message === "string" ? body.message : `Restored "${title}".`;
+
 export const NETWORK_MESSAGE = "Couldn't reach the station. Try again.";
 
 export function minutes(sec: number): string {

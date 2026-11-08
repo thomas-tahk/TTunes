@@ -170,12 +170,12 @@ it("a YouTube outage removes nothing, fails loudly, and still takes the backup",
   expect((await sharedDb().query("select 1 from library_exports")).rowCount).toBe(1);
 });
 
-it("cron deletes finished requests 29+ days old, expires old queued ones, leaves fresh rows alone", async () => {
+it("cron deletes finished requests 28+ days old, expires old queued ones, leaves fresh rows alone", async () => {
   const db = sharedDb();
   await db.query("truncate requests, request_attempts cascade");
   const rows: [string, string, number][] = [
     ["oldPlayed01", "played", 31], ["oldDenied01", "denied", 31], ["oldExpired1", "expired", 31], ["oldQueued01", "queued", 31],
-    ["freshPlay01", "played", 28], ["freshQueue1", "queued", 28],
+    ["edgePlay001", "played", 28], ["freshPlay01", "played", 27], ["freshQueue1", "queued", 27],
   ];
   for (const [vid, status, days] of rows) {
     await db.query(
@@ -281,10 +281,10 @@ it("keeps only the last 14 exports", async () => {
   expect(rows[13].data.songs).toEqual([{ videoId: "a", addedAt: expect.any(String) }]); // no title/duration saved
 });
 
-it("daily cron strips YouTube titles from activity_log rows older than 30 days, keeps newer ones", async () => {
+it("daily cron strips YouTube titles from activity_log rows older than 28 days, keeps newer ones", async () => {
   const db = sharedDb();
   await db.query("delete from activity_log");
-  const old = "now() - interval '31 days'";
+  const old = "now() - interval '29 days'";
   await db.query(`insert into activity_log (who, what, at, details) values
     ('owner','queue_move', ${old}, '{"videoId":"a","title":"Old Song","from":1}'),
     ('owner','skip', ${old}, '{"skipped":{"videoId":"a","title":"Old"},"next":{"videoId":"b","title":"Next"}}'),
@@ -302,7 +302,7 @@ it("purging an expired trashed song logs its videoId only, no title", async () =
   const db = sharedDb();
   await db.query("delete from activity_log");
   await addSong("gone", 1);
-  await db.query("update songs set deleted_at = now() - interval '31 days' where video_id = 'gone'");
+  await db.query("update songs set deleted_at = now() - interval '29 days' where video_id = 'gone'");
   expect(await purgeTrash(db)).toEqual(["gone"]);
   const { rows } = await db.query("select details from activity_log where what = 'trash_purged'");
   expect(rows).toEqual([{ details: { videoId: "gone" } }]);

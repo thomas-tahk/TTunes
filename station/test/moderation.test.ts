@@ -184,7 +184,31 @@ describe("remove", () => {
   });
 });
 
+describe("wasStatus", () => {
+  it("remove reports the status the request had under the lock: playing, then queued", async () => {
+    const a = await listen("gamingVid01");
+    await act(a, "approve");
+    await getNowPlaying(sharedDb(), Date.now);
+    expect((await act(a, "remove")).json.wasStatus).toBe("playing");
+    const b = await listen("gamingVid02");
+    await act(b, "approve");
+    expect((await act(b, "remove")).json.wasStatus).toBe("queued");
+  });
+});
+
 describe("keep", () => {
+  it("a newly kept song counts as heard this shuffle cycle, so it is not replayed at once", async () => {
+    const id = await listen("gamingVid01");
+    await act(id, "approve");
+    await getNowPlaying(sharedDb(), Date.now);
+    expect((await act(id, "keep")).status).toBe(200);
+    const cycle = (await sharedDb().query("select cycle from station_state where id = 1")).rows[0].cycle;
+    expect(cycle.played).toContain("gamingVid01");
+    expect(cycle.unplayed).not.toContain("gamingVid01");
+    expect((await act(id, "keep")).json.alreadyInLibrary).toBe(true);
+    expect((await sharedDb().query("select cycle from station_state where id = 1")).rows[0].cycle.played.filter((v: string) => v === "gamingVid01")).toHaveLength(1);
+  });
+
   it("adds a playing or played request's song to the library once; repeating is a no-op; one log row", async () => {
     const id = await listen("gamingVid01");
     await act(id, "approve");

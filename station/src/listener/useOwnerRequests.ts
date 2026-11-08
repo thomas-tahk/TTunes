@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { NowPlaying } from "../../lib/schedule.ts";
 import { call, messageOf, NETWORK_MESSAGE } from "./ownerFetch.ts";
-import { createStaleGuard, withAllWaiting } from "./ownerRequestsLogic.ts";
+import { createStaleGuard, doneNote, withAllWaiting } from "./ownerRequestsLogic.ts";
 import type { FeedItem, Mode } from "./useRequests.ts";
 
 export type Action = "approve" | "deny" | "remove" | "keep";
@@ -10,13 +10,6 @@ export interface Note {
   error?: boolean;
 }
 export type OwnerFeed = { status: "loading" } | { status: "error"; message: string } | { status: "ready"; mode: Mode; waitingCount: number; requests: FeedItem[] };
-
-const DONE: Record<Action, string> = {
-  approve: "Approved. It is queued.",
-  deny: "Denied. It will not play.",
-  remove: "Removed from the feed.",
-  keep: "Added to the library.",
-};
 
 /**
  * The owner's view of requests (uncached). Reloads on the same trigger as the public feed: `playing` changes identity on join,
@@ -64,7 +57,7 @@ export function useOwnerRequests(enabled: boolean, playing: NowPlaying | null) {
         if (status === 200 || status === 409) patch(body.request as FeedItem, body.waitingCount as number);
         if (status === 200) {
           if (action === "keep") setKept((k) => new Set(k).add(id));
-          setNote({ text: body.alreadyInLibrary ? "That song was already in the library." : DONE[action] });
+          setNote({ text: body.alreadyInLibrary ? "That song was already in the library." : doneNote(action, body.wasStatus as string | undefined) });
         } else {
           setNote({ text: messageOf(body), error: true });
           gone = status === 404;

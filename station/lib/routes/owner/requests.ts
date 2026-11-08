@@ -7,7 +7,7 @@ import { countWaiting, getMode, listForModeration, MODERATIONS, MODES, moderate,
 // GET  /api/owner/requests -> {mode, waitingCount, waiting:[Item], requests:[Item]}
 //      waiting = live waiting requests, oldest first (waitingCount = its length, for the badge: no polling needed);
 //      requests = the recent public feed, newest first, max 30 (denied ones are not in it). Item = {id,name,dedication,videoId,title,durationSec,thumbnail,status,createdAt}.
-// POST /api/owner/requests/moderate {id, action: approve|deny|remove|keep} -> {request: Item, waitingCount, alreadyInLibrary?}
+// POST /api/owner/requests/moderate {id, action: approve|deny|remove|keep} -> {request: Item, waitingCount, alreadyInLibrary?, wasStatus?} (wasStatus = status just before the action, read under the lock)
 //      approve: waiting -> queued, at the back of the requests line. deny: waiting -> denied. remove: any status but denied -> denied (hidden from the feed;
 //      a playing song keeps playing, use skip to stop it). keep: played or playing -> the song joins the library (alreadyInLibrary:true when it was there).
 //      400 {error} bad id/action; 404 {error} no such request; 409 {error, request: Item, waitingCount, code?} the request's current state does not allow the action (code "already_coming_up" when approving a song that is playing, in the owner queue or already queued as a request).
@@ -23,7 +23,7 @@ export const requestModerate = ownerEndpoint("POST", async ({ db, body }) => {
   if (typeof id !== "number" || !Number.isSafeInteger(id) || id < 1) return { status: 400, body: { error: "id must be a request id" } };
   if (typeof action !== "string" || !MODERATIONS.includes(action as Moderation)) return { status: 400, body: { error: `action must be one of ${MODERATIONS.join(", ")}` } };
   const result = await moderate(db, id, action as Moderation, Date.now);
-  if (result.ok) return { status: 200, body: { request: result.request, waitingCount: await waitingCount(db), ...(result.alreadyInLibrary && { alreadyInLibrary: true }) } };
+  if (result.ok) return { status: 200, body: { request: result.request, waitingCount: await waitingCount(db), ...(result.alreadyInLibrary && { alreadyInLibrary: true }), ...(result.wasStatus && { wasStatus: result.wasStatus }) } };
   if (result.status === 404) return { status: 404, body: { error: result.error } };
   if (result.status !== 409) return { status: result.status, body: { error: result.error } }; // Keep's YouTube lookup failed
   return { status: 409, body: { error: result.error, ...(result.code && { code: result.code }), request: result.request, waitingCount: await waitingCount(db) } };

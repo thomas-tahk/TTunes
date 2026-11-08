@@ -2,7 +2,7 @@ import type { Mode } from "./useRequests.ts";
 import type { OwnerFeed } from "./useOwnerRequests.ts";
 
 const CHOICES: { mode: Mode; label: string; hint: string }[] = [
-  { mode: "open", label: "Open", hint: "Requests are queued right away." },
+  { mode: "open", label: "Open", hint: "Music under 10 minutes plays without waiting; anything else waits for you." },
   { mode: "approve", label: "Approve first", hint: "Every request waits until you approve it." },
   { mode: "off", label: "Off", hint: "Nobody can send requests." },
 ];
