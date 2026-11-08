@@ -72,6 +72,7 @@ try {
   await lp.getByRole("button", { name: "Check again" }).click();
   await lp.getByTestId("next-title").waitFor();
   check(true, "off-air tab picks up the first songs via Check again");
+  await lp.getByRole("link", { name: /^Owner sign-in/ }).waitFor();
   check((await lp.getByRole("link", { name: /^Owner sign-in/ }).count()) === 1, "listener sees the Sign in link");
   check((await lp.getByRole("heading", { name: "Add song" }).count()) === 0, "listener sees no Add song panel");
 

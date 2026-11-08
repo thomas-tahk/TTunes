@@ -8,7 +8,7 @@ import { SignJWT } from "jose";
 import pg from "pg";
 import { chromium } from "playwright";
 import { freePort, startDevServer } from "./devServer.mjs";
-import { openDrawer, playerClearOfDrawer } from "./drawer.mjs";
+import { openDrawer, playerClearOfDrawer, playerInViewport } from "./drawer.mjs";
 
 const PORT = await freePort();
 const BASE = `http://127.0.0.1:${PORT}/`;
@@ -103,7 +103,7 @@ try {
   await shot(listener, "listener", 1280, 800);
   await shot(listener, "listener", 375, 812);
   check(await noScroll(listener), "listener: no horizontal scroll at 375px");
-  const frame = await listener.locator(".player-frame").boundingBox();
+  const frame = await listener.locator(".player-host").boundingBox();
   check(frame.height >= 200 && Math.abs(frame.width / frame.height - 16 / 9) < 0.03, `player is 16:9 and >= 200px tall (${frame.width}x${frame.height})`);
 
   // First-visit hint: shows, never covers the player, gone for good after dismiss + reload.
@@ -139,11 +139,11 @@ try {
   check((await listener.getByRole("link", { name: /^Owner sign-in \(station owner only\)$/ }).count()) === 1, "footer owner sign-in link present");
   check((await listener.getByRole("link", { name: "Sign in", exact: true }).count()) === 0, "no header Sign in button");
 
-  // Requests off: no hint, no request line, tab says Queue.
+  // Requests off: no hint, no request line, tab says Requests.
   await db.query("update settings set value = 'off' where key = 'request_mode'");
   const offPage = await open({ viewport: { width: 1280, height: 800 } });
   await offPage.goto(BASE);
-  await offPage.getByRole("button", { name: "Queue", exact: true }).waitFor();
+  await offPage.getByRole("button", { name: "Requests", exact: true }).waitFor();
   await sleep(500);
   check((await offPage.getByRole("region", { name: "Tip" }).count()) === 0, "requests off: no hint");
   check((await offPage.getByText("Anyone can request a song.").count()) === 0, "requests off: request line hidden");
@@ -160,8 +160,12 @@ try {
   await listener.keyboard.press("Escape");
   check((await tab.getAttribute("aria-expanded")) === "false", "Escape closes the drawer");
   check(await tab.evaluate((el) => el === document.activeElement), "focus returns to the yellow tab");
-  await tab.click();
   await listener.setViewportSize({ width: 375, height: 812 });
+  await tab.click(); // opened AT phone width
+  await listener.getByRole("heading", { name: "Request a song" }).waitFor();
+  await sleep(600);
+  const inView = await playerInViewport(listener);
+  check(inView.ok, `listener drawer open @375: player still inside the viewport (top ${Math.round(inView.box.y)})`);
   check((await playerClearOfDrawer(listener)).ok, "listener drawer open @375: sits below the player");
   check(await noScroll(listener), "listener drawer open @375: no horizontal scroll");
   await shot(listener, "listener-drawer", 375, 812);
@@ -183,6 +187,72 @@ try {
   await shot(long, "long-title", 375, 812);
   check(FALLBACK.every((c) => whiteOn(c) >= 4.5), "fixed fallback colours pass AA");
 
+  // Player size: the video area (inside the border) is >= 200px tall and 16:9 at every width, no sideways scroll.
+  const sizes = await open({ viewport: { width: 1280, height: 800 } });
+  await sizes.goto(BASE);
+  await sizes.getByTestId("now-title").waitFor();
+  await sizes.getByRole("button", { name: /^Play/ }).click(); // the real YouTube iframe (needs internet)
+  await sizes.locator("iframe").waitFor({ state: "attached" });
+  for (const [w, h] of [[1000, 800], [1100, 800], [1280, 800], [320, 700], [375, 812]]) {
+    await sizes.setViewportSize({ width: w, height: h });
+    await sleep(300);
+    const host = await sizes.locator(".player-host").boundingBox();
+    const ifr = await sizes.locator(".player-host iframe").boundingBox();
+    check(host.height >= 200 && ifr.height >= 200 && ifr.width >= 200, `@${w}: player host ${Math.round(host.width)}x${Math.round(host.height)}, iframe ${Math.round(ifr.width)}x${Math.round(ifr.height)} (>= 200 tall)`);
+    check(await noScroll(sizes), `@${w}: no horizontal scroll`);
+  }
+  await shot(sizes, "desktop", 1000, 800);
+
+  // Short phone screens: the fixed bottom bar must not trap the player under it.
+  for (const [w, h] of [[667, 375], [844, 390]]) {
+    await sizes.setViewportSize({ width: w, height: h });
+    await sleep(300);
+    const fits = await sizes.evaluate(() => {
+      const host = document.querySelector(".player-host").getBoundingClientRect();
+      const bar = document.querySelector(".drawer-tab").getBoundingClientRect();
+      const top = host.top + window.scrollY;
+      for (let y = 0; y <= document.documentElement.scrollHeight; y += 10) {
+        if (top - y >= 0 && top - y + host.height <= bar.top) return { y, h: host.height };
+      }
+      return null;
+    });
+    check(fits !== null, `@${w}x${h}: some scroll position shows the whole player above the bottom bar`);
+  }
+  await shot(sizes, "landscape", 667, 375);
+  await sizes.setViewportSize({ width: 900, height: 600 });
+  await sizes.evaluate(() => window.scrollTo(0, 0));
+  await sleep(300);
+  const first = await sizes.evaluate(() => {
+    const host = document.querySelector(".player-host").getBoundingClientRect();
+    return { bottom: host.bottom, bar: document.querySelector(".drawer-tab").getBoundingClientRect().top };
+  });
+  check(first.bottom <= first.bar, `@900x600: first view shows the whole player above the bar (${Math.round(first.bottom)} <= ${Math.round(first.bar)})`);
+
+  // Owner check is slow: nothing owner-or-listener-only flashes before /api/auth/me answers; owner never sees hint or link.
+  for (const isOwner of [true, false]) {
+    const slow = await open({ viewport: { width: 1280, height: 800 }, owner: isOwner });
+    await slow.route("**/api/auth/me", async (route) => { await sleep(1500); await route.continue(); });
+    await slow.goto(BASE);
+    await slow.getByTestId("now-title").waitFor();
+    await sleep(500);
+    check((await slow.getByRole("region", { name: "Tip" }).count()) === 0 && (await slow.getByRole("link", { name: /^Owner sign-in/ }).count()) === 0, `${isOwner ? "owner" : "listener"}: no hint or sign-in link while /api/auth/me is pending`);
+    await sleep(1500);
+    if (isOwner) {
+      await sleep(500);
+      check((await slow.getByRole("region", { name: "Tip" }).count()) === 0 && (await slow.getByRole("link", { name: /^Owner sign-in/ }).count()) === 0, "owner: never sees the hint or sign-in link");
+    } else {
+      check((await slow.getByRole("region", { name: "Tip" }).count()) === 1 && (await slow.getByRole("link", { name: /^Owner sign-in/ }).count()) === 1, "listener: hint and link appear once /api/auth/me answers");
+    }
+  }
+
+  // Hint is only for a working station: not on the error page.
+  const errHint = await open({ viewport: { width: 1280, height: 800 } });
+  await errHint.route("**/api/now**", (route) => route.fulfill({ status: 500, body: "{}" }));
+  await errHint.goto(BASE);
+  await errHint.getByRole("heading", { name: "Can't reach the station" }).waitFor();
+  await sleep(500);
+  check((await errHint.getByRole("region", { name: "Tip" }).count()) === 0, "error page: no hint");
+
   // Owner: drawer with tabs, both widths.
   const owner = await open({ viewport: { width: 1280, height: 800 }, owner: true });
   await owner.goto(BASE);
@@ -190,7 +260,10 @@ try {
   for (const [name, heading] of [["Requests", "Request a song"], ["Add song", "Add song"], ["Owner tools", "Controls"]]) {
     for (const [w, h] of [[1280, 800], [375, 812]]) {
       await owner.setViewportSize({ width: w, height: h });
+      if ((await owner.locator(".drawer-tab").getAttribute("aria-expanded")) === "true") await owner.keyboard.press("Escape");
       await openDrawer(owner, name);
+      await sleep(600);
+      if (w === 375) check((await playerInViewport(owner)).ok, `owner "${name}" @375: opened at phone width, player still in the viewport`);
       await owner.getByRole("heading", { name: heading }).first().waitFor();
       check((await playerClearOfDrawer(owner)).ok, `owner "${name}" @${w}: player >= 200px tall, drawer covers none of it`);
       check(await noScroll(owner), `owner "${name}" @${w}: no horizontal scroll`);

@@ -27,7 +27,8 @@ export function Drawer({ open, owner, tab, onTab, onToggle, label, children }: P
   useEffect(() => {
     if (open) {
       heading.current?.focus({ preventScroll: true });
-      if (window.matchMedia("(max-width: 999px)").matches) heading.current?.scrollIntoView({ block: "start" }); // phones: the drawer sits below the player
+      // Phones: the drawer sits below the player. Bring the player to the top so it stays on screen with the drawer under it.
+      if (window.matchMedia("(max-width: 999px)").matches) (document.querySelector(".stage") ?? heading.current)?.scrollIntoView({ block: "start" });
     }
     else if (wasOpen.current) opener.current?.focus({ preventScroll: true });
     wasOpen.current = open;
@@ -39,6 +40,16 @@ export function Drawer({ open, owner, tab, onTab, onToggle, label, children }: P
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onToggle]);
+
+  function onTabKey(e: React.KeyboardEvent<HTMLButtonElement>) {
+    const at = TABS.findIndex((t) => t.id === tab);
+    const to = { ArrowRight: at + 1, ArrowLeft: at - 1, Home: 0, End: TABS.length - 1 }[e.key];
+    if (to === undefined) return;
+    e.preventDefault();
+    const next = TABS[(to + TABS.length) % TABS.length];
+    onTab(next.id);
+    document.getElementById(`drawer-tab-${next.id}`)?.focus();
+  }
 
   return (
     <>
@@ -57,7 +68,7 @@ export function Drawer({ open, owner, tab, onTab, onToggle, label, children }: P
         {owner && (
           <div role="tablist" aria-label="Drawer sections" className="drawer-tabs">
             {TABS.map((t) => (
-              <button key={t.id} type="button" role="tab" id={`drawer-tab-${t.id}`} aria-selected={tab === t.id} aria-controls={`drawer-panel-${t.id}`} className={tab === t.id ? "drawer-tab-btn on" : "drawer-tab-btn"} onClick={() => onTab(t.id)}>
+              <button key={t.id} type="button" role="tab" tabIndex={tab === t.id ? 0 : -1} onKeyDown={onTabKey} id={`drawer-tab-${t.id}`} aria-selected={tab === t.id} aria-controls={`drawer-panel-${t.id}`} className={tab === t.id ? "drawer-tab-btn on" : "drawer-tab-btn"} onClick={() => onTab(t.id)}>
                 {t.label}
               </button>
             ))}

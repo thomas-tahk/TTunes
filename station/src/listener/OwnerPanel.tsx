@@ -17,20 +17,23 @@ type Step =
   | { kind: "error"; message: string }
   | { kind: "done"; message: string };
 
-/** False until /api/auth/me says otherwise; failures count as "not owner" (listeners must never see an error here). */
-export function useOwner(): boolean {
-  const [owner, setOwner] = useState(false);
+export type OwnerState = "unknown" | "owner" | "listener";
+
+/** "unknown" until /api/auth/me answers; failures count as "listener" (listeners must never see an error here). */
+export function useOwner(): OwnerState {
+  const [state, setState] = useState<OwnerState>("unknown");
   useEffect(() => {
     let live = true;
+    const set = (next: OwnerState) => live && setState(next);
     fetch("/api/auth/me")
       .then((res) => (res.ok ? res.json() : { owner: false }))
-      .then((body: { owner?: boolean }) => live && setOwner(body.owner === true))
-      .catch(() => undefined);
+      .then((body: { owner?: boolean }) => set(body.owner === true ? "owner" : "listener"))
+      .catch(() => set("listener"));
     return () => {
       live = false;
     };
   }, []);
-  return owner;
+  return state;
 }
 
 export function SignInLink({ owner }: { owner: boolean }) {

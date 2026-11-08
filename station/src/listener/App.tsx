@@ -87,7 +87,8 @@ export function App() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerTab, setDrawerTab] = useState<DrawerTab>("requests");
   const toggleDrawer = useCallback(() => setDrawerOpen((open) => !open), []);
-  const owner = useOwner();
+  const ownerState = useOwner();
+  const owner = ownerState === "owner";
   const [waitingOnRequest, setWaitingOnRequest] = useState(false); // mirrors `mine`, which needs the station's view first
   const { view, serverTime, retry, show } = useStation(shouldPoll({ started, paused, owner, requestActive: waitingOnRequest }));
   const playingNow = view.status === "ready" ? view.playing : null;
@@ -117,7 +118,7 @@ export function App() {
         <Title playing={view.playing} />
         <div className="foot">
           <Visualizer active={started}>
-            {started ? <Player playing={view.playing} serverTime={serverTime} onPausedChange={setPaused} /> : <div className="player-frame idle" />}
+            {started ? <Player playing={view.playing} serverTime={serverTime} onPausedChange={setPaused} /> : <div className="player-frame idle"><div className="player-host" /></div>}
           </Visualizer>
           {!started && (
             <button type="button" className="btn play" onClick={() => setStarted(true)}>
@@ -141,7 +142,7 @@ export function App() {
         {owner && <SignInLink owner />}
       </header>
       <main>{body}</main>
-      <Drawer label={boxMode === "off" ? "Queue" : "Request a song"} open={drawerOpen} owner={owner} tab={drawerTab} onTab={setDrawerTab} onToggle={toggleDrawer}>
+      <Drawer label={boxMode === "off" ? "Requests" : "Request a song"} open={drawerOpen} owner={owner} tab={drawerTab} onTab={setDrawerTab} onToggle={toggleDrawer}>
         <DrawerPanel id="requests" tab={owner ? drawerTab : "requests"} owner={owner}>
           <div className="requests">
             {owner && <RequestSettings feed={ownerRequests.feed} onMode={(mode) => void ownerRequests.setMode(mode)} onReload={() => void ownerRequests.reload()} />}
@@ -155,7 +156,7 @@ export function App() {
         </DrawerPanel>
         {owner && <OwnerPanel playing={playingNow} onPlaying={(playing) => void show(playing)} requests={ownerRequests} tab={drawerTab} />}
       </Drawer>
-      {!owner && !drawerOpen && boxMode !== "off" && !hintGone && (
+      {ownerState === "listener" && playingNow?.current && !drawerOpen && boxMode !== "off" && !hintGone && (
         <div className="hint-bubble" role="region" aria-label="Tip">
           <p>Got a song? Request it here.</p>
           <button type="button" aria-label="Close tip" onClick={dismissHint}>
@@ -163,7 +164,7 @@ export function App() {
           </button>
         </div>
       )}
-      <footer>{!owner && <SignInLink owner={false} />}</footer>
+      <footer>{ownerState === "listener" && <SignInLink owner={false} />}</footer>
     </div>
   );
 }
