@@ -12,7 +12,7 @@ import { type PostedRequest, requestActive, useRequests } from "./useRequests.ts
 import { shouldPoll } from "./timing.ts";
 import { useStation } from "./useStation.ts";
 import { useWash } from "./useWash.ts";
-import { Visualizer } from "./Visualizer.tsx";
+import { PlayerStage } from "./PlayerStage.tsx";
 
 /** Longer titles get smaller type so the whole title always fits the window. */
 function titleSize(title: string) {
@@ -118,9 +118,9 @@ export function App() {
       <>
         <Title playing={view.playing} />
         <div className="foot">
-          <Visualizer active={started}>
-            {started ? <Player playing={view.playing} serverTime={serverTime} onPausedChange={setPaused} /> : <div className="player-frame idle"><div className="player-host" /></div>}
-          </Visualizer>
+          <PlayerStage>
+            {started ? <Player playing={view.playing} serverTime={serverTime} onPausedChange={setPaused} /> : <><div className="player-frame idle"><div className="player-host" /></div><div className="song-indicator" aria-hidden="true" /></>}
+          </PlayerStage>
           {!started && (
             <button type="button" className="btn play" onClick={() => setStarted(true)}>
               <span aria-hidden="true" className="play-icon" />

@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import type { NowPlaying } from "../../lib/schedule.ts";
 import { activeSkip, resolveTarget, skipUnplayable, type LocalSkip } from "./skip.ts";
+import { SongIndicator } from "./SongIndicator.tsx";
 import { useYouTubePlayer } from "./useYouTubePlayer.ts";
 
 interface Props {
@@ -18,7 +19,7 @@ export function Player({ playing, serverTime, onPausedChange }: Props) {
   const latest = useRef({ playing, local, target, serverTime });
   latest.current = { playing, local, target, serverTime };
 
-  useYouTubePlayer(host, {
+  const player = useYouTubePlayer(host, {
     videoId: target.song.videoId,
     startedAt: target.startedAt,
     isLocalStart: activeSkip(playing, local) !== null,
@@ -43,6 +44,7 @@ export function Player({ playing, serverTime, onPausedChange }: Props) {
       <div className="player-frame">
         <div ref={host} className="player-host" />
       </div>
+      {!loadFailed && <SongIndicator player={player} durationSec={target.song.durationSec} />}
       {notice && <p role="status" className="notice">{notice}</p>}
     </>
   );
