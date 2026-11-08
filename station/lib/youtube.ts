@@ -11,6 +11,7 @@ export interface VideoInfo {
   embeddable: boolean;
   categoryId: string;
   channelTitle: string;
+  ageRestricted?: boolean; // contentDetails.contentRating.ytRating === "ytAgeRestricted"
 }
 
 /** YouTube refused because the daily quota or a rate limit is used up. */
@@ -48,7 +49,7 @@ export function parseIsoDuration(iso: string): number {
 interface ApiItem {
   id: string;
   snippet: { title: string; categoryId?: string; channelTitle?: string };
-  contentDetails: { duration: string };
+  contentDetails: { duration: string; contentRating?: { ytRating?: string } };
   status: { embeddable: boolean };
 }
 
@@ -85,7 +86,7 @@ export async function fetchVideos(ids: string[]): Promise<Map<string, VideoInfo>
   const key = apiKey();
   for (let i = 0; i < unique.length; i += MAX_IDS_PER_CALL) {
     for (const item of await fetchBatch(unique.slice(i, i + MAX_IDS_PER_CALL), key)) {
-      found.set(item.id, { videoId: item.id, title: item.snippet.title, durationSec: safeDuration(item), embeddable: item.status.embeddable, categoryId: item.snippet.categoryId ?? "", channelTitle: item.snippet.channelTitle ?? "" });
+      found.set(item.id, { videoId: item.id, title: item.snippet.title, durationSec: safeDuration(item), embeddable: item.status.embeddable, categoryId: item.snippet.categoryId ?? "", channelTitle: item.snippet.channelTitle ?? "", ageRestricted: item.contentDetails.contentRating?.ytRating === "ytAgeRestricted" });
     }
   }
   return found;

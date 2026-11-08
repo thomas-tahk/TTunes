@@ -1,5 +1,6 @@
 import type pg from "pg";
 import { advance, type Random, type Station } from "../shared/station.ts";
+import { denyAgeRestrictedHeads } from "./ageGate.ts";
 import type { Db } from "./db.ts";
 
 export interface Song {
@@ -176,6 +177,7 @@ export async function getNowPlaying(db: Db, clock: Clock): Promise<NowPlaying> {
   const catalog = await loadSongs(db);
   if (!hasEnded(state, catalog, now)) return describe(db, state, catalog, now);
   if (await staysOffAir(db, state, catalog)) return describe(db, state, catalog, now);
+  await denyAgeRestrictedHeads(db, clock);
   return advanceOnce(db, clock);
 }
 
@@ -184,6 +186,7 @@ export type SkipResult = { skipped: true; now: NowPlaying; from: Song | null } |
 /** Owner skip. Takes the same row lock as the lazy advance, so a skip and a natural advance move the
  * station once between them: whoever is second sees a different current song and changes nothing. */
 export async function skipCurrent(db: Db, expectedVideoId: string, clock: Clock): Promise<SkipResult> {
+  await denyAgeRestrictedHeads(db, clock);
   const client = await db.connect();
   try {
     await client.query("begin");
