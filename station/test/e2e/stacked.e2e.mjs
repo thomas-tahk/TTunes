@@ -15,7 +15,11 @@ const PORT = await freePort();
 const BASE = `http://127.0.0.1:${PORT}/`;
 const DB_URL = process.env.DATABASE_URL;
 const SHOTS = process.env.SHOTS_DIR;
-const check = (ok, msg) => { if (!ok) throw new Error(`E2E FAIL: ${msg}`); console.log(`ok  ${msg}`); };
+const check = (ok, msg) => {
+  if (!ok && process.env.KEEP_GOING) return void console.log(`FAIL ${msg}`); // KEEP_GOING=1 lists every failure instead of stopping at the first
+  if (!ok) throw new Error(`E2E FAIL: ${msg}`);
+  console.log(`ok  ${msg}`);
+};
 if (!DB_URL || !/^postgres:\/\/[^/]*(localhost|127\.0\.0\.1)/.test(DB_URL) || /ttunes_station$/.test(DB_URL)) {
   throw new Error("set DATABASE_URL to a fresh local database (not the shared ttunes_station)");
 }
