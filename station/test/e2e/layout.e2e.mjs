@@ -2,6 +2,7 @@
 // Run from station/ with a FRESH local database:
 //   docker compose exec -T db createdb -U ttunes <name>
 //   DATABASE_URL=postgres://ttunes:ttunes@localhost:55432/<name> node test/e2e/layout.e2e.mjs
+// Optional: SHOTS_DIR=<dir/> (trailing slash) writes the before-Play screenshots.
 import { spawn } from "node:child_process";
 import { SignJWT } from "jose";
 import pg from "pg";
@@ -77,14 +78,14 @@ try {
     await tabOrder.waitForTimeout(300);
     await tabOrder.mouse.click(1, 1); // Tab starts from the top of the page, not from where the last look left focus
     const stops = [];
-    for (let i = 0; i < 5; i++) { // Settings, request bar, tip close, Play, owner sign-in: the five stops before focus wraps
+    for (let i = 0; i < 5; i++) { // Settings, Play, request bar, tip close, owner sign-in: the five stops before focus wraps
       await tabOrder.keyboard.press("Tab");
       stops.push(await tabOrder.evaluate(() => { const e = document.activeElement; const r = e.getBoundingClientRect(); return { name: (e.getAttribute("aria-label") || e.textContent || e.className || e.tagName).trim().slice(0, 22), y: Math.round(r.top + window.scrollY) }; }));
     }
     const names = stops.map((s) => `${s.name}@${s.y}`).join(" > ");
     check(stops.every((s, i) => i === 0 || s.y >= stops[i - 1].y - 2), `phone ${look}: Tab follows top-to-bottom order (${names})`);
     check(/^settings$/i.test(stops[0].name), `phone ${look}: the first Tab stop is the Settings button`);
-    check(stops.findIndex((s) => /request a song/i.test(s.name)) < stops.findIndex((s) => /^play/i.test(s.name)), `phone ${look}: request bar comes before Play`);
+    check(stops.findIndex((s) => /^play/i.test(s.name)) < stops.findIndex((s) => /request a song/i.test(s.name)), `phone ${look}: Play comes before the request bar (it is on the first screen, #52)`);
   }
   // Owner on a small landscape screen: the header stays two rows, so the player is on the first screen.
   const owner = await (await browser.newContext()).newPage();
@@ -102,6 +103,36 @@ try {
       check(head.height <= (h > 500 ? 180 : 150), `owner ${look} @${w}x${h} header is at most ${h > 500 ? "three" : "two"} rows (${Math.round(head.height)}px)`);
       check(head.height <= (w <= 480 ? 130 : 100), `owner ${look} @${w}x${h} header with the menu closed is ${w <= 480 ? "two rows" : "one row"} (${Math.round(head.height)}px)`);
       check(pl.y + pl.height <= h + 1, `owner ${look} @${w}x${h} player is on the first screen (bottom ${Math.round(pl.y + pl.height)} of ${h})`);
+    }
+  }
+  // Before Play (#52): on a fresh load the whole Play button is on the first screen, in every look x layout, listener and owner.
+  // Landscape phones (568x320, 667x375) are a known exception and are not asserted. The tip is on (fresh storage), the worst case.
+  const readOrder = [".player-stage", ".play", ".titles", ".up-next", ".player-host"]; // the stage (frame included) leads the reading order; the host is the video area
+  for (const who of ["listener", "owner"]) for (const layout of ["side", "stacked"]) for (const look of ["afterglow", "theset"]) {
+    for (const [w, h] of [[1280, 800], [1366, 768], [1440, 900], [375, 812], [375, 667], [320, 568]]) {
+      const ctx = await browser.newContext({ viewport: { width: w, height: h } });
+      if (who === "owner") await ctx.addCookies([{ name: "ttunes_session", value: ownerToken, url: BASE, httpOnly: true }]);
+      await ctx.addInitScript(([l, k]) => { localStorage.setItem("ttunes.look", l); localStorage.setItem("ttunes.layout", k); }, [look, layout]);
+      const p = await ctx.newPage();
+      await p.goto(BASE);
+      await p.getByTestId("now-title").waitFor();
+      await p.waitForTimeout(400);
+      const g = await p.evaluate((sels) => {
+        const box = (s) => { const r = document.querySelector(s).getBoundingClientRect(); return { x: r.x, y: r.y + scrollY, w: r.width, h: r.height }; };
+        const host = document.querySelector(".player-host").getBoundingClientRect();
+        const top = document.elementFromPoint(host.x + host.width / 2, host.y + host.height / 2);
+        return { boxes: sels.map(box), uncovered: document.querySelector(".player-host").contains(top), noH: document.documentElement.scrollWidth <= innerWidth };
+      }, readOrder);
+      const play = g.boxes[1];
+      const player = g.boxes[4];
+      const ordered = g.boxes.slice(0, 4);
+      const label = `${who} ${layout} ${look} @${w}x${h}`;
+      if (process.env.SHOTS_DIR && who === "listener" && (w === 1280 || w === 320)) await p.screenshot({ path: `${process.env.SHOTS_DIR}preplay-${layout}-${look}-${w}x${h}.png` });
+      check(play.y >= 0 && play.y + play.h <= h, `${label}: Play fully on the first screen (y ${Math.round(play.y)}-${Math.round(play.y + play.h)} of ${h})`);
+      check(player.h >= 199.5 && (Math.abs(player.w / player.h - 16 / 9) < 0.03 || player.h <= 200.5) && g.uncovered && g.noH, `${label}: player ${Math.round(player.w)}x${Math.round(player.h)} 16:9 / >= 200px, uncovered, no horizontal scroll`);
+      const inOrder = ordered.every((b, i) => i === 0 || b.y > ordered[i - 1].y + 2 || (Math.abs(b.y - ordered[i - 1].y) <= 2 && b.x > ordered[i - 1].x));
+      check(inOrder, `${label}: player, Play, title, up next read in DOM order (${ordered.map((b) => `${Math.round(b.x)},${Math.round(b.y)}`).join(" > ")})`);
+      await ctx.close();
     }
   }
   console.log("E2E PASS");

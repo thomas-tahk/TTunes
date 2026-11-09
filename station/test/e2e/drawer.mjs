@@ -1,4 +1,4 @@
-// Shared by the station e2es: the queue/requests/owner tools live in one drawer behind the yellow "Request a song" tab.
+// Shared by the station e2es: the queue/requests/owner tools live in one drawer behind the "Request a song" tab.
 
 /** Opens the header's Settings menu (if closed). Look, Layout and Panel radios only exist while it is open. */
 export async function openSettings(page) {

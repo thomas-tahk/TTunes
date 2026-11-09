@@ -27,6 +27,18 @@ npm run dev
 
 Without `DATABASE_URL` the app uses `postgres://ttunes:ttunes@localhost:55432/ttunes_station`. `npm run db:seed` loads sample songs; local only, never on production.
 
+## What the listener sees
+
+- **Settings menu** (header): Look (Afterglow or The Set), Layout (Side or Stacked) and, in Afterglow, Panel (Dark tinted, Neutral black, Frosted, Cream, Yellow). Saved in `localStorage` (`ttunes.look`, `ttunes.layout`, `ttunes.panel`) and applied to `<html>` before first paint. Shared sizes and places live in `src/listener/themes/layout.css`; the look files only hold palette, type and finish.
+- **Calm song indicator** under the player: a progress line plus an on air / paused / buffering marker, read from the player itself.
+- **Listener age filter** (`lib/ageGate.ts`, `lib/addSong.ts`, `lib/search.ts`). Limits:
+  - It trusts YouTube's `ytRating` age-restricted flag (`contentDetails.contentRating`).
+  - If YouTube's check fails or takes longer than 2 seconds, the song plays.
+  - Explicit lyrics are not detected.
+  - The owner's own songs are not checked.
+  - Listener search uses strict SafeSearch (`safeSearch=strict`).
+  - A request can show as Up next and then be skipped (denied, logged) if it turns out to be age-restricted when its turn comes.
+
 ## Migrations
 
 `npm run db:migrate` applies numbered files in `migrations/` in order, once each, in one transaction guarded by `pg_advisory_xact_lock`, so concurrent runs are safe. It uses a transaction-scoped lock, which Neon's docs require for pooled connections (pooled test: `npm run db:bouncer` + `BOUNCER_URL`, not yet run). It uses `DATABASE_URL`.
@@ -39,6 +51,7 @@ The Vercel build runs it as its **last** step, after `vite build`, only when `VE
 ```
 npm test             # starts Docker Postgres, runs vitest on a throwaway database per run
 npm run typecheck
+npm run build        # the production build; run it before every merge: lightningcss rejects CSS that dev mode silently drops
 npm run check:build  # vercel build + imports every built function, checks function count
 ```
 
@@ -52,7 +65,7 @@ DATABASE_URL=postgres://ttunes:ttunes@localhost:55432/e2e_x node test/e2e/addlin
 docker exec $(docker ps -qf publish=55432) psql -U ttunes -d postgres -qc "drop database e2e_x with (force)"
 ```
 
-Same for `test/e2e/controls.e2e.mjs`, `test/e2e/moderation.e2e.mjs`, `test/e2e/request.e2e.mjs`, `test/e2e/afterglow.e2e.mjs`, `npm run e2e` (sync), `npm run e2e:theset`, `npm run e2e:slowstart` (video bytes held after Play), `npm run e2e:unplayable` (embed error right after a song change), `npm run e2e:paused` (owner tab, paused listener) and `npm run e2e:playback` (pause, seek and next song; about 3 minutes, real YouTube).
+Same for `test/e2e/controls.e2e.mjs`, `test/e2e/moderation.e2e.mjs`, `test/e2e/request.e2e.mjs`, `test/e2e/afterglow.e2e.mjs`, `test/e2e/addlink.e2e.mjs`, `npm run e2e` (sync), `npm run e2e:theset`, `npm run e2e:settings` (Settings menu, the five Afterglow panels, stripes and shadows at 1280 Side; `SHOTS_DIR=<dir/>` writes screenshots), `npm run e2e:stacked`, `npm run e2e:layout` (shared boxes, hint, and Play on the first screen before Play), `npm run e2e:indicator` (the calm song indicator), `npm run e2e:slowstart` (video bytes held after Play), `npm run e2e:unplayable` (embed error right after a song change), `npm run e2e:paused` (owner tab, paused listener) and `npm run e2e:playback` (pause, seek and next song; about 3 minutes, real YouTube).
 
 ## Deploy (Vercel + Neon)
 

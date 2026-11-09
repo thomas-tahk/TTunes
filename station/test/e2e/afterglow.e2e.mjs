@@ -159,7 +159,7 @@ try {
   await shot(listener, "listener-drawer", 1280, 800);
   await listener.keyboard.press("Escape");
   check((await tab.getAttribute("aria-expanded")) === "false", "Escape closes the drawer");
-  check(await tab.evaluate((el) => el === document.activeElement), "focus returns to the yellow tab");
+  check(await tab.evaluate((el) => el === document.activeElement), "focus returns to the request tab");
   await listener.setViewportSize({ width: 375, height: 812 });
   await tab.click(); // opened AT phone width
   await listener.getByRole("heading", { name: "Request a song" }).waitFor();

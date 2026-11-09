@@ -331,6 +331,28 @@ for (const [id] of PANELS) for (const [layout, w, h] of IN_FLOW) {
   await page.context().close();
 }
 
+// ================= 8. At 1000px and wider in Side, every panel's stripe, shadow and tab border really apply =================
+// Positive checks: a rule the browser drops (or a build that rejects) leaves these at 0 / none.
+const SIDE_EXPECT = {
+  dark: { stripe: 4, shadow: true, tab: 3 },
+  black: { stripe: 8, shadow: true, tab: 0 },
+  frosted: { stripe: 1, shadow: true, tab: 1 },
+  cream: { stripe: 8, shadow: true, tab: 8 },
+  yellow: { stripe: 8, shadow: true, tab: 0 },
+};
+for (const [id] of PANELS) {
+  const page = await openPage({ width: 1280, height: 800 }, { owner: true, saved: { "ttunes.panel": id, "ttunes.layout": "side" } });
+  const g = await page.evaluate(() => {
+    const px = (v) => parseFloat(v) || 0;
+    const d = getComputedStyle(document.querySelector(".drawer"));
+    const t = getComputedStyle(document.querySelector(".drawer-tab"));
+    return { stripe: px(d.borderLeftWidth), shadow: d.boxShadow !== "none", tab: px(t.borderLeftWidth) };
+  });
+  const want = SIDE_EXPECT[id];
+  check(g.stripe === want.stripe && g.shadow === want.shadow && g.tab === want.tab, `${id} @1280 Side: drawer stripe ${g.stripe}px (want ${want.stripe}), shadow ${g.shadow} (want ${want.shadow}), tab border ${g.tab}px (want ${want.tab})`);
+  await page.context().close();
+}
+
 check(errors.length === 0, `no console errors (${errors.join(" | ").slice(0, 300)})`);
 console.log("E2E PASS");
 await browser.close();

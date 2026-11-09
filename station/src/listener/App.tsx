@@ -111,7 +111,7 @@ export function App() {
     if (owner) await ownerRequests.reload();
   };
 
-  // The request bar, its drawer and the tip sit right after the player in the DOM (where they are on a phone), so Tab follows the picture.
+  // The request bar, its drawer and the tip sit right after the player and Play in the DOM (where they are on a phone), so Tab follows the picture.
   // Stacked: the same pieces in page flow, the tip right above the request box, every section shown (no tabs).
   const shownTab = stacked ? "all" : drawerTab;
   const drawer = (
@@ -148,7 +148,8 @@ export function App() {
   );
 
   // One flat list of keyed siblings: switching layout only reorders them, so nothing unmounts (typed text and focus survive).
-  // Side: player, request bar + drawer, tip, titles, up next, Play. Stacked: player, Play, titles, up next, tip, requests.
+  // Play comes right after the player in both layouts, so it is on the first screen before it is pressed (#52).
+  // Side: player, Play, request bar + drawer, tip, titles, up next. Stacked: player, Play, titles, up next, tip, requests.
   const parts: Record<string, React.ReactNode> = { requests: drawer, hint };
   let order: string[];
   if (view.status === "loading") {
@@ -169,7 +170,7 @@ export function App() {
     parts.title = <Title playing={view.playing} />;
     parts.upnext = <UpNext playing={view.playing} requestsOpen={boxMode !== "off"} />;
     parts.play = playButton;
-    order = stacked ? ["player", "play", "title", "upnext", "hint", "requests"] : ["player", "requests", "hint", "title", "upnext", "play"];
+    order = stacked ? ["player", "play", "title", "upnext", "hint", "requests"] : ["player", "play", "requests", "hint", "title", "upnext"];
   }
   const body = order.map((key) => <Fragment key={key}>{parts[key]}</Fragment>);
 
