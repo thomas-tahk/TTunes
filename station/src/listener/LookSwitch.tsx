@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { applyLook, type Look, readLook } from "./look.ts";
+import { applyLook, type Look } from "./look.ts";
 
 const LOOKS: { id: Look; label: string }[] = [
   { id: "afterglow", label: "Afterglow" },
@@ -7,10 +6,9 @@ const LOOKS: { id: Look; label: string }[] = [
 ];
 
 /** Per-browser choice of look, for listener and owner alike. Native radios give arrow-key and screen-reader behaviour. */
-export function LookSwitch() {
-  const [look, setLook] = useState<Look>(readLook);
+export function LookSwitch({ look, onChange }: { look: Look; onChange: (next: Look) => void }) {
   const choose = (next: Look) => {
-    setLook(next);
+    onChange(next);
     applyLook(next);
   };
   return (

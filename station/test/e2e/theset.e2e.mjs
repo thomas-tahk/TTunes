@@ -9,7 +9,7 @@ import { SignJWT } from "jose";
 import pg from "pg";
 import { chromium } from "playwright";
 import { freePort, startDevServer } from "./devServer.mjs";
-import { focusRingsClearOfLabels, openDrawer, playerClearOfDrawer } from "./drawer.mjs";
+import { focusRingsClearOfLabels, openDrawer, openSettings, playerClearOfDrawer } from "./drawer.mjs";
 
 const PORT = await freePort();
 const BASE = `http://127.0.0.1:${PORT}/`;
@@ -85,8 +85,9 @@ try {
   await page.getByTestId("now-title").waitFor();
   check((await look(page)) === "afterglow", "default look is Afterglow");
   check((await saved(page)) === null, "nothing is saved until the visitor chooses");
+  await openSettings(page);
   const group = page.getByRole("group", { name: "Look" });
-  check((await page.locator("header").getByRole("group", { name: "Look" }).count()) === 1, "the Look switch is a labelled group in the header");
+  check((await page.locator("header").getByRole("group", { name: "Look" }).count()) === 1, "the Look switch is a labelled group in the header (inside the Settings menu)");
   check((await group.getByRole("radio").count()) === 2 && await group.getByRole("radio", { name: "Afterglow" }).isChecked(), "two radios, Afterglow checked");
   const wordmarkFont = () => page.locator(".wordmark").evaluate((el) => getComputedStyle(el).fontFamily);
   check(/Anton/.test(await wordmarkFont()), "Afterglow styles apply (Anton wordmark)");
@@ -99,6 +100,7 @@ try {
   await page.getByTestId("now-title").waitFor();
   check((await look(page)) === "theset", "reload: still The Set");
   check((await page.evaluate(() => window.__looks[0])) === "theset", "the saved look is on <html> before the app starts (no flash)");
+  await openSettings(page);
   check(await page.getByRole("radio", { name: "The Set" }).isChecked(), "reload: the switch shows The Set");
 
   // 3. The Set looks (screenshots), contrast, and the player rules.
@@ -110,8 +112,8 @@ try {
   await page.setViewportSize({ width: 1280, height: 800 });
   const pairs = await page.evaluate(() => {
     const solid = (el) => { for (let e = el; e; e = e.parentElement) { const c = getComputedStyle(e).backgroundColor; if (!/rgba\(.*, 0\)|transparent/.test(c)) return c; } return "rgb(255,255,255)"; };
-    const pick = [[".wordmark"], [".on-air"], [".titles .label"], ["h1"], [".look-switch legend"], [".look-switch label.on"], [".look-switch label:not(.on)"], [".signin"], [".request-line", "rgb(255, 201, 77)"], [".up-next b", "rgb(255, 201, 77)"], [".up-next .label", "rgb(255, 201, 77)"], [".play"]];
-    return pick.map(([sel, bg]) => { const el = document.querySelector(sel); const cs = getComputedStyle(el); return { sel, fg: cs.color, bg: bg ?? (sel === ".play" ? "rgb(255, 201, 77)" : sel === ".look-switch legend" || sel === ".signin" || sel === ".wordmark" ? getComputedStyle(document.querySelector(".shell")).backgroundColor : solid(el)) }; });
+    const pick = [[".wordmark"], [".on-air"], [".titles .label"], ["h1"], [".settings-btn"], [".look-switch legend"], [".look-switch label.on"], [".look-switch label:not(.on)"], [".signin"], [".request-line", "rgb(255, 201, 77)"], [".up-next b", "rgb(255, 201, 77)"], [".up-next .label", "rgb(255, 201, 77)"], [".play"]];
+    return pick.map(([sel, bg]) => { const el = document.querySelector(sel); const cs = getComputedStyle(el); return { sel, fg: cs.color, bg: bg ?? (sel === ".play" ? "rgb(255, 201, 77)" : sel === ".look-switch legend" || sel === ".settings-btn" || sel === ".signin" || sel === ".wordmark" ? getComputedStyle(document.querySelector(".shell")).backgroundColor : solid(el)) }; });
   });
   for (const { sel, fg, bg } of pairs) { const r = ratio(rgb(fg), rgb(bg)); check(r >= 4.5, `contrast ${sel} ${r.toFixed(1)}:1 >= 4.5`); }
 
@@ -170,6 +172,7 @@ try {
   await blocked.goto(BASE);
   await blocked.getByTestId("now-title").waitFor();
   check((await look(blocked)) === "afterglow", "storage throws: default Afterglow");
+  await openSettings(blocked);
   await blocked.getByRole("radio", { name: "The Set" }).check();
   check((await look(blocked)) === "theset", "storage throws: switching still works for this visit");
 
@@ -177,7 +180,10 @@ try {
   const owner = await open({ viewport: { width: 1280, height: 800 }, owner: true, init: () => { if (localStorage.getItem("ttunes.look") === null) localStorage.setItem("ttunes.look", "theset"); } });
   await owner.goto(BASE);
   await owner.getByTestId("now-title").waitFor();
+  await openSettings(owner);
   check((await look(owner)) === "theset" && (await owner.getByRole("group", { name: "Look" }).count()) === 1, "owner sees the Look switch, in The Set");
+  check((await owner.getByRole("group", { name: "Panel" }).count()) === 0, "owner in The Set: no Panel group (The Set keeps its own panel)");
+  await owner.getByRole("button", { name: "Settings" }).click();
   await openDrawer(owner, "Add song");
   await owner.getByRole("heading", { name: "Add song" }).waitFor();
   await owner.getByLabel("Search YouTube").fill("sunrise");
@@ -203,10 +209,12 @@ try {
   }
 
   // 7. Switch back: Afterglow, saved, survives reload.
+  await openSettings(owner);
   await owner.getByRole("radio", { name: "Afterglow" }).check();
   check((await look(owner)) === "afterglow" && (await saved(owner)) === "afterglow", "switching back applies and saves Afterglow");
   await owner.reload();
   await owner.getByTestId("now-title").waitFor();
+  await openSettings(owner);
   check((await look(owner)) === "afterglow" && await owner.getByRole("radio", { name: "Afterglow" }).isChecked(), "reload: still Afterglow");
   check(/Anton/.test(await owner.locator(".wordmark").evaluate((el) => getComputedStyle(el).fontFamily)), "Afterglow styles back in force");
   const switchSize = await owner.locator(".look-switch label").evaluateAll((els) => els.map((e) => e.getBoundingClientRect().height));

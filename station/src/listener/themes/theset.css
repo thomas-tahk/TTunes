@@ -36,10 +36,12 @@ html[data-look="theset"] {
   .look-switch label { border-color: var(--brass); border-radius: 8px; background: transparent; color: var(--gold); font-weight: 700; font-size: 1.05rem; }
   .look-switch label.on { background: var(--gold); color: #1b0c06; }
   .look-switch label.on span::before { content: "\2713\00a0" / ""; }
+  .settings-btn { border-color: var(--brass); border-radius: 8px; color: var(--gold); font-weight: 700; font-size: 1.05rem; }
+  .settings-panel { background: rgba(0, 0, 0, 0.45); border-radius: 8px; }
   .look-switch label:focus-within { outline: 3px solid #fff; outline-offset: 3px; }
   .signin, .owner-badge { font-weight: 700; color: var(--gold); }
   .owner-badge { background: var(--brass); color: #1b0c06; border-radius: 6px; }
-  .signin:focus-visible, .btn:focus-visible, .drawer-tab:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+  .signin:focus-visible, .btn:focus-visible, .drawer-tab:focus-visible, .settings-btn:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
 
   /* the front panel: brass bezel + speaker grille on top, dial under, knob at the bottom */
   .player-frame { background: #000; }

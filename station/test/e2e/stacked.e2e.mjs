@@ -10,6 +10,7 @@ import { SignJWT } from "jose";
 import pg from "pg";
 import { chromium } from "playwright";
 import { freePort, startDevServer } from "./devServer.mjs";
+import { openSettings } from "./drawer.mjs";
 
 const PORT = await freePort();
 const BASE = `http://127.0.0.1:${PORT}/`;
@@ -163,22 +164,27 @@ try {
     check(g.layout === layout, `${owner ? "owner" : "listener"} ${look}/${layout} @${w}x${h}: the page is really in the ${layout} layout`);
     const hd = await page.locator("header").boundingBox();
     check(hd.height <= (h > 500 ? 200 : 150), `${owner ? "owner" : "listener"} ${look}/${layout} @${w}x${h}: header stays compact (${Math.round(hd.height)}px)`);
-    for (const lg of await page.locator(".look-switch legend").all()) check((await lg.boundingBox())?.width > 8, `${look}/${layout} @${w}x${h}: switch legend "${await lg.textContent()}" is visible`);
-    await ringsClear(page, `${owner ? "owner" : "listener"} ${look}/${layout} @${w}x${h}`);
     if (SHOTS && !owner && layout === "stacked" && w === 320) await page.screenshot({ path: `${SHOTS}stacked-${look}-320.png`, fullPage: true });
     check(g.playerFirstScreenBottom <= h + 1 && g.player.h >= 199.5, `${owner ? "owner" : "listener"} ${look}/${layout} @${w}x${h}: player on first screen (bottom ${Math.round(g.playerFirstScreenBottom)} of ${h}, ${Math.round(g.player.h)}px tall)`);
     check(g.noHScroll, `${owner ? "owner" : "listener"} ${look}/${layout} @${w}x${h}: no horizontal scroll`);
+    // The switches live in the Settings menu now: with it open their legends are visible, their focus rings clear, and the page still has no horizontal scroll.
+    await openSettings(page);
+    for (const lg of await page.locator(".look-switch legend").all()) check((await lg.boundingBox())?.width > 8, `${look}/${layout} @${w}x${h}: switch legend "${await lg.textContent()}" is visible`);
+    await ringsClear(page, `${owner ? "owner" : "listener"} ${look}/${layout} @${w}x${h}`);
+    check((await geometry(page)).noHScroll, `${owner ? "owner" : "listener"} ${look}/${layout} @${w}x${h}: menu open: no horizontal scroll`);
     await page.context().close();
   }
 
   // The switch: default, click, survives reload, unknown value, keyboard.
   const page = await openPage({ width: 1280, height: 800 });
   check((await page.evaluate(() => document.documentElement.dataset.layout)) === "side", "default layout is Side");
+  await openSettings(page);
   await page.getByRole("radio", { name: "Stacked" }).check({ force: true });
   check((await geometry(page)).layout === "stacked", "choosing Stacked switches the page");
   check((await page.evaluate(() => localStorage.getItem("ttunes.layout"))) === "stacked", "choice saved in localStorage");
   await page.reload();
   await page.getByTestId("now-title").waitFor();
+  await openSettings(page);
   check((await page.getByRole("radio", { name: "Stacked" }).isChecked()) && (await geometry(page)).layout === "stacked", "Stacked survives reload");
   check((await page.evaluate(() => document.querySelector(".layout-switch label.on")?.textContent)) === "Stacked", "checked state is visible (label marked on)");
   await page.getByRole("radio", { name: "Stacked" }).focus();
@@ -195,6 +201,7 @@ try {
   await page.evaluate(() => localStorage.setItem("ttunes.layout", "sideways"));
   await page.reload();
   await page.getByTestId("now-title").waitFor();
+  await openSettings(page);
   check((await geometry(page)).layout === "side" && (await page.getByRole("radio", { name: "Side" }).isChecked()), "unknown saved layout falls back to Side");
   await page.context().close();
 
@@ -204,6 +211,7 @@ try {
     await keep.getByRole("button", { name: "Request a song" }).click();
     await keep.getByLabel("Your name").fill("Keeper");
     await keep.getByLabel("Song link").fill("https://youtu.be/musicVid001");
+    await openSettings(keep);
     await keep.getByRole("radio", { name: "Side" }).focus();
     const before = await keep.evaluate(() => scrollY);
     for (const [key, to] of [["ArrowRight", "stacked"], ["ArrowLeft", "side"], ["ArrowRight", "stacked"]]) {
@@ -219,8 +227,11 @@ try {
   // Escape must not close a drawer that is not on screen: open it in Side, go Stacked, Escape, come back.
   const esc = await openPage({ width: 1280, height: 800 });
   await esc.getByRole("button", { name: "Request a song" }).click();
+  await openSettings(esc);
   await esc.getByRole("radio", { name: "Stacked" }).check({ force: true });
+  await esc.getByRole("button", { name: "Settings" }).click(); // menu closed, focus on its button: Escape now goes to the page
   await esc.keyboard.press("Escape");
+  await openSettings(esc);
   await esc.getByRole("radio", { name: "Side" }).check({ force: true });
   check((await esc.getByRole("button", { name: /^(Request a song|Requests)$/ }).getAttribute("aria-expanded")) === "true", "Escape in Stacked does not close the Side drawer");
   await esc.context().close();
