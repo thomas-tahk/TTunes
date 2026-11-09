@@ -26,8 +26,16 @@ export function Drawer({ open, owner, tab, stacked, onTab, onToggle, label, chil
   const heading = useRef<HTMLHeadingElement>(null);
   const opener = useRef<HTMLButtonElement>(null);
   const wasOpen = useRef(false);
+  const wasStacked = useRef(stacked);
 
   useEffect(() => {
+    // Switching layout opens or hides the drawer without the user asking: leave focus and scroll where they are.
+    const flipped = wasStacked.current !== stacked;
+    wasStacked.current = stacked;
+    if (flipped) {
+      wasOpen.current = open;
+      return;
+    }
     if (open) {
       heading.current?.focus({ preventScroll: true });
       // Phones: the drawer sits below the player. Bring the player to the top so it stays on screen with the drawer under it.
@@ -35,7 +43,7 @@ export function Drawer({ open, owner, tab, stacked, onTab, onToggle, label, chil
     }
     else if (wasOpen.current) opener.current?.focus({ preventScroll: true });
     wasOpen.current = open;
-  }, [open]);
+  }, [open, stacked]);
 
   useEffect(() => {
     if (!open) return;

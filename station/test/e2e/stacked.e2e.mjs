@@ -79,8 +79,9 @@ const geometry = (page) => page.evaluate(() => {
   };
 });
 
-const rules = async (page, label, { w, h }) => {
+const rules = async (page, label, { h, layout }) => {
   const g = await geometry(page);
+  check(g.layout === layout, `${label}: the page is really in the ${layout} layout`);
   const p = g.player;
   check(p.h >= 199.5, `${label}: player ${Math.round(p.w)}x${Math.round(p.h)} is at least 200px tall`);
   check(Math.abs(p.w / p.h - 16 / 9) < 0.03 || p.h <= 200.5, `${label}: player is 16:9`);
@@ -95,19 +96,72 @@ const rules = async (page, label, { w, h }) => {
   if (h <= 375) check(g.playerFirstScreenBottom <= h + 1, `${label}: player is on the first screen (bottom ${Math.round(g.playerFirstScreenBottom)} of ${h})`);
 };
 
+// A focused switch option's ring (box + outline offset + width) must not touch any other option's box or a legend.
+const ringsClear = async (page, label) => {
+  const bad = await page.evaluate(() => {
+    const bad = [];
+    const others = [...document.querySelectorAll(".look-switch label, .look-switch legend")];
+    for (const input of document.querySelectorAll(".look-switch input")) {
+      const label = input.closest("label");
+      input.focus();
+      const cs = getComputedStyle(label);
+      const grow = cs.outlineStyle === "none" ? 0 : (parseFloat(cs.outlineWidth) || 0) + (parseFloat(cs.outlineOffset) || 0);
+      const r = label.getBoundingClientRect();
+      for (const o of others) {
+        if (o === label) continue;
+        const q = o.getBoundingClientRect();
+        if (!q.width) continue;
+        const sameRow = q.top < r.bottom && r.top < q.bottom;
+        const g = sameRow && o.tagName === "LABEL" ? 0 : grow; // beside another option only the boxes must not collide; its text is padded clear of the ring
+        if (r.left - g < q.right && q.left < r.right + g && r.top - g < q.bottom && q.top < r.bottom + g) bad.push(`${label.textContent} ring touches ${o.textContent}`);
+      }
+    }
+    return bad;
+  });
+  check(bad.length === 0, `${label}: switch focus rings clear of neighbouring options (${bad.join("; ")})`);
+};
+
+// Tab from the top until focus comes back to the first stop; every step must be at or below the one before.
+const walkTabs = async (page, label, minStops) => {
+  await page.evaluate(() => { document.activeElement?.blur(); scrollTo(0, 0); });
+  await page.mouse.click(1, 1); // the corner of the page: Tab starts from the top
+  const stops = [];
+  for (let i = 0; i < 80; i++) {
+    await page.keyboard.press("Tab");
+    const stop = await page.evaluate((n) => {
+      const e = document.activeElement;
+      const again = e.dataset.stop !== undefined;
+      if (!again) e.dataset.stop = String(n);
+      const r = e.getBoundingClientRect();
+      return { again, wrapped: e === document.body || e === document.documentElement, id: e.dataset.stop, name: (e.getAttribute("aria-label") || e.id || e.textContent || e.tagName).trim().slice(0, 18), y: Math.round(r.top + scrollY) };
+    }, i);
+    if (stop.wrapped || (stop.again && stop.id === "0")) break; // focus left the page and came back around
+    if (stop.again) { stops.push(stop); break; }
+    stops.push(stop);
+  }
+  const backwards = stops.filter((s, i) => i > 0 && s.y < stops[i - 1].y - 12);
+  check(backwards.length === 0 && stops.length >= minStops, `${label}: Tab walked ${stops.length} stops (>= ${minStops}) top to bottom, none backwards (${backwards.map((s) => s.name + "@" + s.y).join(", ")}) [${stops.map((s) => `${s.name}@${s.y}`).join(" > ")}]`);
+};
+
 try {
   if (SHOTS) mkdirSync(SHOTS, { recursive: true });
   // The matrix: 2 looks x 2 layouts x 3 screens, set the way a returning visitor has them (saved before load).
   for (const look of ["afterglow", "theset"]) for (const layout of ["side", "stacked"]) for (const [w, h] of [[1280, 800], [375, 812], [667, 375]]) {
     const page = await openPage({ width: w, height: h }, { saved: { "ttunes.look": look, "ttunes.layout": layout } });
-    await rules(page, `${look}/${layout} @${w}x${h}`, { w, h });
+    await rules(page, `${look}/${layout} @${w}x${h}`, { h, layout });
     if (SHOTS && layout === "stacked" && w !== 667) await page.screenshot({ path: `${SHOTS}stacked-${look}-${w}.png`, fullPage: true });
     await page.context().close();
   }
   // Small landscape, listener and owner, both layouts: the two switches must not push the player off the first screen.
-  for (const owner of [false, true]) for (const layout of ["side", "stacked"]) for (const look of ["afterglow", "theset"]) for (const [w, h] of [[667, 375], [568, 320]]) {
+  for (const owner of [false, true]) for (const layout of ["side", "stacked"]) for (const look of ["afterglow", "theset"]) for (const [w, h] of [[667, 375], [568, 320], [375, 812], [320, 568]]) {
     const page = await openPage({ width: w, height: h }, { owner, saved: { "ttunes.look": look, "ttunes.layout": layout } });
     const g = await geometry(page);
+    check(g.layout === layout, `${owner ? "owner" : "listener"} ${look}/${layout} @${w}x${h}: the page is really in the ${layout} layout`);
+    const hd = await page.locator("header").boundingBox();
+    check(hd.height <= (h > 500 ? 200 : 150), `${owner ? "owner" : "listener"} ${look}/${layout} @${w}x${h}: header stays compact (${Math.round(hd.height)}px)`);
+    for (const lg of await page.locator(".look-switch legend").all()) check((await lg.boundingBox())?.width > 8, `${look}/${layout} @${w}x${h}: switch legend "${await lg.textContent()}" is visible`);
+    await ringsClear(page, `${owner ? "owner" : "listener"} ${look}/${layout} @${w}x${h}`);
+    if (SHOTS && !owner && layout === "stacked" && w === 320) await page.screenshot({ path: `${SHOTS}stacked-${look}-320.png`, fullPage: true });
     check(g.playerFirstScreenBottom <= h + 1 && g.player.h >= 199.5, `${owner ? "owner" : "listener"} ${look}/${layout} @${w}x${h}: player on first screen (bottom ${Math.round(g.playerFirstScreenBottom)} of ${h}, ${Math.round(g.player.h)}px tall)`);
     check(g.noHScroll, `${owner ? "owner" : "listener"} ${look}/${layout} @${w}x${h}: no horizontal scroll`);
     await page.context().close();
@@ -140,16 +194,36 @@ try {
   check((await geometry(page)).layout === "side" && (await page.getByRole("radio", { name: "Side" }).isChecked()), "unknown saved layout falls back to Side");
   await page.context().close();
 
+  // Switching must not rebuild the page: typed text stays, focus stays on the radio, the page does not scroll.
+  for (const [w, h] of [[1280, 800], [375, 812]]) {
+    const keep = await openPage({ width: w, height: h }, { saved: { "ttunes.layout": "side" }, ip: `203.0.113.${40 + w % 7}` });
+    await keep.getByRole("button", { name: "Request a song" }).click();
+    await keep.getByLabel("Your name").fill("Keeper");
+    await keep.getByLabel("Song link").fill("https://youtu.be/musicVid001");
+    await keep.getByRole("radio", { name: "Side" }).focus();
+    const before = await keep.evaluate(() => scrollY);
+    for (const [key, to] of [["ArrowRight", "stacked"], ["ArrowLeft", "side"], ["ArrowRight", "stacked"]]) {
+      await keep.keyboard.press(key);
+      const now = await keep.evaluate(() => ({ layout: document.documentElement.dataset.layout, focus: document.activeElement?.getAttribute("name") + "=" + document.activeElement?.getAttribute("value"), y: scrollY, name: document.querySelector("#req-name")?.value, link: document.querySelector("#req-link")?.value }));
+      check(now.layout === to, `@${w}: ${key} switches to ${to}`);
+      check(now.name === "Keeper" && now.link === "https://youtu.be/musicVid001", `@${w}: typed name and link survive the switch to ${to}`);
+      check(now.focus === `layout=${to}`, `@${w}: focus stays on the Layout radio (${now.focus})`);
+      check(now.y === before, `@${w}: the page did not scroll (${before} -> ${now.y})`);
+    }
+    await keep.context().close();
+  }
+  // Escape must not close a drawer that is not on screen: open it in Side, go Stacked, Escape, come back.
+  const esc = await openPage({ width: 1280, height: 800 });
+  await esc.getByRole("button", { name: "Request a song" }).click();
+  await esc.getByRole("radio", { name: "Stacked" }).check({ force: true });
+  await esc.keyboard.press("Escape");
+  await esc.getByRole("radio", { name: "Side" }).check({ force: true });
+  check((await esc.getByRole("button", { name: /^(Request a song|Requests)$/ }).getAttribute("aria-expanded")) === "true", "Escape in Stacked does not close the Side drawer");
+  await esc.context().close();
+
   // Tab order in Stacked on a phone: top to bottom.
   const phone = await openPage({ width: 375, height: 812 }, { saved: { "ttunes.layout": "stacked" } });
-  const stops = [];
-  for (let i = 0; i < 12; i++) {
-    await phone.keyboard.press("Tab");
-    stops.push(await phone.evaluate(() => { const e = document.activeElement; const r = e.getBoundingClientRect(); return { name: (e.getAttribute("aria-label") || e.getAttribute("id") || e.textContent || e.tagName).trim().slice(0, 20), y: Math.round(r.top + scrollY) }; }));
-  }
-  const firstWrap = stops.findIndex((s, i) => i > 0 && s.y < stops[i - 1].y - 2);
-  const walked = firstWrap < 0 ? stops : stops.slice(0, firstWrap);
-  check(walked.length >= 8, `phone Stacked: Tab walks top to bottom through ${walked.length} stops before wrapping (${walked.map((s) => `${s.name}@${s.y}`).join(" > ")})`);
+  await walkTabs(phone, "phone Stacked listener", 9);
   await phone.context().close();
 
   // Stacked listener: link -> Look up -> Send request, all in the page (no drawer to open).
@@ -173,6 +247,8 @@ try {
   check((await owner.getByText("Owner", { exact: true }).waitFor(), await owner.getByRole("tablist", { name: "Drawer sections" }).count()) === 0, "Stacked owner: no tabs, every section is in the page");
   check((await owner.locator(".drawer").getByRole("heading", { name: "Add song" }).isVisible()), "Stacked owner: Add song is in the page");
   await owner.getByLabel("YouTube link").fill("https://youtu.be/musicVid002");
+  await walkTabs(owner, "desktop Stacked owner", 20);
+  if (SHOTS) await owner.screenshot({ path: `${SHOTS}stacked-owner-1280.png`, fullPage: true });
   await owner.locator(".owner-form").getByRole("button", { name: "Look up" }).click();
   await owner.getByTestId("preview").waitFor();
   await owner.getByTestId("preview").getByRole("button", { name: "Play next" }).click();
