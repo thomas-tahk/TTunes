@@ -21,7 +21,7 @@ interface Props {
   children: ReactNode;
 }
 
-/** One yellow tab opens one drawer. Wide screens: it slides in from the right beside the player. Phones: it opens below the player, which stays on screen. */
+/** One tab opens one drawer. Wide screens: it slides in from the right beside the player. Phones: it opens below the player, which stays on screen. */
 export function Drawer({ open, owner, tab, stacked, onTab, onToggle, label, children }: Props) {
   const heading = useRef<HTMLHeadingElement>(null);
   const opener = useRef<HTMLButtonElement>(null);

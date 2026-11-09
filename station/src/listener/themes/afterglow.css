@@ -87,42 +87,30 @@ footer .signin { font-size: 0.9rem; font-weight: 600; }
 .drawer-head h2 { font-size: 2.9rem; }
 .drawer-head h2:focus { outline: none; }
 .drawer-close, .link-btn { min-height: 44px; padding: 0 14px; background: transparent; border: 3px solid var(--ink); color: var(--ink); font-weight: 800; font-size: 1rem; cursor: pointer; }
-.link-btn { border: 0; padding: 0 8px; text-decoration: underline; }
 .drawer-tab-btn { min-height: 44px; padding: 4px 0 0; background: none; border: 0; border-bottom: 5px solid transparent; color: var(--ink); font-weight: 800; font-size: 1.15rem; cursor: pointer; }
 .drawer-tab-btn.on { border-bottom-color: var(--ink); }
-.drawer-panel { padding-top: 10px; }
 .drawer section h2, .drawer .owner-controls h2, .drawer .owner-account h2 { font-size: 2rem; margin-bottom: 10px; }
 
 /* drawer content: flat, ruled rows instead of boxes */
 .drawer .btn { background: var(--ink); color: var(--drawer-bg); border-radius: 0; font-size: 1.05rem; }
 .drawer .btn.ghost { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 3px var(--ink); }
 .btn.small { min-height: 48px; min-width: 96px; padding: 0 18px; font-size: 1rem; }
-.owner-panel, .requests { display: block; }
 .requests { display: flex; flex-direction: column; gap: 30px; }
 .drawer label { display: block; margin: 14px 0 8px; font-size: 0.8rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
 .drawer input, .drawer textarea { width: 100%; min-height: 48px; padding: 10px 0; border: 0; border-bottom: 4px solid var(--ink); border-radius: 0; background: transparent; color: var(--ink); font-size: 1.1rem; font-weight: 600; resize: vertical; }
 .drawer input::placeholder { color: var(--ink-soft); opacity: 1; }
-.owner-row { display: flex; gap: 10px; align-items: flex-end; }
 .owner-row input { flex: 1; width: auto; min-width: 0; }
 .hint, .feed-note, .owner-empty, .owner-meta span, .feed-len, .counter { color: var(--ink-soft); }
-.hint { margin: 8px 0 0; }
 .counter { margin: 8px 0 0; text-align: right; font-size: 0.85rem; }
-.send { margin-top: 16px; width: 100%; }
 .mine p { margin: 10px 0 0; overflow-wrap: anywhere; }
 .mine { display: flex; gap: 12px; align-items: center; margin-top: 10px; padding: 12px; background: var(--ink); color: #fff; }
 .mine p { margin: 0; }
-.mine img { width: 64px; height: 36px; object-fit: cover; flex: none; }
 .mine:focus-visible { outline: 3px solid var(--focus-on-drawer); outline-offset: 3px; }
-.song-search, .request-box .song-search { margin-top: 0; }
-.owner-status p { margin: 10px 0 0; }
 .owner-error { color: var(--bad); font-weight: 800; }
 .owner-done { color: var(--ok); font-weight: 800; }
 /* song card: a result row that expands in place (one open at a time) */
-.song-results { list-style: none; margin: 14px 0 0; padding: 0; text-align: left; max-height: 70vh; overflow-y: auto; }
 .song-results > li { border-bottom: 1px solid var(--rule); }
-.song-card-head { display: flex; gap: 12px; align-items: center; width: 100%; min-height: 64px; padding: 8px 0; background: transparent; border: 0; color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
 .song-card-head img, .song-card-art { object-fit: cover; flex: none; background: var(--ink); }
-.song-card-head img { width: 96px; height: 54px; }
 .song-card-meta { display: flex; flex-direction: column; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
 .song-card-meta span { color: var(--ink-soft); }
 .song-card-head::after { content: "+" / ""; margin-left: auto; padding: 0 6px; font-size: 1.6rem; font-weight: 800; }
@@ -130,41 +118,24 @@ footer .signin { font-size: 0.9rem; font-weight: 600; }
 .song-card-head:focus-visible, .song-card-body :focus-visible { outline: 3px solid var(--focus-on-drawer); outline-offset: 3px; }
 .song-card.open .song-card-head { font-weight: 800; }
 .song-card-body { display: grid; justify-items: start; gap: 10px; margin: 0 0 14px; padding: 16px; background: var(--ink); color: #fff; }
-.song-card-art { width: 100%; max-width: 320px; height: auto; aspect-ratio: 16 / 9; }
 .song-card-length { margin: 0; color: #e9dcf5; font-weight: 800; }
-.song-card-actions { display: flex; flex-direction: column; gap: 10px; width: 100%; }
 .song-card-status p { margin: 0; font-weight: 800; }
 .song-card-body .btn { background: var(--drawer-bg); color: var(--ink); margin-top: 0; width: auto; }
 .song-card-body .btn.ghost { background: transparent; color: #fff; box-shadow: inset 0 0 0 3px #fff; }
 .song-card-body :focus-visible { outline-color: #fff; }
 .song-card-body .owner-error { color: #fff; } /* errors for this song show inside its card, on the dark panel */
 .owner-meta { display: flex; flex-direction: column; gap: 4px; overflow-wrap: anywhere; }
-.owner-actions, .owner-confirm { grid-column: 1 / -1; display: flex; gap: 10px; flex-wrap: wrap; }
 .owner-confirm { flex-direction: column; border: 3px solid currentColor; padding: 10px 12px; }
 .owner-confirm p { margin: 0; font-weight: 800; }
 
 .owner-controls, .owner-account { margin-top: 26px; padding-top: 20px; border-top: 4px solid var(--ink); }
-.owner-tabs { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
 .tab { min-height: 44px; padding: 0 16px; border: 3px solid var(--ink); background: transparent; color: var(--ink); font-weight: 800; cursor: pointer; }
 .tab.on { background: var(--ink); color: var(--drawer-bg); }
-.owner-list, .feed-list { list-style: none; margin: 8px 0 0; padding: 0; text-align: left; max-height: 420px; overflow-y: auto; }
-.owner-list li { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 12px 0; border-bottom: 1px solid var(--rule); }
-.owner-list li .owner-meta { flex: 1 1 200px; min-width: 0; }
-.row-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.owner-list .btn.small { min-width: 64px; padding: 0 14px; }
 
-.feed-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.feed-note { margin: 12px 0 0; }
 .feed-row { padding: 12px 0; border-bottom: 1px solid var(--rule); }
 .feed-row img { border-radius: 50%; }
-.feed-body { min-width: 0; overflow: hidden; }
-.feed-body p { margin: 0; overflow: hidden; overflow-wrap: anywhere; }
 .feed-name { font-weight: 800; white-space: nowrap; text-overflow: ellipsis; }
-.feed-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .feed-dedication { margin-top: 4px !important; font-family: "Instrument Serif", Georgia, serif; font-style: italic; font-size: 1.15rem; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
-.mod-actions { grid-column: 1 / -1; margin-top: 4px; }
-.feed-row .mod-actions .btn.small { min-width: 88px; padding: 0 14px; }
-.feed .owner-done, .feed .owner-error { margin: 10px 0 0; }
 
 .chip { display: inline-block; padding: 4px 10px; font-size: 0.78rem; font-weight: 800; white-space: nowrap; border: 2px solid var(--ink); color: var(--ink); }
 .mode-open, .status-queued { background: var(--ink); color: var(--drawer-bg); }
@@ -174,7 +145,6 @@ footer .signin { font-size: 0.9rem; font-weight: 600; }
 .status-played, .status-expired { background: transparent; color: var(--ink-soft); border-color: var(--ink-soft); }
 .chip.in-library { background: transparent; }
 .waiting-badge { background: var(--ink); color: var(--drawer-bg); min-width: 28px; text-align: center; font-size: 0.9rem; }
-.request-settings h2 { display: flex; align-items: center; gap: 10px; }
 .seg { min-height: 64px; padding: 8px 10px; border: 3px solid var(--ink); background: transparent; color: var(--ink); cursor: pointer; display: flex; flex-direction: column; gap: 2px; text-align: left; }
 .seg small { font-size: 0.78rem; }
 .seg.on { background: var(--ink); color: var(--drawer-bg); }

@@ -83,6 +83,38 @@ footer { margin-top: 22px; min-height: 44px; }
 .feed-row { flex: none; display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 6px 14px; align-items: start; }
 .feed-row img { width: 52px; height: 52px; object-fit: cover; }
 
+/* drawer contents, shared by both looks: sizes, spacing and where things sit (moved here from the look files, where they were identical) */
+.link-btn { border: 0; padding: 0 8px; text-decoration: underline; }
+.drawer-panel { padding-top: 10px; }
+.owner-panel, .requests { display: block; }
+.owner-row { display: flex; gap: 10px; align-items: flex-end; }
+.hint { margin: 8px 0 0; }
+.send { margin-top: 16px; width: 100%; }
+.mine img { width: 64px; height: 36px; object-fit: cover; flex: none; }
+.song-search, .request-box .song-search { margin-top: 0; }
+.owner-status p { margin: 10px 0 0; }
+.song-results { list-style: none; margin: 14px 0 0; padding: 0; text-align: left; max-height: 70vh; overflow-y: auto; }
+.song-card-head { display: flex; gap: 12px; align-items: center; width: 100%; min-height: 64px; padding: 8px 0; background: transparent; border: 0; color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
+.song-card-head img { width: 96px; height: 54px; }
+.song-card-art { width: 100%; max-width: 320px; height: auto; aspect-ratio: 16 / 9; }
+.song-card-actions { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+.owner-actions, .owner-confirm { grid-column: 1 / -1; display: flex; gap: 10px; flex-wrap: wrap; }
+.owner-tabs { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+.owner-list, .feed-list { list-style: none; margin: 8px 0 0; padding: 0; text-align: left; max-height: 420px; overflow-y: auto; }
+.owner-list li { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 12px 0; border-bottom: 1px solid var(--rule); }
+.owner-list li .owner-meta { flex: 1 1 200px; min-width: 0; }
+.row-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.owner-list .btn.small { min-width: 64px; padding: 0 14px; }
+.feed-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.feed-note { margin: 12px 0 0; }
+.feed-body { min-width: 0; overflow: hidden; }
+.feed-body p { margin: 0; overflow: hidden; overflow-wrap: anywhere; }
+.feed-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.mod-actions { grid-column: 1 / -1; margin-top: 4px; }
+.feed-row .mod-actions .btn.small { min-width: 88px; padding: 0 14px; }
+.feed .owner-done, .feed .owner-error { margin: 10px 0 0; }
+.request-settings h2 { display: flex; align-items: center; gap: 10px; }
+
 /* ---------- smaller screens: sizes ---------- */
 @media (max-width: 999px) {
   h1.title-xl { font-size: 2.1rem; }
@@ -130,7 +162,7 @@ footer { margin-top: 22px; min-height: 44px; }
 
 /* =====================================================================================================
    Side layout: player + now playing on top, Play above the title, up next under; requests in a drawer on the right.
-   On a phone it is one column in DOM order (player, Play, titles, up next, request bar, drawer, tip), so Tab follows the picture.
+   On a phone it is one column in DOM order (player, Play, request bar, drawer, tip, titles, up next), so Tab follows the picture.
    ===================================================================================================== */
 html[data-layout="side"] {
   --drawer-w: 520px;
