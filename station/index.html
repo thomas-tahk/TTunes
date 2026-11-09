@@ -16,7 +16,9 @@
     </script>
     <script>
       // Same for the Afterglow panel colour: Dark tinted unless one of the other four was saved.
-      try { var p = localStorage.getItem("ttunes.panel"); document.documentElement.dataset.panel = ["black", "frosted", "cream", "yellow"].indexOf(p) >= 0 ? p : "dark"; } catch (e) { document.documentElement.dataset.panel = "dark"; }
+      (function () {
+        try { var p = localStorage.getItem("ttunes.panel"); document.documentElement.dataset.panel = ["black", "frosted", "cream", "yellow"].indexOf(p) >= 0 ? p : "dark"; } catch (e) { document.documentElement.dataset.panel = "dark"; }
+      })();
     </script>
     <title>TTunes station</title>
   </head>

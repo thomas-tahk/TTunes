@@ -8,8 +8,7 @@ html[data-look="afterglow"][data-panel="dark"] .drawer, html[data-look="afterglo
   --drawer-edge: color-mix(in srgb, var(--wash-hot) 70%, #fff);
   --focus-on-drawer: #fff; --focus-on-wash: #fff;
 }
-html[data-look="afterglow"][data-panel="dark"] .drawer { box-shadow: -30px 0 60px rgba(0, 0, 0, 0.45); border-left: 4px solid color-mix(in srgb, var(--wash-hot) 70%, #fff); }
-html[data-look="afterglow"][data-panel="dark"] .drawer-tab { background: color-mix(in srgb, var(--wash-mid) 58%, #000); border: 3px solid color-mix(in srgb, var(--wash-hot) 70%, #fff); border-right: 0; }
+html[data-look="afterglow"][data-panel="dark"] .drawer-tab { background: color-mix(in srgb, var(--wash-mid) 58%, #000); }
 html[data-look="afterglow"][data-panel="dark"] .drawer .btn { background: #fff; color: #1a0630; }
 html[data-look="afterglow"][data-panel="dark"] .drawer .btn.ghost { background: transparent; color: #fff; }
 html[data-look="afterglow"][data-panel="dark"] .mine, html[data-look="afterglow"][data-panel="dark"] .song-card-body { background: rgba(255, 255, 255, 0.14); }
@@ -30,7 +29,6 @@ html[data-look="afterglow"][data-panel="black"] .drawer, html[data-look="aftergl
   --drawer-edge: #101013;
   --focus-on-drawer: #fff; --focus-on-wash: #fff;
 }
-html[data-look="afterglow"][data-panel="black"] .drawer { box-shadow: -30px 0 60px rgba(0, 0, 0, 0.5); }
 html[data-look="afterglow"][data-panel="black"] .drawer-tab { background: var(--accent); color: #101013; }
 html[data-look="afterglow"][data-panel="black"] .drawer h2, html[data-look="afterglow"][data-panel="black"] .drawer h3 { color: #fff; }
 html[data-look="afterglow"][data-panel="black"] .drawer .btn { background: var(--accent); color: #101013; }
@@ -54,8 +52,8 @@ html[data-look="afterglow"][data-panel="frosted"] .drawer, html[data-look="after
   --drawer-edge: rgba(255, 255, 255, 0.5);
   --focus-on-drawer: #fff; --focus-on-wash: #fff;
 }
-html[data-look="afterglow"][data-panel="frosted"] .drawer { background: rgba(14, 6, 28, 0.6); -webkit-backdrop-filter: blur(26px) saturate(1.5); backdrop-filter: blur(26px) saturate(1.5); border-left: 1px solid rgba(255, 255, 255, 0.5); box-shadow: -20px 0 50px rgba(0, 0, 0, 0.25); }
-html[data-look="afterglow"][data-panel="frosted"] .drawer-tab { background: rgba(14, 6, 28, 0.6); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.5); border-right: 0; }
+html[data-look="afterglow"][data-panel="frosted"] .drawer { background: rgba(14, 6, 28, 0.6); -webkit-backdrop-filter: blur(26px) saturate(1.5); backdrop-filter: blur(26px) saturate(1.5); }
+html[data-look="afterglow"][data-panel="frosted"] .drawer-tab { background: rgba(14, 6, 28, 0.6); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
 html[data-look="afterglow"][data-panel="frosted"] .drawer .btn { background: #fff; color: #1a0630; }
 html[data-look="afterglow"][data-panel="frosted"] .drawer .btn.ghost { background: transparent; color: #fff; }
 html[data-look="afterglow"][data-panel="frosted"] .mine, html[data-look="afterglow"][data-panel="frosted"] .song-card-body { background: rgba(255, 255, 255, 0.16); }
@@ -76,8 +74,7 @@ html[data-look="afterglow"][data-panel="cream"] .drawer, html[data-look="aftergl
   --drawer-edge: var(--wash-mid);
   --focus-on-drawer: #1d1722; --focus-on-wash: #1d1722;
 }
-html[data-look="afterglow"][data-panel="cream"] .drawer { box-shadow: -30px 0 60px rgba(0, 0, 0, 0.35); border-left: 8px solid var(--wash-mid); }
-html[data-look="afterglow"][data-panel="cream"] .drawer-tab { background: #f3eadb; border-left: 8px solid var(--wash-mid); }
+html[data-look="afterglow"][data-panel="cream"] .drawer-tab { background: #f3eadb; }
 html[data-look="afterglow"][data-panel="cream"] .drawer h2, html[data-look="afterglow"][data-panel="cream"] .drawer h3 { color: var(--accent); }
 html[data-look="afterglow"][data-panel="cream"] .drawer .btn { background: var(--accent); color: #fff; }
 html[data-look="afterglow"][data-panel="cream"] .drawer .btn.ghost { background: transparent; color: var(--ink); }
@@ -92,3 +89,15 @@ html[data-look="afterglow"][data-panel="cream"] .feed-name { color: var(--accent
 html[data-look="afterglow"][data-panel="cream"] .tab.on, html[data-look="afterglow"][data-panel="cream"] .seg.on, html[data-look="afterglow"][data-panel="cream"] .waiting-badge { background: var(--accent); color: #fff; }
 /* The handle focus ring sits on the page colour, not on the cream panel. */
 html[data-look="afterglow"][data-panel="cream"] .drawer-tab { --focus-on-wash: #fff; }
+
+/* The edge stripe, the side shadow and the handle's border belong to the fixed side drawer only (Side layout, 1000px and wider).
+   A phone's or Stacked's in-flow drawer and full-width tab get none of them. */
+@media (min-width: 1000px) {
+  html[data-layout="side"]html[data-look="afterglow"][data-panel="dark"] .drawer { box-shadow: -30px 0 60px rgba(0, 0, 0, 0.45); border-left: 4px solid color-mix(in srgb, var(--wash-hot) 70%, #fff); }
+  html[data-layout="side"]html[data-look="afterglow"][data-panel="dark"] .drawer-tab { border: 3px solid color-mix(in srgb, var(--wash-hot) 70%, #fff); border-right: 0; }
+  html[data-layout="side"]html[data-look="afterglow"][data-panel="black"] .drawer { box-shadow: -30px 0 60px rgba(0, 0, 0, 0.5); }
+  html[data-layout="side"]html[data-look="afterglow"][data-panel="frosted"] .drawer { border-left: 1px solid rgba(255, 255, 255, 0.5); box-shadow: -20px 0 50px rgba(0, 0, 0, 0.25); }
+  html[data-layout="side"]html[data-look="afterglow"][data-panel="frosted"] .drawer-tab { border: 1px solid rgba(255, 255, 255, 0.5); border-right: 0; }
+  html[data-layout="side"]html[data-look="afterglow"][data-panel="cream"] .drawer { box-shadow: -30px 0 60px rgba(0, 0, 0, 0.35); border-left: 8px solid var(--wash-mid); }
+  html[data-layout="side"]html[data-look="afterglow"][data-panel="cream"] .drawer-tab { border-left: 8px solid var(--wash-mid); }
+}

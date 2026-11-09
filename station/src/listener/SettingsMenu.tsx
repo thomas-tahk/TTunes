@@ -28,7 +28,7 @@ export function SettingsMenu({ layout, onLayout }: { layout: Layout; onLayout: (
           <circle cx="12" cy="12" r="3" />
           <path d={GEAR} />
         </svg>
-        <span>Settings</span>
+        <span className="settings-label">Settings</span>
       </button>
       {open && (
         <div id="settings-panel" className="settings-panel">

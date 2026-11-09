@@ -112,9 +112,17 @@ footer { margin-top: 22px; min-height: 44px; }
   .look-switch legend { padding-right: 0; font-size: 0.7rem; }
   .settings-panel { column-gap: 14px; padding: 6px 10px; }
 }
-/* narrow phones: Settings is its own row in every look (the fonts differ in width; this keeps the header, and so the player, in the same place) */
+/* narrow phones: Settings is a gear-only 44x44 button (its word stays for screen readers). An owner's header always breaks to two rows,
+   the wordmark alone on the first, so it is the same height in every look (the fonts differ in width). The open menu is compacted so the
+   player still fits the first screen of a 320x568 phone. In landscape (height under 500px) an open in-flow menu cannot share the screen
+   with a 200px player: a known exception, the player is never covered and the page scrolls. */
 @media (max-width: 480px) {
-  .settings-btn { flex: 1 0 100%; margin: 0; justify-content: center; }
+  .settings-btn { width: 44px; padding: 0; justify-content: center; }
+  .settings-label { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  header:has(.owner-badge) .wordmark { flex: 1 0 100%; }
+  .settings-panel { row-gap: 8px; padding: 8px 10px; }
+  .settings-panel .look-switch { row-gap: 6px; }
+  .look-switch label { padding: 0 8px; }
   .segmented { grid-template-columns: 1fr; }
   .feed-row { grid-template-columns: 52px minmax(0, 1fr); }
   .feed-row .chip { grid-column: 2; justify-self: start; }

@@ -67,14 +67,15 @@ const measure = (page) => page.evaluate(() => {
   const over = (top, under) => { const a = top[3]; return [0, 1, 2].map((i) => top[i] * a + under[i] * (1 - a)).concat(1); };
   const lum = ([r, g, b]) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
   const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
-  const shell = getComputedStyle(document.querySelector(".shell"));
-  const washes = ["--wash-hot", "--wash-mid", "--wash-deep"].map((v) => parse(shell.getPropertyValue(v).trim()));
-  // Layers behind an element, top to bottom, up to the first opaque one; whatever is still see-through is laid over each wash colour (the worst case counts).
-  const layers = (el) => { const out = []; for (let e = el; e; e = e.parentElement) { const c = parse(getComputedStyle(e).backgroundColor); if (c[3] > 0) out.push(c); if (c[3] >= 0.999) break; } return out; };
+  const shellEl = document.querySelector(".shell");
+  const washes = ["--wash-hot", "--wash-mid", "--wash-deep"].map((v) => parse(getComputedStyle(shellEl).getPropertyValue(v).trim()));
+  // Layers behind an element, top to bottom, up to the first opaque one or the .shell (whose gradient is the page colour); whatever is still see-through is laid over each wash colour (the worst case counts).
+  // Never walk on to <html>: it is opaque and would hide the gradient the translucent Frosted panel really sits on.
+  const layers = (el) => { const out = []; for (let e = el; e && e !== shellEl; e = e.parentElement) { const c = parse(getComputedStyle(e).backgroundColor); if (c[3] > 0) out.push(c); if (c[3] >= 0.999) break; } return out; };
   const backgrounds = (el) => washes.map((w) => layers(el).reduceRight((under, l) => over(l, under), over(w, [0, 0, 0, 1])));
   const visible = (el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden";
   const worst = (fg, bgs) => Math.min(...bgs.map((b) => ratio(over(fg, b), b)));
-  const label = (el) => `${el.tagName.toLowerCase()}.${String(el.className).split(" ")[0]} "${(el.textContent || "").trim().slice(0, 24)}"`;
+  const label = (el) => `${el.tagName.toLowerCase()}.${String(el.className).trim().split(/\s+/).join(".")} "${(el.textContent || "").trim().slice(0, 24)}"`;
 
   const text = [];
   for (const root of document.querySelectorAll(".drawer, .drawer-tab")) {
@@ -95,7 +96,8 @@ const measure = (page) => page.evaluate(() => {
     const outside = (parseFloat(cs.outlineOffset) || 0) >= 0; // an offset ring sits on what is around the control, not on the control
     rings.push({ el: label(el), ok, ratio: ok ? worst(colour, backgrounds(outside ? el.parentElement : el)) : 0 });
   }
-  return { text, rings, chips: [...document.querySelectorAll(".status-waiting, .mode-approve")].filter(visible).map(label) };
+  const chips = [...document.querySelectorAll(".drawer .status-waiting, .drawer .mode-approve")].filter(visible).map((el) => ({ el: label(el), ratio: worst(parse(getComputedStyle(el).color), backgrounds(el)) }));
+  return { text, rings, chips };
 });
 
 // ================= 1. The menu: closed state, keyboard, Escape =================
@@ -143,7 +145,10 @@ const measure = (page) => page.evaluate(() => {
   const page = await openPage({ width: 375, height: 812 });
   const closed = await page.locator("header").boundingBox();
   console.log(`header height @375x812: ${Math.round(closed.height)}px closed (was 176px with the switches in the header)`);
-  check(closed.height <= 130, `header gives height back at 375x812 (${Math.round(closed.height)}px, was 176px)`);
+  check(closed.height >= 56 && closed.height <= 68, `listener header is one row at 375x812 (${Math.round(closed.height)}px; 56-68px; was 176px)`);
+  const gear = await page.getByRole("button", { name: "Settings" }).boundingBox();
+  check(Math.abs(gear.width - 44) < 0.6 && Math.abs(gear.height - 44) < 0.6, `Settings is a gear-only 44x44 button at 375px (${gear.width.toFixed(1)}x${gear.height.toFixed(1)}), accessible name still "Settings"`);
+  check(!(await page.locator(".settings-btn span").evaluate((el) => { const r = el.getBoundingClientRect(); return r.width > 2 && r.height > 2; })), "the word Settings is visually hidden at 375px (still read by screen readers)");
   await page.getByRole("button", { name: "Request a song" }).click();
   await page.getByLabel("Your name").fill("Keeper");
   await page.getByLabel("Song link").fill("https://youtu.be/musicVid001");
@@ -157,12 +162,30 @@ const measure = (page) => page.evaluate(() => {
     check(now.name === "Keeper" && now.link === "https://youtu.be/musicVid001", `typed request text survives choosing ${name} (${check1})`);
   }
   await page.context().close();
+  const wide = await openPage({ width: 1280, height: 800 });
+  const wideBtn = await wide.getByRole("button", { name: "Settings" }).boundingBox();
+  check(wideBtn.width > 90 && (await wide.locator(".settings-btn span").isVisible()), `above 480px the button keeps the gear and the visible word Settings (${Math.round(wideBtn.width)}px wide)`);
+  await wide.context().close();
+  if (SHOTS) {
+    const small = await openPage({ width: 320, height: 568 });
+    await openSettings(small);
+    await small.screenshot({ path: `${SHOTS}menu-open-320.png` });
+    await small.context().close();
+  }
+  // An owner header carries the badge too: it is two rows, and the same height whichever look is on.
+  const ownerHeights = {};
+  for (const look of ["afterglow", "theset"]) {
+    const op = await openPage({ width: 375, height: 812 }, { owner: true, saved: { "ttunes.look": look } });
+    ownerHeights[look] = Math.round((await op.locator("header").boundingBox()).height);
+    await op.context().close();
+  }
+  check(ownerHeights.afterglow === ownerHeights.theset && ownerHeights.afterglow > 80, `owner header is the same height in both looks at 375px (Afterglow ${ownerHeights.afterglow}px, The Set ${ownerHeights.theset}px)`);
 }
 
 // ================= 3. Player rules, menu closed and open, listener and owner, both layouts =================
-for (const owner of [false, true]) for (const layout of ["side", "stacked"]) for (const [w, h] of [[375, 812], [320, 568], [667, 375], [568, 320]]) {
-  const page = await openPage({ width: w, height: h }, { owner, saved: { "ttunes.layout": layout } });
-  const who = `${owner ? "owner" : "listener"} ${layout} @${w}x${h}`;
+for (const owner of [false, true]) for (const layout of ["side", "stacked"]) for (const look of ["afterglow", "theset"]) for (const [w, h] of [[375, 812], [375, 667], [320, 568], [667, 375], [568, 320]]) {
+  const page = await openPage({ width: w, height: h }, { owner, saved: { "ttunes.layout": layout, "ttunes.look": look } });
+  const who = `${owner ? "owner" : "listener"} ${layout} ${look} @${w}x${h}`;
   for (const menu of ["closed", "open"]) {
     if (menu === "open") await openSettings(page);
     const g = await page.evaluate(() => {
@@ -175,8 +198,10 @@ for (const owner of [false, true]) for (const layout of ["side", "stacked"]) for
     check(g.r.height >= 199.5 && (Math.abs(g.r.width / g.r.height - 16 / 9) < 0.03 || g.r.height <= 200.5), `${label}: player ${Math.round(g.r.width)}x${Math.round(g.r.height)} is 16:9 and at least 200px tall`);
     check(g.uncovered && g.noH, `${label}: nothing covers the player, no horizontal scroll`);
     if (g.panel) check(!overlaps(g.panel, g.r), `${label}: the menu panel does not overlap the player`);
-    // Open: an in-flow panel cannot fit a 200px player into a 320-375px tall screen as well, so only the tall phones keep it on the first screen (the player is still never covered; the page scrolls).
-    if (menu === "closed" || h >= 800) check(g.bottom <= h + 1, `${label}: player on the first screen (bottom ${Math.round(g.bottom)} of ${h})`);
+    // Open: the panel is in flow, so in LANDSCAPE (h < 500) it cannot share a 320-375px tall screen with a 200px player: a known exception (the player is still never covered; the page scrolls).
+    // Every portrait phone (h >= 500) keeps the player on the first screen with the menu open.
+    // The owner's header has a second row (the badge), so on the smallest portrait phone (320x568, Afterglow's Panel group makes the menu tallest) the open menu is also a known exception for them.
+    if (menu === "closed" || (h >= 500 && (!owner || h >= 600))) check(g.bottom <= h + 1, `${label}: player on the first screen (bottom ${Math.round(g.bottom)} of ${h})`);
     else console.log(`    ${label}: menu open, player bottom at ${Math.round(g.bottom)} of ${h} (scroll to see it; not covered)`);
   }
   await page.context().close();
@@ -202,7 +227,17 @@ for (const [id, name] of PANELS) {
     check(m.text.length > 5 && lows.length === 0, `${id} / ${tab}: all ${m.text.length} text items >= 4.5:1 ${lows.map((t) => `${t.el} ${t.ratio.toFixed(2)}`).join("; ")}`);
     const bad = m.rings.filter((r) => !r.ok || r.ratio < 3);
     check(m.rings.length >= 2 && bad.length === 0, `${id} / ${tab}: focus ring visible (>= 2px, >= 3:1) on ${m.rings.length} controls ${bad.map((r) => `${r.el} ${r.ratio.toFixed(2)}`).join("; ")}`);
-    if (tab === "Requests") check(m.chips.length >= 2 && m.text.filter((t) => /status-waiting|mode-approve/.test(t.el)).every((t) => t.ratio >= 4.5), `${id}: waiting and approve chips are shown and readable (${m.chips.length} chips)`);
+    if (tab === "Requests") {
+      check(m.chips.length >= 2 && m.chips.every((c) => c.ratio >= 4.5), `${id}: ${m.chips.length} waiting/approve chips shown and readable (worst ${Math.min(...m.chips.map((c) => c.ratio)).toFixed(2)}:1)`);
+      if (id === "dark") { // negative control: a chip colour that is too faint must be caught by this very measurement
+        await page.addStyleTag({ content: ".drawer .status-waiting, .drawer .mode-approve { color: #8a7a9a !important; background: #8f7f9f !important; }" });
+        const broken = await measure(page);
+        check(broken.chips.length >= 2 && broken.chips.some((c) => c.ratio < 4.5), `negative control: a broken chip colour is caught (worst ${Math.min(...broken.chips.map((c) => c.ratio)).toFixed(2)}:1)`);
+        await page.reload();
+        await page.getByTestId("now-title").waitFor();
+        await openDrawer(page);
+      }
+    }
   }
   await page.reload();
   await page.getByTestId("now-title").waitFor();
@@ -258,6 +293,41 @@ for (const [id, name] of PANELS) {
   const p = await page.locator(".player-host").boundingBox();
   const d = await page.locator(".drawer").boundingBox();
   check(p.y + p.height <= 812 && d.y > p.y + p.height, "Stacked 375 with Dark tinted: player on the first screen, requests below it");
+  await page.context().close();
+}
+
+// ================= 7. In-flow drawers: no side stripe, no side shadow, even tab borders; phone and Stacked text still readable =================
+// The stripe and shadow belong to the fixed side drawer (Side, 1000px and wider). On a phone, in Stacked, the drawer is a full-bleed section and the tab a full-width bar.
+const IN_FLOW = [["side", 375, 812], ["stacked", 375, 812], ["stacked", 1280, 800]];
+for (const [id] of PANELS) for (const [layout, w, h] of IN_FLOW) {
+  const page = await openPage({ width: w, height: h }, { owner: true, saved: { "ttunes.panel": id, "ttunes.layout": layout } });
+  if (layout === "side") await openDrawer(page);
+  await page.waitForTimeout(300);
+  const where = `${id} ${layout} @${w}`;
+  const g = await page.evaluate(() => {
+    const px = (v) => parseFloat(v) || 0;
+    const d = getComputedStyle(document.querySelector(".drawer"));
+    const tabEl = document.querySelector(".drawer-tab");
+    const t = tabEl && getComputedStyle(tabEl);
+    return {
+      stripe: px(d.borderLeftWidth), shadow: d.boxShadow,
+      tab: t && { l: px(t.borderLeftWidth), r: px(t.borderRightWidth), t: px(t.borderTopWidth), b: px(t.borderBottomWidth) },
+    };
+  });
+  check(g.stripe === 0 && g.shadow === "none", `${where}: drawer has no left stripe (${g.stripe}px) and no side shadow (${g.shadow.slice(0, 30)})`);
+  if (g.tab) check(g.tab.l === g.tab.r && g.tab.t === g.tab.b, `${where}: tab borders are even (l ${g.tab.l} r ${g.tab.r} t ${g.tab.t} b ${g.tab.b})`);
+  for (const tab of layout === "side" ? ["Requests", "Add song", "Owner tools"] : ["all sections"]) { // Stacked has no tabs: every section is in the page
+    if (layout === "side") await page.getByRole("tab", { name: tab, exact: true }).click();
+    await page.waitForTimeout(250);
+    await page.keyboard.press("Shift");
+    const m = await measure(page);
+    const lows = m.text.filter((t) => t.ratio < 4.5);
+    check(m.text.length > 5 && lows.length === 0, `${where} / ${tab}: all ${m.text.length} text items >= 4.5:1 over the page gradient ${lows.map((t) => `${t.el} ${t.ratio.toFixed(2)}`).join("; ")}`);
+    const bad = m.rings.filter((r) => !r.ok || r.ratio < 3);
+    check(bad.length === 0, `${where} / ${tab}: focus rings visible on ${m.rings.length} controls ${bad.map((r) => `${r.el} ${r.ratio.toFixed(2)}`).join("; ")}`);
+    if (tab !== "Add song" && tab !== "Owner tools") check(m.chips.length >= 2 && m.chips.every((c) => c.ratio >= 4.5), `${where}: waiting/approve chips readable (${m.chips.length}, worst ${Math.min(...m.chips.map((c) => c.ratio)).toFixed(2)}:1)`);
+  }
+  if (SHOTS && id === "cream" && layout === "side") await page.screenshot({ path: `${SHOTS}phone-cream-375.png` });
   await page.context().close();
 }
 

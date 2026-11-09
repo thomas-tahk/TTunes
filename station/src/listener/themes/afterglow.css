@@ -185,6 +185,7 @@ footer .signin { font-size: 0.9rem; font-weight: 600; }
 .look-switch label.on { background: #fff; color: var(--wash-deep); }
 .look-switch label.on span::before { content: "\2713\00a0" / ""; }
 .settings-btn { border-color: #fff; color: #fff; font-weight: 800; font-size: 0.95rem; }
+.settings-btn[aria-expanded="true"] { background: #fff; color: #1a0630; }
 .settings-panel { background: rgba(0, 0, 0, 0.5); }
 .look-switch label:focus-within { outline: 3px solid var(--drawer-bg); outline-offset: 3px; }
 

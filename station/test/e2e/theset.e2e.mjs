@@ -111,9 +111,20 @@ try {
   check(await noScroll(page), "The Set listener: no horizontal scroll at 375px");
   await page.setViewportSize({ width: 1280, height: 800 });
   const pairs = await page.evaluate(() => {
-    const solid = (el) => { for (let e = el; e; e = e.parentElement) { const c = getComputedStyle(e).backgroundColor; if (!/rgba\(.*, 0\)|transparent/.test(c)) return c; } return "rgb(255,255,255)"; };
+    const cv = document.createElement("canvas"); cv.width = cv.height = 1;
+    const cx = cv.getContext("2d", { willReadFrequently: true });
+    const parse = (c) => { cx.clearRect(0, 0, 1, 1); cx.fillStyle = "#000"; cx.fillStyle = c; cx.fillRect(0, 0, 1, 1); const d = cx.getImageData(0, 0, 1, 1).data; return [d[0], d[1], d[2], d[3] / 255]; };
+    const shellBg = getComputedStyle(document.querySelector(".shell")).backgroundColor;
+    // The real colour behind an element: every see-through layer (the translucent Settings panel, for one) is composited over what lies under it, down to the shell.
+    const solid = (el) => {
+      const layers = [];
+      for (let e = el; e && e !== document.documentElement; e = e.parentElement) { const c = parse(getComputedStyle(e).backgroundColor); if (c[3] > 0) layers.push(c); if (c[3] >= 0.999) break; }
+      const base = layers.length && layers[layers.length - 1][3] >= 0.999 ? layers.pop() : parse(shellBg);
+      const [r, g, b] = layers.reduceRight((under, l) => [0, 1, 2].map((i) => l[i] * l[3] + under[i] * (1 - l[3])), base);
+      return `rgb(${r}, ${g}, ${b})`;
+    };
     const pick = [[".wordmark"], [".on-air"], [".titles .label"], ["h1"], [".settings-btn"], [".look-switch legend"], [".look-switch label.on"], [".look-switch label:not(.on)"], [".signin"], [".request-line", "rgb(255, 201, 77)"], [".up-next b", "rgb(255, 201, 77)"], [".up-next .label", "rgb(255, 201, 77)"], [".play"]];
-    return pick.map(([sel, bg]) => { const el = document.querySelector(sel); const cs = getComputedStyle(el); return { sel, fg: cs.color, bg: bg ?? (sel === ".play" ? "rgb(255, 201, 77)" : sel === ".look-switch legend" || sel === ".settings-btn" || sel === ".signin" || sel === ".wordmark" ? getComputedStyle(document.querySelector(".shell")).backgroundColor : solid(el)) }; });
+    return pick.map(([sel, bg]) => { const el = document.querySelector(sel); const cs = getComputedStyle(el); return { sel, fg: cs.color, bg: bg ?? (sel === ".play" ? "rgb(255, 201, 77)" : sel === ".signin" || sel === ".wordmark" ? getComputedStyle(document.querySelector(".shell")).backgroundColor : solid(el)) }; });
   });
   for (const { sel, fg, bg } of pairs) { const r = ratio(rgb(fg), rgb(bg)); check(r >= 4.5, `contrast ${sel} ${r.toFixed(1)}:1 >= 4.5`); }
 

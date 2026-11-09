@@ -37,6 +37,7 @@ html[data-look="theset"] {
   .look-switch label.on { background: var(--gold); color: #1b0c06; }
   .look-switch label.on span::before { content: "\2713\00a0" / ""; }
   .settings-btn { border-color: var(--brass); border-radius: 8px; color: var(--gold); font-weight: 700; font-size: 1.05rem; }
+  .settings-btn[aria-expanded="true"] { background: var(--gold); color: #1a0630; }
   .settings-panel { background: rgba(0, 0, 0, 0.45); border-radius: 8px; }
   .look-switch label:focus-within { outline: 3px solid #fff; outline-offset: 3px; }
   .signin, .owner-badge { font-weight: 700; color: var(--gold); }
