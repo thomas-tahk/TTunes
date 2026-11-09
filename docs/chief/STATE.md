@@ -5,6 +5,6 @@ Live: https://t-tunes-navy.vercel.app (main = M4, PR #45 merged 2026-11-08)
 His M4 review 2026-11-08: see docs/questions/M5.md
 M5 issues: #46 focus outline, #47 calm indicator, #44 pause while buffering (parallel); #50 panel colour (options image first → his pick); #48 shared layout (after #46,#47) → #49 Layout switch Side/Stacked
 Waiting on him: nothing
-Next action: #50 building (panel choice x5 + View menu); then milestone-end review + QA
+Next action: #50 merged; milestone-end whole-diff review + QA done-gate running
 Open questions: docs/questions/M5.md
 Updated: 2026-11-08
