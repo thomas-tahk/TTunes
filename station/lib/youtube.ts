@@ -11,6 +11,7 @@ export interface VideoInfo {
   embeddable: boolean;
   categoryId: string;
   channelTitle: string;
+  ageRestricted?: boolean; // contentDetails.contentRating.ytRating === "ytAgeRestricted"
 }
 
 /** YouTube refused because the daily quota or a rate limit is used up. */
@@ -48,7 +49,7 @@ export function parseIsoDuration(iso: string): number {
 interface ApiItem {
   id: string;
   snippet: { title: string; categoryId?: string; channelTitle?: string };
-  contentDetails: { duration: string };
+  contentDetails: { duration: string; contentRating?: { ytRating?: string } };
   status: { embeddable: boolean };
 }
 
@@ -67,10 +68,10 @@ export function apiKey(): string {
   return key;
 }
 
-async function fetchBatch(ids: string[], key: string): Promise<ApiItem[]> {
+async function fetchBatch(ids: string[], key: string, signal?: AbortSignal): Promise<ApiItem[]> {
   const url = new URL(`${apiBase()}/videos`);
   url.search = new URLSearchParams({ part: "snippet,contentDetails,status", id: ids.join(","), key }).toString();
-  const res = await fetch(url);
+  const res = await fetch(url, { signal });
   if (!res.ok) return throwApiError(res, "videos.list");
   const body = (await res.json()) as { items?: ApiItem[] };
   if (!Array.isArray(body.items)) throw new Error("YouTube videos.list: response has no items array");
@@ -78,14 +79,14 @@ async function fetchBatch(ids: string[], key: string): Promise<ApiItem[]> {
 }
 
 /** Looks up videos. Ids YouTube does not return (deleted, private) are absent from the result. Throws on any API failure. */
-export async function fetchVideos(ids: string[]): Promise<Map<string, VideoInfo>> {
+export async function fetchVideos(ids: string[], opts: { signal?: AbortSignal } = {}): Promise<Map<string, VideoInfo>> {
   const unique = [...new Set(ids)];
   const found = new Map<string, VideoInfo>();
   if (unique.length === 0) return found;
   const key = apiKey();
   for (let i = 0; i < unique.length; i += MAX_IDS_PER_CALL) {
-    for (const item of await fetchBatch(unique.slice(i, i + MAX_IDS_PER_CALL), key)) {
-      found.set(item.id, { videoId: item.id, title: item.snippet.title, durationSec: safeDuration(item), embeddable: item.status.embeddable, categoryId: item.snippet.categoryId ?? "", channelTitle: item.snippet.channelTitle ?? "" });
+    for (const item of await fetchBatch(unique.slice(i, i + MAX_IDS_PER_CALL), key, opts.signal)) {
+      found.set(item.id, { videoId: item.id, title: item.snippet.title, durationSec: safeDuration(item), embeddable: item.status.embeddable, categoryId: item.snippet.categoryId ?? "", channelTitle: item.snippet.channelTitle ?? "", ageRestricted: item.contentDetails.contentRating?.ytRating === "ytAgeRestricted" });
     }
   }
   return found;

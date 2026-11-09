@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-layout="side" data-panel="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -9,6 +9,16 @@
     <script>
       // Set the saved look before first paint (no flash). Afterglow when nothing is saved or storage is blocked.
       try { document.documentElement.dataset.look = localStorage.getItem("ttunes.look") === "theset" ? "theset" : "afterglow"; } catch (e) { document.documentElement.dataset.look = "afterglow"; }
+    </script>
+    <script>
+      // Same for the layout: Side unless "stacked" was saved.
+      try { document.documentElement.dataset.layout = localStorage.getItem("ttunes.layout") === "stacked" ? "stacked" : "side"; } catch (e) { document.documentElement.dataset.layout = "side"; }
+    </script>
+    <script>
+      // Same for the Afterglow panel colour: Dark tinted unless one of the other four was saved.
+      (function () {
+        try { var p = localStorage.getItem("ttunes.panel"); document.documentElement.dataset.panel = ["black", "frosted", "cream", "yellow"].indexOf(p) >= 0 ? p : "dark"; } catch (e) { document.documentElement.dataset.panel = "dark"; }
+      })();
     </script>
     <title>TTunes station</title>
   </head>

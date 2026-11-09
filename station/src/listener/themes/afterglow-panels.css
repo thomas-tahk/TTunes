@@ -1,0 +1,103 @@
+/* Afterglow panel colours (the request drawer/bar, its chips and buttons). Yellow is the base look in afterglow.css, so it has no rules here.
+   Chosen per browser in Settings; <html data-panel> is set before first paint. Must load after afterglow.css. */
+
+/* A. Dark panel tinted by the cover colour, light text. Overrides on top of afterglow.css (look = afterglow). */
+html[data-look="afterglow"][data-panel="dark"] .drawer, html[data-look="afterglow"][data-panel="dark"] .drawer-tab {
+  --drawer-bg: color-mix(in srgb, var(--wash-mid) 58%, #000);
+  --ink: #fff; --ink-soft: #e6dcf0; --rule: rgba(255, 255, 255, 0.28);
+  --drawer-edge: color-mix(in srgb, var(--wash-hot) 70%, #fff);
+  --focus-on-drawer: #fff; --focus-on-wash: #fff;
+}
+html[data-look="afterglow"][data-panel="dark"] .drawer-tab { background: color-mix(in srgb, var(--wash-mid) 58%, #000); }
+html[data-look="afterglow"][data-panel="dark"] .drawer .btn { background: #fff; color: #1a0630; }
+html[data-look="afterglow"][data-panel="dark"] .drawer .btn.ghost { background: transparent; color: #fff; }
+html[data-look="afterglow"][data-panel="dark"] .mine, html[data-look="afterglow"][data-panel="dark"] .song-card-body { background: rgba(255, 255, 255, 0.14); }
+html[data-look="afterglow"][data-panel="dark"] .song-card-body .btn { background: #fff; color: #1a0630; }
+html[data-look="afterglow"][data-panel="dark"] .mode-approve, html[data-look="afterglow"][data-panel="dark"] .status-waiting { background: #fff; color: #1a0630; }
+html[data-look="afterglow"][data-panel="dark"] .mode-open, html[data-look="afterglow"][data-panel="dark"] .status-queued { background: #fff; color: #1a0630; }
+html[data-look="afterglow"][data-panel="dark"] .status-playing { background: color-mix(in srgb, var(--wash-hot) 55%, #fff); border-color: transparent; color: #14052a; }
+html[data-look="afterglow"][data-panel="dark"] .status-played, html[data-look="afterglow"][data-panel="dark"] .status-expired { color: var(--ink-soft); border-color: var(--ink-soft); }
+html[data-look="afterglow"][data-panel="dark"] .mode-off { color: #ffb3c0; border-color: #ffb3c0; }
+html[data-look="afterglow"][data-panel="dark"] .owner-error { color: #ffb3c0; }
+html[data-look="afterglow"][data-panel="dark"] .owner-done { color: #9df0b8; }
+html[data-look="afterglow"][data-panel="dark"] .tab.on, html[data-look="afterglow"][data-panel="dark"] .seg.on, html[data-look="afterglow"][data-panel="dark"] .waiting-badge { background: #fff; color: #1a0630; }
+
+/* B. Neutral near-black, light text; the cover colour (lightened) only on chips, buttons and the handle. */
+html[data-look="afterglow"][data-panel="black"] .drawer, html[data-look="afterglow"][data-panel="black"] .drawer-tab {
+  --drawer-bg: #101013; --ink: #f4f4f7; --ink-soft: #b8b8c6; --rule: rgba(255, 255, 255, 0.18);
+  --accent: color-mix(in srgb, var(--wash-hot) 55%, #fff);
+  --drawer-edge: #101013;
+  --focus-on-drawer: #fff; --focus-on-wash: #fff;
+}
+html[data-look="afterglow"][data-panel="black"] .drawer-tab { background: var(--accent); color: #101013; }
+html[data-look="afterglow"][data-panel="black"] .drawer h2, html[data-look="afterglow"][data-panel="black"] .drawer h3 { color: #fff; }
+html[data-look="afterglow"][data-panel="black"] .drawer .btn { background: var(--accent); color: #101013; }
+html[data-look="afterglow"][data-panel="black"] .drawer .btn.ghost { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 3px var(--ink); }
+html[data-look="afterglow"][data-panel="black"] .drawer input, html[data-look="afterglow"][data-panel="black"] .drawer textarea { border-bottom-color: var(--ink-soft); }
+html[data-look="afterglow"][data-panel="black"] .mine, html[data-look="afterglow"][data-panel="black"] .song-card-body { background: #1e1e24; }
+html[data-look="afterglow"][data-panel="black"] .song-card-body .btn { background: var(--accent); color: #101013; }
+html[data-look="afterglow"][data-panel="black"] .chip { border-color: var(--accent); color: var(--accent); background: transparent; }
+html[data-look="afterglow"][data-panel="black"] .status-playing, html[data-look="afterglow"][data-panel="black"] .mode-open, html[data-look="afterglow"][data-panel="black"] .status-queued { background: var(--accent); color: #101013; border-color: var(--accent); }
+html[data-look="afterglow"][data-panel="black"] .status-waiting, html[data-look="afterglow"][data-panel="black"] .mode-approve { background: transparent; color: var(--ink); border-color: var(--ink-soft); }
+html[data-look="afterglow"][data-panel="black"] .status-played, html[data-look="afterglow"][data-panel="black"] .status-expired { color: var(--ink-soft); border-color: var(--ink-soft); }
+html[data-look="afterglow"][data-panel="black"] .mode-off { color: #ffb3c0; border-color: #ffb3c0; }
+html[data-look="afterglow"][data-panel="black"] .owner-error { color: #ffb3c0; }
+html[data-look="afterglow"][data-panel="black"] .owner-done { color: #9df0b8; }
+html[data-look="afterglow"][data-panel="black"] .tab.on, html[data-look="afterglow"][data-panel="black"] .seg.on, html[data-look="afterglow"][data-panel="black"] .waiting-badge { background: var(--accent); color: #101013; border-color: var(--accent); }
+
+/* C. Frosted glass over the cover-colour page background, light text. */
+html[data-look="afterglow"][data-panel="frosted"] .drawer, html[data-look="afterglow"][data-panel="frosted"] .drawer-tab {
+  --drawer-bg: rgba(14, 6, 28, 0.6);
+  --ink: #fff; --ink-soft: #efe8f6; --rule: rgba(255, 255, 255, 0.35);
+  --drawer-edge: rgba(255, 255, 255, 0.5);
+  --focus-on-drawer: #fff; --focus-on-wash: #fff;
+}
+html[data-look="afterglow"][data-panel="frosted"] .drawer { background: rgba(14, 6, 28, 0.6); -webkit-backdrop-filter: blur(26px) saturate(1.5); backdrop-filter: blur(26px) saturate(1.5); }
+html[data-look="afterglow"][data-panel="frosted"] .drawer-tab { background: rgba(14, 6, 28, 0.6); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
+html[data-look="afterglow"][data-panel="frosted"] .drawer .btn { background: #fff; color: #1a0630; }
+html[data-look="afterglow"][data-panel="frosted"] .drawer .btn.ghost { background: transparent; color: #fff; }
+html[data-look="afterglow"][data-panel="frosted"] .mine, html[data-look="afterglow"][data-panel="frosted"] .song-card-body { background: rgba(255, 255, 255, 0.16); }
+html[data-look="afterglow"][data-panel="frosted"] .song-card-body .btn { background: #fff; color: #1a0630; }
+html[data-look="afterglow"][data-panel="frosted"] .feed-row { background: rgba(255, 255, 255, 0.07); padding-left: 10px; padding-right: 10px; border-bottom: 0; margin-bottom: 8px; }
+html[data-look="afterglow"][data-panel="frosted"] .mode-open, html[data-look="afterglow"][data-panel="frosted"] .status-queued, html[data-look="afterglow"][data-panel="frosted"] .mode-approve, html[data-look="afterglow"][data-panel="frosted"] .status-waiting { background: #fff; color: #1a0630; }
+html[data-look="afterglow"][data-panel="frosted"] .status-playing { background: #1a0630; border-color: #fff; color: #fff; }
+html[data-look="afterglow"][data-panel="frosted"] .status-played, html[data-look="afterglow"][data-panel="frosted"] .status-expired { color: #efe8f6; border-color: #efe8f6; }
+html[data-look="afterglow"][data-panel="frosted"] .mode-off { color: #ffd0d8; border-color: #ffd0d8; }
+html[data-look="afterglow"][data-panel="frosted"] .owner-error { color: #ffd0d8; }
+html[data-look="afterglow"][data-panel="frosted"] .owner-done { color: #b8f5cb; }
+html[data-look="afterglow"][data-panel="frosted"] .tab.on, html[data-look="afterglow"][data-panel="frosted"] .seg.on, html[data-look="afterglow"][data-panel="frosted"] .waiting-badge { background: #fff; color: #1a0630; }
+
+/* D. Light, muted cream panel, dark text, cover colour (darkened) for accents. */
+html[data-look="afterglow"][data-panel="cream"] .drawer, html[data-look="afterglow"][data-panel="cream"] .drawer-tab {
+  --drawer-bg: #f3eadb; --ink: #1d1722; --ink-soft: #564b5c; --rule: rgba(29, 23, 34, 0.22);
+  --accent: color-mix(in srgb, var(--wash-deep) 85%, #000);
+  --drawer-edge: var(--wash-mid);
+  --focus-on-drawer: #1d1722; --focus-on-wash: #1d1722;
+}
+html[data-look="afterglow"][data-panel="cream"] .drawer-tab { background: #f3eadb; }
+html[data-look="afterglow"][data-panel="cream"] .drawer h2, html[data-look="afterglow"][data-panel="cream"] .drawer h3 { color: var(--accent); }
+html[data-look="afterglow"][data-panel="cream"] .drawer .btn { background: var(--accent); color: #fff; }
+html[data-look="afterglow"][data-panel="cream"] .drawer .btn.ghost { background: transparent; color: var(--ink); }
+html[data-look="afterglow"][data-panel="cream"] .drawer input, html[data-look="afterglow"][data-panel="cream"] .drawer textarea { border-bottom-color: var(--accent); }
+html[data-look="afterglow"][data-panel="cream"] .mine, html[data-look="afterglow"][data-panel="cream"] .song-card-body { background: var(--accent); color: #fff; }
+html[data-look="afterglow"][data-panel="cream"] .song-card-body .btn { background: #fff; color: var(--accent); }
+html[data-look="afterglow"][data-panel="cream"] .chip { border-color: var(--accent); color: var(--accent); }
+html[data-look="afterglow"][data-panel="cream"] .mode-open, html[data-look="afterglow"][data-panel="cream"] .status-queued { background: var(--accent); color: #fff; }
+html[data-look="afterglow"][data-panel="cream"] .status-playing { background: var(--wash-mid); border-color: var(--wash-mid); color: #fff; }
+html[data-look="afterglow"][data-panel="cream"] .status-waiting, html[data-look="afterglow"][data-panel="cream"] .mode-approve { background: transparent; color: var(--ink); border-color: var(--ink); }
+html[data-look="afterglow"][data-panel="cream"] .feed-name { color: var(--accent); }
+html[data-look="afterglow"][data-panel="cream"] .tab.on, html[data-look="afterglow"][data-panel="cream"] .seg.on, html[data-look="afterglow"][data-panel="cream"] .waiting-badge { background: var(--accent); color: #fff; }
+/* The handle focus ring sits on the page colour, not on the cream panel. */
+html[data-look="afterglow"][data-panel="cream"] .drawer-tab { --focus-on-wash: #fff; }
+
+/* The edge stripe, the side shadow and the handle's border belong to the fixed side drawer only (Side layout, 1000px and wider).
+   A phone's or Stacked's in-flow drawer and full-width tab get none of them. */
+@media (min-width: 1000px) {
+  html[data-layout="side"][data-look="afterglow"][data-panel="dark"] .drawer { box-shadow: -30px 0 60px rgba(0, 0, 0, 0.45); border-left: 4px solid color-mix(in srgb, var(--wash-hot) 70%, #fff); }
+  html[data-layout="side"][data-look="afterglow"][data-panel="dark"] .drawer-tab { border: 3px solid color-mix(in srgb, var(--wash-hot) 70%, #fff); border-right: 0; }
+  html[data-layout="side"][data-look="afterglow"][data-panel="black"] .drawer { box-shadow: -30px 0 60px rgba(0, 0, 0, 0.5); }
+  html[data-layout="side"][data-look="afterglow"][data-panel="frosted"] .drawer { border-left: 1px solid rgba(255, 255, 255, 0.5); box-shadow: -20px 0 50px rgba(0, 0, 0, 0.25); }
+  html[data-layout="side"][data-look="afterglow"][data-panel="frosted"] .drawer-tab { border: 1px solid rgba(255, 255, 255, 0.5); border-right: 0; }
+  html[data-layout="side"][data-look="afterglow"][data-panel="cream"] .drawer { box-shadow: -30px 0 60px rgba(0, 0, 0, 0.35); border-left: 8px solid var(--wash-mid); }
+  html[data-layout="side"][data-look="afterglow"][data-panel="cream"] .drawer-tab { border-left: 8px solid var(--wash-mid); }
+}

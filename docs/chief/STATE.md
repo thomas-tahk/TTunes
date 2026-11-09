@@ -1,11 +1,9 @@
 # Chief state
 Vision: docs/chief/vision.md (hosted shared station; Mac app = Part 1, done)
-Phase: Review — M4 redesign (branch m4-portfolio; contains M2+M3 redesign + portfolio)
-Live: https://t-tunes-navy.vercel.app (main = M2+M3; #38 merged 2026-11-08). Setup #28 done 2026-11-08.
-His M2 review (2026-11-08): palette/fonts/UI disliked; add flow awkward; pause/seek snapped back (escaped bug, fixed in #39 with 4 e2es). Buffering = Brave, not a bug.
-His decisions 2026-11-08: loose playback; Afterglow (B) default + The Set (A) switchable; add flow = tap result, expands in place.
-M4: #39–#43 merged; whole-milestone review fixes merged; QA done-gate PASS (local). Report docs/milestones/M4.md
-Waiting on him: M4 PR https://github.com/thomas-tahk/TTunes/pull/45 (merge = deploy, then try live; folds in M3 live check #33)
-Next action: on his reply — record answers, close #33 if requests work live; follow-up #44 (pause during buffering)
-Open questions: docs/questions/M4.md
+Phase: Review — M5 layout & polish (branch m5-polish, off main = M4)
+Live: https://t-tunes-navy.vercel.app (main = M4, PR #45 merged 2026-11-08)
+M5: #46–#52 merged (#44 closed, not reachable); whole-milestone review fixes merged; QA done-gate PASS (local); prod build passes. Report docs/milestones/M5.md
+Waiting on him: M5 PR https://github.com/thomas-tahk/TTunes/pull/53 — merge = deploy, then try live + 3 decisions in M5.md
+Next action: on his reply — record answers; verify the age filter on a real age-restricted video live; regenerate portfolio image (still shows M4 yellow panel)
+Open questions: docs/questions/M5.md
 Updated: 2026-11-08

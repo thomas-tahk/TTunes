@@ -16,11 +16,20 @@ A personal radio station for one person's music library, on a public URL. It pla
 
 ### Hosted station features
 - One shared schedule: press Play and you join the current song at the live spot, from any browser. After that, pause and seek are yours; the player rejoins live only when the next song starts (or after a reload and Play).
-- Two looks, switched in the header and remembered per browser: **Afterglow** (default; colours washed from the song's thumbnail) and **The Set**.
-- Visible 16:9 YouTube player with a visualizer around it; "Now playing" and "Up next" ("Anyone can request a song." sits under Up next).
+- A **Settings** menu in the header (gear button; the choices are remembered per browser): **Look** (**Afterglow**, the default, with colours washed from the song's thumbnail, or **The Set**), **Layout** (**Side**: requests in a drawer on the right; **Stacked**: one column, everything in page flow) and, in Afterglow only, **Panel**, the colour of the request drawer and its tab: Dark tinted (default), Neutral black, Frosted, Cream or Yellow.
+- Play sits right under or beside the player, so before you press it, the whole Play button is on the first screen (phones from 320x568 up and laptop screens from 1280x800; short landscape phones may need a scroll).
+- Visible 16:9 YouTube player with a calm indicator under it (song progress line plus an on air / paused / buffering marker, read from the player itself); "Now playing" and "Up next" ("Anyone can request a song." sits under Up next).
 - Never stops: requests first, then the owner's queue, then a shuffle of the library.
-- Listener requests (the yellow "Request a song" tab opens the drawer): paste a link and look it up, or search by name; tap a result and it expands in place with a preview and a Send request button. Optional dedication; requests show in a public chat-style feed. A one-time hint points first-time visitors to the tab. With requests set to *open*, music under 10 minutes plays without the owner touching anything; other requests up to 15 minutes wait for approval; longer ones are refused. Each listener has one request lined up at a time and 5 an hour. The owner can switch requests to *approve first* or *off*, and deny or remove any one.
+- Listener requests (the "Request a song" tab opens the drawer; the tab takes the Panel colour, Dark tinted by default): paste a link and look it up, or search by name; tap a result and it expands in place with a preview and a Send request button. Optional dedication; requests show in a public chat-style feed. A one-time hint points first-time visitors to the tab. With requests set to *open*, music under 10 minutes plays without the owner touching anything; other requests up to 15 minutes wait for approval; longer ones are refused. Each listener has one request lined up at a time and 5 an hour. The owner can switch requests to *approve first* or *off*, and deny or remove any one.
 - Owner (signed in with GitHub, one account only, via "Owner sign-in (station owner only)" in the footer): add by link or search, skip, reorder, delete with undo, trash, activity log, library export, request mode open / approve first / off.
+
+- **Listener age filter:** a listener's request for a video YouTube marks age-restricted is refused when they look it up, and listener search asks YouTube for strict SafeSearch. A request that is already queued is checked again just before it plays and is skipped if it turns out to be age-restricted. Limits, stated plainly:
+  - It trusts YouTube's `ytRating` age-restricted flag and nothing else.
+  - If YouTube's check fails or takes longer than 2 seconds, the song plays.
+  - Explicit lyrics are not detected.
+  - The owner's own songs are not checked.
+  - Listener search uses strict SafeSearch, which also hides some harmless videos.
+  - A request can show as Up next and then be skipped if it turns out to be age-restricted.
 
 ### Mac app features
 - Add by YouTube link, drag-and-drop audio files, or typed song name (pick the match).
@@ -52,7 +61,7 @@ Open the address Vite prints. Environment variables (values never go in the repo
 
 The owner is one GitHub account, set by `OWNER_GITHUB_ID` in `station/lib/auth.ts`; change it to your own GitHub user id to sign in. More in [station/README.md](station/README.md).
 
-Tests: `npm test` and `npm run typecheck` (in `station/`). Browser end-to-end checks, each on its own fresh database: sync, addlink, controls, moderation, request, afterglow, theset, playback, pausedowner, unplayable, slowstart (commands in [station/README.md](station/README.md)). Regenerate the preview image: `npm run preview` (needs Docker running via `npm run db:up`, Playwright's Chromium via `npx playwright install chromium`, and internet for the YouTube embed).
+Tests: `npm test`, `npm run typecheck` and `npm run build` (in `station/`; the build catches CSS that dev mode silently ignores). Browser end-to-end checks, each on its own fresh database (15): sync, addlink, controls, moderation, request, afterglow, theset, settings, stacked, layout, indicator, playback, pausedowner, unplayable, slowstart (commands in [station/README.md](station/README.md)). Regenerate the preview image: `npm run preview` (needs Docker running via `npm run db:up`, Playwright's Chromium via `npx playwright install chromium`, and internet for the YouTube embed).
 
 ## Run the Mac app
 Install steps for a new Mac are in [docs/INSTALL.md](docs/INSTALL.md): `brew install node yt-dlp ffmpeg`, clone, double-click `Start TTunes.command`. For development:

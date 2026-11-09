@@ -11,12 +11,14 @@ export type PlayableVideo = VideoInfo & { durationSec: number };
 
 export const thumbnailOf = (videoId: string): string => `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 
-export type Lookup = { ok: true; info: PlayableVideo } | { ok: false; status: number; message: string };
+export const AGE_RESTRICTED_MESSAGE = "That video is age-restricted, so it can't be requested.";
+
+export type Lookup = { ok: true; info: PlayableVideo } | { ok: false; status: number; message: string; code?: "age_restricted" };
 
 const refuse = (status: number, message: string): Lookup => ({ ok: false, status, message });
 
-/** Fresh metadata from YouTube, or a plain-language refusal. */
-export async function lookupVideo(videoId: string): Promise<Lookup> {
+/** Fresh metadata from YouTube, or a plain-language refusal. Listener callers pass listener: true to also refuse age-restricted videos; owner calls never do. */
+export async function lookupVideo(videoId: string, opts: { listener?: boolean } = {}): Promise<Lookup> {
   let info: VideoInfo | undefined;
   try {
     info = (await fetchVideos([videoId])).get(videoId);
@@ -28,6 +30,7 @@ export async function lookupVideo(videoId: string): Promise<Lookup> {
     return refuse(502, "Couldn't reach YouTube. Try again in a moment.");
   }
   if (!info) return refuse(404, "YouTube has no public video with that link.");
+  if (opts.listener && info.ageRestricted) return { ok: false, status: 422, message: AGE_RESTRICTED_MESSAGE, code: "age_restricted" };
   if (!info.embeddable) return refuse(422, "That video can't be played outside YouTube (embedding is blocked).");
   if (info.durationSec === null) return refuse(422, "YouTube didn't give a usable length for that video.");
   if (info.durationSec === 0) return refuse(422, "That video has no fixed length (live or upcoming), so it can't join the station.");
