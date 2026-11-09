@@ -26,6 +26,7 @@
     "e2e:indicator": "npm run sync:shared && node test/e2e/indicator.e2e.mjs",
     "e2e:layout": "npm run sync:shared && node test/e2e/layout.e2e.mjs",
     "e2e:stacked": "npm run sync:shared && node test/e2e/stacked.e2e.mjs",
+    "e2e:settings": "npm run sync:shared && node test/e2e/settings.e2e.mjs",
     "e2e:theset": "npm run sync:shared && node test/e2e/theset.e2e.mjs",
     "pretest": "npm run sync:shared && npm run db:up",
     "test": "vitest run"

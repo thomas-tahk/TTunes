@@ -1,5 +1,11 @@
 // Shared by the station e2es: the queue/requests/owner tools live in one drawer behind the yellow "Request a song" tab.
 
+/** Opens the header's Settings menu (if closed). Look, Layout and Panel radios only exist while it is open. */
+export async function openSettings(page) {
+  const button = page.getByRole("button", { name: "Settings" });
+  if ((await button.getAttribute("aria-expanded")) !== "true") await button.click();
+}
+
 /** Opens the drawer (if closed) and, for the owner, switches to a drawer tab: "Requests", "Add song" or "Owner tools". */
 export async function openDrawer(page, tab) {
   const opener = page.getByRole("button", { name: /^(Request a song|Requests)$/ });

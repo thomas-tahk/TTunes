@@ -20,7 +20,11 @@ header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; min
 .wordmark { display: inline-flex; align-items: center; height: 44px; line-height: 1; } /* fixed row height: the fonts differ, the header must not */
 .on-air { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px; }
 .on-air i { width: 10px; height: 10px; border-radius: 50%; }
-.switches { margin: 0 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; }
+/* Settings: one header button; its panel is a full-width row of the header (in flow, so the player is never under it) */
+.settings { display: contents; }
+.settings-btn { margin: 0 0 0 auto; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; border-width: 3px; border-style: solid; background: transparent; cursor: pointer; }
+.settings-panel { flex: 1 0 100%; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 14px 28px; padding: 12px 14px; }
+.settings-panel .look-switch { flex-wrap: wrap; row-gap: 12px; }
 .look-switch { margin: 0; padding: 0; border: 0; min-width: 0; display: inline-flex; align-items: center; gap: 6px; }
 .look-switch legend { float: left; padding: 0 6px 0 0; }
 .look-switch label { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 14px; border-width: 3px; border-style: solid; cursor: pointer; }
@@ -106,12 +110,19 @@ footer { margin-top: 22px; min-height: 44px; }
   header { padding: 6px 0; column-gap: 10px; }
   .look-switch label { padding: 0 4px; }
   .look-switch legend { padding-right: 0; font-size: 0.7rem; }
-  .switches { column-gap: 8px; }
+  .settings-panel { column-gap: 14px; padding: 6px 10px; }
 }
-/* narrow phones: two header rows whichever font the look uses (wordmark + live + owner badge, then the Look switch) */
+/* narrow phones: Settings is a gear-only 44x44 button (its word stays for screen readers). An owner's header always breaks to two rows,
+   the wordmark alone on the first, so it is the same height in every look (the fonts differ in width). The open menu is compacted so the
+   player still fits the first screen of a 320x568 phone. In landscape (height under 500px) an open in-flow menu cannot share the screen
+   with a 200px player: a known exception, the player is never covered and the page scrolls. */
 @media (max-width: 480px) {
-  .switches { flex: 1 0 100%; margin: 0; }
-  .owner-badge { margin-left: auto; }
+  .settings-btn { width: 44px; padding: 0; justify-content: center; }
+  .settings-label { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  header:has(.owner-badge) .wordmark { flex: 1 0 100%; }
+  .settings-panel { row-gap: 8px; padding: 8px 10px; }
+  .settings-panel .look-switch { row-gap: 6px; }
+  .look-switch label { padding: 0 8px; }
   .segmented { grid-template-columns: 1fr; }
   .feed-row { grid-template-columns: 52px minmax(0, 1fr); }
   .feed-row .chip { grid-column: 2; justify-self: start; }
@@ -188,7 +199,7 @@ html[data-layout="stacked"] {
   }
 }
 
-/* short landscape phones: two switches make the header two rows, so the gap under it goes to keep the player on the first screen */
+/* short landscape phones: the open Settings panel makes the header taller, so the gap under it goes to keep the player on the first screen */
 @media (max-width: 999px) and (max-height: 400px) {
   html[data-layout] .shell { gap: 0; }
 }

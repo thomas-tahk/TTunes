@@ -40,7 +40,7 @@ header { font-size: 1.05rem; font-weight: 600; }
 .on-air i { background: var(--wash-mid); animation: blink 1.6s ease-in-out infinite; }
 .signin, .owner-badge { font-weight: 800; color: var(--on-wash); }
 .owner-badge { background: var(--drawer-bg); color: var(--ink); border-radius: 3px; }
-.signin:focus-visible, .btn:focus-visible, .drawer-tab:focus-visible { outline: 3px solid var(--focus-on-wash); outline-offset: 3px; }
+.signin:focus-visible, .btn:focus-visible, .drawer-tab:focus-visible, .settings-btn:focus-visible { outline: 3px solid var(--focus-on-wash); outline-offset: 3px; }
 
 .titles { background: rgba(0, 0, 0, 0.28); border-left: 8px solid var(--drawer-bg); }
 .label { font-size: 0.85rem; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; }
@@ -184,6 +184,9 @@ footer .signin { font-size: 0.9rem; font-weight: 600; }
 .look-switch label { border-color: #fff; color: #fff; font-weight: 800; font-size: 0.95rem; cursor: pointer; }
 .look-switch label.on { background: #fff; color: var(--wash-deep); }
 .look-switch label.on span::before { content: "\2713\00a0" / ""; }
+.settings-btn { border-color: #fff; color: #fff; font-weight: 800; font-size: 0.95rem; }
+.settings-btn[aria-expanded="true"] { background: #fff; color: #1a0630; }
+.settings-panel { background: rgba(0, 0, 0, 0.5); }
 .look-switch label:focus-within { outline: 3px solid var(--drawer-bg); outline-offset: 3px; }
 
 /* ---------- narrow (sizes and places are in layout.css) ---------- */

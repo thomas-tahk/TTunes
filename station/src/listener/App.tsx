@@ -1,8 +1,7 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import type { NowPlaying } from "../../lib/schedule.ts";
-import { LayoutSwitch } from "./LayoutSwitch.tsx";
 import { readLayout, type Layout } from "./layout.ts";
-import { LookSwitch } from "./LookSwitch.tsx";
+import { SettingsMenu } from "./SettingsMenu.tsx";
 import { Drawer, DrawerPanel, type DrawerTab } from "./Drawer.tsx";
 import { OwnerPanel, SignInLink, useOwner } from "./OwnerPanel.tsx";
 import { Player } from "./Player.tsx";
@@ -183,10 +182,7 @@ export function App() {
           <i aria-hidden="true" /> Live
         </span>
         {owner && <SignInLink owner />}
-        <div className="switches">
-          <LookSwitch />
-          <LayoutSwitch layout={layout} onChange={setLayout} />
-        </div>
+        <SettingsMenu layout={layout} onLayout={setLayout} />
       </header>
       <main>{body}</main>
       <footer>{ownerState === "listener" && <SignInLink owner={false} />}</footer>
