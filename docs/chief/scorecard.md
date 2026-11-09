@@ -5,3 +5,4 @@
 | M3 requests | — (not played yet) | 0 | —/3 asked | ~1/5 | 5/6 (0; go-live waits on #28) | same day as M2 |
 | M4 portfolio | — (not seen yet) | 2 (demo = live URL, not a video; no names in the image) | —/3 asked | 0/1 | 2/2 (0) | same day |
 | M4 redesign | 1 (focus outline covers labels; #46) + 3 taste notes | 0 | 2/2 (no objection) | 0/4 | 5/5 (0) | same day |
+| M5 layout & polish | — (not played yet; final review caught a build break the gates missed) | 3 (content filter idea; panel colour as a preference; one Settings menu) | —/3 asked | 0/6 | 7/8 (0; #44 closed, not reachable) | same day |
