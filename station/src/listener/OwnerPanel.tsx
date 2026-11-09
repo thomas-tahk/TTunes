@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { NowPlaying } from "../../lib/schedule.ts";
-import { DrawerPanel, type DrawerTab } from "./Drawer.tsx";
+import { DrawerPanel, type DrawerView } from "./Drawer.tsx";
 import { OwnerAccount } from "./OwnerAccount.tsx";
 import { OwnerControls } from "./OwnerControls.tsx";
 import { call, messageOf, NETWORK_MESSAGE } from "./ownerFetch.ts";
@@ -49,7 +49,7 @@ interface PanelProps {
   playing: NowPlaying | null;
   onPlaying: (playing: NowPlaying) => void;
   requests: ReturnType<typeof useOwnerRequests>;
-  tab: DrawerTab;
+  tab: DrawerView;
 }
 
 export function OwnerPanel({ playing, onPlaying, requests, tab }: PanelProps) {

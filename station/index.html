@@ -10,6 +10,10 @@
       // Set the saved look before first paint (no flash). Afterglow when nothing is saved or storage is blocked.
       try { document.documentElement.dataset.look = localStorage.getItem("ttunes.look") === "theset" ? "theset" : "afterglow"; } catch (e) { document.documentElement.dataset.look = "afterglow"; }
     </script>
+    <script>
+      // Same for the layout: Side unless "stacked" was saved.
+      try { document.documentElement.dataset.layout = localStorage.getItem("ttunes.layout") === "stacked" ? "stacked" : "side"; } catch (e) { document.documentElement.dataset.layout = "side"; }
+    </script>
     <title>TTunes station</title>
   </head>
   <body>

@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import type { NowPlaying } from "../../lib/schedule.ts";
+import { LayoutSwitch } from "./LayoutSwitch.tsx";
+import { readLayout, type Layout } from "./layout.ts";
 import { LookSwitch } from "./LookSwitch.tsx";
 import { Drawer, DrawerPanel, type DrawerTab } from "./Drawer.tsx";
 import { OwnerPanel, SignInLink, useOwner } from "./OwnerPanel.tsx";
@@ -87,6 +89,8 @@ export function App() {
   const [paused, setPaused] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerTab, setDrawerTab] = useState<DrawerTab>("requests");
+  const [layout, setLayout] = useState<Layout>(readLayout);
+  const stacked = layout === "stacked";
   const toggleDrawer = useCallback(() => setDrawerOpen((open) => !open), []);
   const ownerState = useOwner();
   const owner = ownerState === "owner";
@@ -109,10 +113,11 @@ export function App() {
   };
 
   // The request bar, its drawer and the tip sit right after the player in the DOM (where they are on a phone), so Tab follows the picture.
-  const requestDrawer = (
-    <>
-      <Drawer label={boxMode === "off" ? "Requests" : "Request a song"} open={drawerOpen} owner={owner} tab={drawerTab} onTab={setDrawerTab} onToggle={toggleDrawer}>
-        <DrawerPanel id="requests" tab={owner ? drawerTab : "requests"} owner={owner}>
+  // Stacked: the same pieces in page flow, the tip right above the request box, every section shown (no tabs).
+  const shownTab = stacked ? "all" : drawerTab;
+  const drawer = (
+      <Drawer label={boxMode === "off" ? "Requests" : "Request a song"} open={drawerOpen && !stacked} owner={owner} tab={shownTab} stacked={stacked} onTab={setDrawerTab} onToggle={toggleDrawer}>
+        <DrawerPanel id="requests" tab={owner ? shownTab : "requests"} owner={owner}>
           <div className="requests">
             {owner && <RequestSettings feed={ownerRequests.feed} onMode={(mode) => void ownerRequests.setMode(mode)} onReload={() => void ownerRequests.reload()} />}
             {boxMode !== "off" && <RequestBox mine={mine} mode={boxMode} onPosted={posted} />}
@@ -123,52 +128,65 @@ export function App() {
             )}
           </div>
         </DrawerPanel>
-        {owner && <OwnerPanel playing={playingNow} onPlaying={(playing) => void show(playing)} requests={ownerRequests} tab={drawerTab} />}
+        {owner && <OwnerPanel playing={playingNow} onPlaying={(playing) => void show(playing)} requests={ownerRequests} tab={shownTab} />}
       </Drawer>
-      {ownerState === "listener" && playingNow?.current && !drawerOpen && boxMode !== "off" && !hintGone && (
-        <div className="hint-bubble" role="region" aria-label="Tip">
-          <p>Got a song? Request it here.</p>
-          <button type="button" aria-label="Close tip" onClick={dismissHint}>
-            <span aria-hidden="true">×</span>
-          </button>
-        </div>
-      )}
-    </>
+  );
+  const showHint = ownerState === "listener" && playingNow?.current && (stacked || !drawerOpen) && boxMode !== "off" && !hintGone;
+  const hint = showHint && (
+    <div className="hint-bubble" role="region" aria-label="Tip">
+      <p>Got a song? Request it here.</p>
+      <button type="button" aria-label="Close tip" onClick={dismissHint}>
+        <span aria-hidden="true">×</span>
+      </button>
+    </div>
   );
 
-  let body;
-  if (view.status === "loading") body = <><Message title="Tuning in" body="Finding out what's on air." />{requestDrawer}</>;
-  else if (view.status === "error")
-    body = <><Message title="Can't reach the station" body="The schedule didn't load. Check your connection." action={{ label: "Try again", run: () => void retry() }} />{requestDrawer}</>;
-  else if (!view.playing.current) body = <><Message title="Off air" body="Nothing is in the library yet. Check back soon." action={{ label: "Check again", run: () => void retry() }} />{requestDrawer}</>;
-  else
-    body = (
-      <>
-        <PlayerStage>
-          {started ? <Player playing={view.playing} serverTime={serverTime} onPausedChange={setPaused} /> : <><div className="player-frame idle"><div className="player-host" /></div><div className="song-indicator" aria-hidden="true" /></>}
-        </PlayerStage>
-        {requestDrawer}
-        <Title playing={view.playing} />
-        <UpNext playing={view.playing} requestsOpen={boxMode !== "off"} />
-        {!started && (
-          <button type="button" className="btn play" onClick={() => setStarted(true)}>
-            <span aria-hidden="true" className="play-icon" />
-            Play
-          </button>
-        )}
-      </>
+  const playButton = !started && (
+    <button type="button" className="btn play" onClick={() => setStarted(true)}>
+      <span aria-hidden="true" className="play-icon" />
+      Play
+    </button>
+  );
+
+  // One flat list of keyed siblings: switching layout only reorders them, so nothing unmounts (typed text and focus survive).
+  // Side: player, request bar + drawer, tip, titles, up next, Play. Stacked: player, Play, titles, up next, tip, requests.
+  const parts: Record<string, React.ReactNode> = { requests: drawer, hint };
+  let order: string[];
+  if (view.status === "loading") {
+    parts.message = <Message title="Tuning in" body="Finding out what's on air." />;
+    order = ["message", "requests"];
+  } else if (view.status === "error") {
+    parts.message = <Message title="Can't reach the station" body="The schedule didn't load. Check your connection." action={{ label: "Try again", run: () => void retry() }} />;
+    order = ["message", "requests"];
+  } else if (!view.playing.current) {
+    parts.message = <Message title="Off air" body="Nothing is in the library yet. Check back soon." action={{ label: "Check again", run: () => void retry() }} />;
+    order = ["message", "requests"];
+  } else {
+    parts.player = (
+      <PlayerStage>
+        {started ? <Player playing={view.playing} serverTime={serverTime} onPausedChange={setPaused} /> : <><div className="player-frame idle"><div className="player-host" /></div><div className="song-indicator" aria-hidden="true" /></>}
+      </PlayerStage>
     );
+    parts.title = <Title playing={view.playing} />;
+    parts.upnext = <UpNext playing={view.playing} requestsOpen={boxMode !== "off"} />;
+    parts.play = playButton;
+    order = stacked ? ["player", "play", "title", "upnext", "hint", "requests"] : ["player", "requests", "hint", "title", "upnext", "play"];
+  }
+  const body = order.map((key) => <Fragment key={key}>{parts[key]}</Fragment>);
 
   const washStyle = { "--wash-hot": wash.hot, "--wash-mid": wash.mid, "--wash-deep": wash.deep } as React.CSSProperties;
   return (
-    <div className={`shell${drawerOpen ? " drawer-open" : ""}`} style={washStyle}>
+    <div className={`shell${drawerOpen && !stacked ? " drawer-open" : ""}`} style={washStyle}>
       <header>
         <span className="wordmark">TTunes</span>
         <span className="on-air">
           <i aria-hidden="true" /> Live
         </span>
-        <LookSwitch />
         {owner && <SignInLink owner />}
+        <div className="switches">
+          <LookSwitch />
+          <LayoutSwitch layout={layout} onChange={setLayout} />
+        </div>
       </header>
       <main>{body}</main>
       <footer>{ownerState === "listener" && <SignInLink owner={false} />}</footer>
