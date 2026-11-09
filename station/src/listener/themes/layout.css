@@ -129,19 +129,20 @@ footer { margin-top: 22px; min-height: 44px; }
 }
 
 /* =====================================================================================================
-   Side layout: player + now playing on top, up next under, Play at the bottom; requests in a drawer on the right.
-   On a phone it is one column in DOM order (player, request bar, drawer, titles, up next, Play), so Tab follows the picture.
+   Side layout: player + now playing on top, Play above the title, up next under; requests in a drawer on the right.
+   On a phone it is one column in DOM order (player, Play, titles, up next, request bar, drawer, tip), so Tab follows the picture.
    ===================================================================================================== */
 html[data-layout="side"] {
   --drawer-w: 520px;
   --pad: 30px;
 
   .shell { position: relative; max-width: 1240px; min-height: calc(100dvh - 48px); margin: 24px auto; padding: var(--pad); display: flex; flex-direction: column; }
-  main { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 340px; grid-template-rows: auto auto auto; align-content: start; gap: 24px 28px; }
-  .player-stage { grid-column: 1; grid-row: 1; justify-self: start; }
-  .titles { grid-column: 2; grid-row: 1; }
-  .up-next { grid-column: 1 / -1; grid-row: 2; }
-  .play { grid-column: 1 / -1; grid-row: 3; justify-self: start; }
+  main { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 340px; grid-template-rows: auto 1fr auto; align-content: start; gap: 24px 28px; }
+  /* Play sits at the top of the right column, level with the player's top, so it is on the first screen before it is pressed */
+  .player-stage { grid-column: 1; grid-row: 1 / span 2; justify-self: start; }
+  .play { grid-column: 2; grid-row: 1; justify-self: start; }
+  .titles { grid-column: 2; grid-row: 2; }
+  .up-next { grid-column: 1 / -1; grid-row: 3; }
   .message { grid-column: 1 / -1; }
 
   /* the request bar: a tab on the right edge; the tip floats right above it and points down at it */
@@ -155,11 +156,12 @@ html[data-layout="side"] {
   @media (min-width: 1000px) {
     .shell.drawer-open { --pad: 8px; max-width: none; margin-left: 8px; margin-right: calc(var(--drawer-w) + 64px); } /* 64px clears the handle tab left of the drawer */
     .shell.drawer-open .player-stage { padding: 8px; }
-    .shell.drawer-open main { grid-template-columns: minmax(0, 1fr); }
+    .shell.drawer-open main { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; }
     .shell.drawer-open .titles, .shell.drawer-open .player-stage, .shell.drawer-open .up-next, .shell.drawer-open .play { grid-column: 1; }
-    .shell.drawer-open .titles { grid-row: 2; }
-    .shell.drawer-open .up-next { grid-row: 3; }
-    .shell.drawer-open .play { grid-row: 4; }
+    .shell.drawer-open .player-stage { grid-row: 1; }
+    .shell.drawer-open .play { grid-row: 2; }
+    .shell.drawer-open .titles { grid-row: 3; }
+    .shell.drawer-open .up-next { grid-row: 4; }
   }
 
   @media (max-width: 999px) {
@@ -190,6 +192,11 @@ html[data-layout="stacked"] {
   .drawer .drawer-panel:last-child { margin-bottom: 0; }
   .hint-bubble { position: relative; max-width: 340px; margin: 0 0 -12px; }
   .hint-bubble::after { content: ""; position: absolute; left: 28px; bottom: -12px; border: 10px solid transparent; border-bottom: 0; border-top: 12px solid var(--hint-bg); }
+
+  /* Play sits right under the player: the player gives up height (136px = Play and its gap) so Play is on the first screen */
+  @media (min-width: 1000px) {
+    .player-stage { width: min(100%, max(384px, calc((100dvh - 372px) * 16 / 9 + 28px))); }
+  }
 
   @media (max-width: 999px) {
     --pad: 14px;
